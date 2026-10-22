@@ -1,0 +1,32 @@
+# Say the Line settings. Copy to saytheline.toml (next to this file) and edit.
+# Every key can instead be set as the environment variable shown, which wins over this file.
+# Relative paths are relative to this file.
+
+[jellyfin]
+# Recommended: the Jellyfin API. Create a key in Dashboard -> API Keys.
+url = "http://localhost:8096"          # SAYTHELINE_JELLYFIN_URL
+api_key = ""                           # SAYTHELINE_JELLYFIN_KEY
+
+# Or read Jellyfin's database file directly (read-only), instead of url + api_key:
+# db = "/var/lib/jellyfin/data/jellyfin.db"    # SAYTHELINE_JELLYFIN_DB
+
+# When Jellyfin sees the files under other paths than this machine does (Jellyfin in Docker,
+# or on another computer with the media mounted here), map Jellyfin's prefix to the local one.
+# Longest prefix wins.                 # SAYTHELINE_PATH_MAP="/media=/srv/media,/tv=/mnt/tv"
+# path_map = { "/media" = "/srv/media" }
+
+[server]
+host = "127.0.0.1"                     # SAYTHELINE_HOST. No login: keep it private (see README)
+port = 8765                            # SAYTHELINE_PORT
+
+[paths]
+data = "./data"                        # SAYTHELINE_DATA: index, previews, clips, library
+preview_cache_gb = 2                   # SAYTHELINE_PREVIEW_CACHE_GB: editor previews are a cache, oldest dropped past this
+
+[tools]
+# Python with faster-whisper + spaCy (default: the Python running Say the Line).
+# stt_python = "/opt/stt-venv/bin/python"     # SAYTHELINE_STT_PYTHON
+# Optional stem separation (Dialogue only / No dialogue). Default: `demucs` on PATH.
+# demucs = "/opt/demucs/bin/demucs"           # SAYTHELINE_DEMUCS
+# Hardware preview encoding on Linux. Default: /dev/dri/renderD128 if present; "" = CPU only.
+# vaapi = "/dev/dri/renderD128"               # SAYTHELINE_VAAPI

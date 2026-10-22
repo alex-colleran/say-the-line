@@ -1,0 +1,9 @@
+{
+  "mcpServers": {
+    "say-the-line": {
+      "command": "${SAYTHELINE_PYTHON:-python3}",
+      "args": ["-m", "saytheline", "mcp"],
+      "env": { "PYTHONPATH": "${CLAUDE_PROJECT_DIR:-.}" }
+    }
+  }
+}

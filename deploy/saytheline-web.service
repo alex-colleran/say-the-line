@@ -1,0 +1,18 @@
+# systemd unit for the web UI. Copy to /etc/systemd/system/, set User and the paths, then:
+#   sudo systemctl enable --now saytheline-web
+[Unit]
+Description=Say the Line web UI
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=YOUR_USER
+WorkingDirectory=/opt/say-the-line
+ExecStart=/opt/say-the-line/.venv/bin/python -m saytheline serve
+Restart=on-failure
+RestartSec=5
+Nice=5
+
+[Install]
+WantedBy=multi-user.target

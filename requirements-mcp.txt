@@ -1,0 +1,2 @@
+# The MCP server for AI agents (python -m saytheline mcp). Python 3.10+.
+mcp>=2.2,<3

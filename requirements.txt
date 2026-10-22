@@ -1,0 +1,7 @@
+# Speech (snap to speech, word timing, speech captions) and the Poster caption look.
+# The web server itself needs only the Python standard library.
+faster-whisper>=1.1,<2
+numpy>=1.26
+spacy>=3.7,<4
+pillow>=10
+# then: python -m spacy download en_core_web_sm

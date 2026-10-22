@@ -1,0 +1,15 @@
+# Nightly incremental index (run by saytheline-index.timer). Only new or changed subtitles are read.
+[Unit]
+Description=Say the Line subtitle index
+
+[Service]
+Type=oneshot
+User=YOUR_USER
+WorkingDirectory=/opt/say-the-line
+ExecStart=/opt/say-the-line/.venv/bin/python -m saytheline index -q
+ExecStart=/opt/say-the-line/.venv/bin/python -m saytheline index --movies -q
+# A oneshot's run time is capped by TimeoutStartSec (RuntimeMaxSec does not apply to oneshot).
+# It is safe to cut short: every item is committed as it is done, the next run carries on.
+TimeoutStartSec=3h
+Nice=10
+IOSchedulingClass=idle

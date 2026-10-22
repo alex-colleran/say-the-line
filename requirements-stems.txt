@@ -1,0 +1,2 @@
+# Optional: Dialogue only / No dialogue audio (demucs stem separation). Pulls in PyTorch (~1-2 GB).
+demucs>=4.0

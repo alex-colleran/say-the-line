@@ -1,0 +1,2064 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#0b0c0f">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Crect width='24' height='24' fill='%230b0c0f'/%3E%3Cg fill='none' stroke='%23ffb000' stroke-width='2' stroke-linecap='round'%3E%3Ccircle cx='7' cy='7' r='3'/%3E%3Ccircle cx='7' cy='17' r='3'/%3E%3Cpath d='M9.6 8.6l10.4 10.4M9.6 15.4l10.4 -10.4'/%3E%3C/g%3E%3C/svg%3E">
+<title>Say the Line</title>
+<link rel="stylesheet" href="/fonts.css">
+<style>
+  /* Square corners throughout. Controls are dark with white text; a selected or primary control
+     turns amber (text and edge), and only fills amber while it's being pressed. */
+  :root {
+    --bg: #0b0c0f; --panel: #14161b; --panel-2: #1b1e24; --line: #2a2e37; --edge: #3b404b;
+    --btn: #0f1115; --btn-on: #1a1508; --btn-down: #222631;
+    --text: #f2f3f5; --dim: #959cab; --accent: #ffb000; --accent-ink: #1c1100;
+    --sel: rgba(255, 176, 0, .24); --bad: #ff8a8a; --ok: #7fe3a0; --run: #8fbaff;
+    --mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  }
+  * { box-sizing: border-box; border-radius: 0; }
+  html, body { margin: 0; background: var(--bg); color: var(--text);
+    font: 15px/1.45 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; -webkit-tap-highlight-color: transparent; }
+  button { font: inherit; color: inherit; }
+  [hidden] { display: none !important; }
+  .i { width: 18px; height: 18px; flex: none; display: inline-block; vertical-align: middle; }
+  .note .i, .hint .i, .empty .i, .status .i { width: 16px; height: 16px; vertical-align: -3px; }
+  :focus-visible { outline: 2px solid var(--text); outline-offset: 2px; }
+
+  /* ---- controls ---- */
+  .b, .chip, .hbtn, .x, .hbtn2, button.load, .frow .only, .ln button, .stt .sl button {
+    display: inline-flex; align-items: center; justify-content: center; gap: 7px;
+    min-height: 40px; padding: 0 12px; background: var(--btn); color: var(--text);
+    border: 1px solid var(--edge); font-size: 14px; line-height: 1.2; white-space: nowrap;
+    cursor: pointer; user-select: none; text-decoration: none; touch-action: manipulation;
+    transition: background-color .12s, border-color .12s, color .12s; }
+  @media (hover: hover) {
+    .b:hover:not(:disabled):not(.primary):not([aria-pressed=true]), .chip:hover:not([aria-disabled=true]):not([aria-pressed=true]), .hbtn:hover, .x:hover, .hbtn2:hover,
+    button.load:hover, .frow .only:hover, .ln button:hover, .stt .sl button:hover { border-color: #5d6371; }
+  }
+  .b:active:not(:disabled), .chip:active, .hbtn:active, .x:active, .hbtn2:active, button.load:active,
+  .frow .only:active, .ln button:active, .stt .sl button:active { background: var(--btn-down); }
+  .chip { min-height: 38px; padding: 0 13px; }
+  .chip[aria-pressed=true], .b[aria-pressed=true] { color: var(--accent); border-color: var(--accent);
+    background: var(--btn-on); font-weight: 600; }
+  .chip[aria-disabled=true] { opacity: .35; cursor: not-allowed; }
+  .b.primary { color: var(--accent); border-color: var(--accent); box-shadow: inset 0 0 0 1px var(--accent);
+    font-weight: 700; letter-spacing: .01em; }
+  .b.primary:active:not(:disabled) { background: var(--accent); color: var(--accent-ink); }
+  .b:disabled { opacity: .4; cursor: default; }
+  .x, .hbtn2 { width: 44px; height: 44px; padding: 0; flex: none; }
+  .x .i, .hbtn2 .i { width: 22px; height: 22px; }
+  .hbtn2.on { color: var(--accent); border-color: var(--accent); }
+  /* a row of chips that reads as one control (Phrase | Any word) */
+  .seg { display: flex; }
+  .seg .chip + .chip { margin-left: -1px; }
+  .seg .chip[aria-pressed=true] { position: relative; z-index: 1; }
+
+  input[type=search], input[type=text], select {
+    flex: 1 1 220px; min-width: 0; min-height: 44px; background: var(--btn); color: var(--text);
+    border: 1px solid var(--edge); padding: 10px 12px; font-size: 16px; }
+  input::placeholder { color: #7d8492; }
+  input[type=search]::-webkit-search-cancel-button { -webkit-appearance: none; width: 20px; height: 20px; cursor: pointer;
+    background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23959cab' stroke-width='2' stroke-linecap='round'%3E%3Cpath d='M18 6l-12 12M6 6l12 12'/%3E%3C/svg%3E") center / 20px no-repeat; }
+  input:focus, select:focus { outline: none; border-color: var(--accent); box-shadow: inset 0 0 0 1px var(--accent); }
+  select { flex: 0 1 240px; appearance: none; -webkit-appearance: none; padding: 8px 40px 8px 12px; font-size: 15px; cursor: pointer;
+    background: var(--btn) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='18' height='18' viewBox='0 0 24 24' fill='none' stroke='%23f2f3f5' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M6 9l6 6l6 -6'/%3E%3C/svg%3E") no-repeat right 12px center; }
+  input[type=checkbox] { appearance: none; -webkit-appearance: none; width: 22px; height: 22px; margin: 0; flex: none;
+    border: 2px solid #5d6371; background: var(--btn) no-repeat center / 16px; cursor: pointer; }
+  input[type=checkbox]:checked { border-color: var(--accent);
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23ffb000' stroke-width='3' stroke-linecap='square'%3E%3Cpath d='M5 12l5 5l9 -10'/%3E%3C/svg%3E"); }
+
+  /* ---- search page ---- */
+  header { position: sticky; top: 0; z-index: 5; background: rgba(11,12,15,.95);
+    backdrop-filter: blur(8px); border-bottom: 1px solid var(--line);
+    padding: calc(env(safe-area-inset-top, 0px) + 10px) 16px 10px; }
+  .bar { max-width: 1200px; margin: 0 auto; display: flex; flex-direction: column; gap: 8px; }
+  .row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+  .brand { font-weight: 800; letter-spacing: .04em; text-transform: uppercase; font-size: 14px; color: var(--accent); margin-right: 4px; }
+  .qbox { position: relative; flex: 1 1 220px; min-width: 0; display: flex; }
+  .qbox .i { position: absolute; left: 12px; top: 50%; transform: translateY(-50%); color: var(--dim); pointer-events: none; }
+  .qbox input { padding-left: 40px; }
+  .hbtn { min-height: 44px; }
+  .chips { display: flex; gap: 6px; flex-wrap: wrap; }
+  /* show / movie filter: a checklist of the titles that have hits, with counts */
+  .facets { background: var(--panel); border: 1px solid var(--line); padding: 10px; margin: 0 0 14px;
+    display: flex; flex-direction: column; gap: 8px; }
+  .facets .fhead { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
+  .facets .fhead input { flex: 1 1 100%; min-height: 40px; padding: 7px 10px; font-size: 15px; }
+  .flist { max-height: 52vh; overflow: auto; border: 1px solid var(--line); background: var(--bg); }
+  #fDone { margin-left: auto; }
+  .frow { display: grid; grid-template-columns: 26px 1fr auto auto; gap: 10px; align-items: center;
+    padding: 6px 8px 6px 10px; min-height: 48px; border-bottom: 1px solid var(--line); cursor: pointer; font-size: 14px; }
+  .frow:last-child { border-bottom: 0; }
+  .frow .nm { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .frow .nm small { color: var(--dim); margin-left: 4px; }
+  .frow .n { color: var(--dim); font-variant-numeric: tabular-nums; font-size: 13px; }
+  .frow .only { min-height: 34px; font-size: 13px; padding: 0 10px; }
+  .frow.off .nm { color: var(--dim); text-decoration: line-through; }
+  .status .clear { background: none; border: 0; color: var(--accent); text-decoration: underline; cursor: pointer; font-size: 13px; padding: 0; }
+  main { max-width: 1200px; margin: 0 auto; padding: 14px 16px calc(env(safe-area-inset-bottom, 0px) + 40px); }
+  .status { color: var(--dim); font-size: 13px; min-height: 1.2em; }
+  .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 14px; }
+  .card { background: var(--panel); border: 1px solid var(--line); overflow: hidden; cursor: pointer;
+    display: flex; flex-direction: column; transition: border-color .12s; }
+  @media (hover: hover) { .card:hover { border-color: var(--edge); } }
+  .card:active { border-color: var(--accent); }
+  .thumb { position: relative; aspect-ratio: 16 / 9; background: var(--panel-2); }
+  .thumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
+  .tc { position: absolute; right: 0; bottom: 0; background: rgba(0,0,0,.8); color: #fff;
+    font: 600 12px/1 var(--mono); padding: 6px 8px; }
+  .body { padding: 10px 12px 12px; display: flex; flex-direction: column; gap: 6px; }
+  .meta { font-weight: 600; font-size: 14px; }
+  .meta small { display: block; font-weight: 400; color: var(--dim); font-size: 12.5px; }
+  .ctx { color: var(--dim); font-size: 13.5px; }
+  .hit { font-size: 15px; }
+  mark { background: var(--accent); color: var(--accent-ink); padding: 0 2px; }
+  button.load { display: flex; margin: 18px auto 0; padding: 0 22px; min-height: 44px; font-size: 15px; }
+  .empty { color: var(--dim); text-align: center; padding: 40px 10px; }
+  .empty .try { display: flex; gap: 8px; justify-content: center; flex-wrap: wrap; margin-top: 12px; }
+  .empty h4 { margin: 22px 0 0; font-size: 12px; font-weight: 600; color: var(--dim); text-transform: uppercase; letter-spacing: .08em; }
+  .empty .chip small { color: var(--dim); margin-left: 4px; }
+  .empty .clear { background: none; border: 0; color: var(--dim); text-decoration: underline; cursor: pointer; font-size: 12.5px; padding: 8px; }
+
+  /* ---- editor ---- */
+  .sheet { position: fixed; inset: 0; z-index: 20; background: var(--bg); overflow-y: auto;
+    padding: calc(env(safe-area-inset-top, 0px) + 6px) 16px calc(env(safe-area-inset-bottom, 0px) + 86px); }
+  .sheet-in { max-width: 860px; margin: 0 auto; display: flex; flex-direction: column; gap: 10px; }
+  .sheet-head { display: flex; align-items: center; gap: 8px; padding-top: 4px; }
+  .sheet-head .t { font-weight: 600; flex: 1; min-width: 0; }
+  .sheet-head .t small { display: block; color: var(--dim); font-weight: 400; font-size: 12.5px;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .stage { position: relative; background: #000; overflow: hidden; }
+  .stage video { display: block; width: 100%; height: auto; max-height: 52vh; margin: 0 auto; }
+  /* loading: a blocky amber bar that fills in steps, no text */
+  .loadbar { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); width: min(46%, 220px); height: 20px;
+    padding: 3px; border: 3px solid var(--accent); background: rgba(0,0,0,.7); pointer-events: none; z-index: 2; }
+  .loadbar i { display: block; height: 100%; width: 0;
+    background: repeating-linear-gradient(90deg, var(--accent) 0 10px, transparent 10px 14px);
+    animation: loadbar 1.4s steps(14, end) infinite; }
+  @keyframes loadbar { to { width: 100%; } }
+  .frame { position: absolute; pointer-events: none; box-shadow: 0 0 0 9999px rgba(0,0,0,.55);
+    outline: 1px dashed rgba(255,255,255,.5); }
+  .cap { position: absolute; text-align: center; pointer-events: none; white-space: pre-wrap; }
+  .cap.tt span { display: inline-block; margin: 0 .2em; transform-origin: 50% 70%; }
+  .cap .pop { animation: pop 150ms ease-out; }
+  @keyframes pop { 0% { transform: scale(.75); } 55% { transform: scale(1.06); } 100% { transform: scale(1); } }
+  .timeline { position: relative; height: 48px; background: var(--panel); border: 1px solid var(--line);
+    touch-action: none; user-select: none; overflow: hidden; }
+  .timeline .cue { position: absolute; top: 33px; height: 8px; background: #3e4554; }
+  .timeline .selbox { position: absolute; top: 0; bottom: 0; background: var(--sel); border-left: 3px solid var(--accent);
+    border-right: 3px solid var(--accent); }
+  .timeline .ph { position: absolute; top: 0; bottom: 0; width: 2px; background: #fff; }
+  .timeline .shot { position: absolute; top: 0; height: 29px; width: 2px; margin-left: -1px;
+    background: rgba(242, 243, 245, .5); pointer-events: none; }
+  .timeline .h { position: absolute; top: 0; bottom: 0; width: 30px; margin-left: -15px; cursor: ew-resize; }
+  /* under the timeline: widen the window either side, with the cut's times between */
+  .readrow { display: flex; align-items: center; gap: 6px; }
+  .readrow .b { min-height: 36px; padding: 0 10px; color: var(--dim); font-size: 13px; gap: 3px; }
+  .readrow .b .i { width: 16px; height: 16px; }
+  .readout { flex: 1; min-width: 0; text-align: center; font: 13px var(--mono); color: var(--dim); white-space: nowrap; }
+  .readout b { color: var(--text); font-weight: 600; }
+  .transport { display: flex; gap: 6px; align-items: stretch; }
+  .transport .b { min-height: 46px; }
+  .transport #playSel { flex: 1; font-size: 15px; }
+  #muteBtn { width: 46px; padding: 0; }
+  @media (min-width: 700px) { .transport #playSel { flex: 0 1 240px; } }
+  .tabs { display: flex; border-bottom: 1px solid var(--line); position: sticky; top: calc(-6px - env(safe-area-inset-top, 0px));
+    z-index: 3; background: var(--bg); margin: 4px -16px 0; padding: 0 16px; }
+  .tabs button { flex: 1; display: inline-flex; align-items: center; justify-content: center; gap: 7px;
+    min-height: 48px; background: none; border: 0; padding: 0 6px; cursor: pointer; font-size: 14px; color: var(--text);
+    box-shadow: inset 0 -2px 0 transparent; }
+  .tabs button[aria-selected=true] { color: var(--accent); font-weight: 600; box-shadow: inset 0 -3px 0 var(--accent); }
+  .tabs .dot { display: inline-block; width: 7px; height: 7px; background: var(--accent); }
+  .panel { display: flex; flex-direction: column; gap: 12px; }
+  .grp { background: var(--panel); border: 1px solid var(--line); padding: 12px;
+    display: flex; flex-direction: column; gap: 10px; }
+  .grp h3 { margin: 0; font-size: 12px; font-weight: 600; color: var(--dim); text-transform: uppercase; letter-spacing: .08em; }
+  .grp.off .dependent { opacity: .4; pointer-events: none; }
+  .opt { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+  .opt > span:first-child { width: 76px; color: var(--dim); font-size: 13px; flex: none; }
+  .opt > span:first-child + .chips { flex: 1 1 0; min-width: 0; }
+  .opt > span:first-child + select { flex: 1 1 0; min-width: 0; max-width: 320px; }
+  .opt > span:first-child:has(+ .chips) { align-self: flex-start; line-height: 38px; }   /* level with the first row */        /* chips wrap beside their label, not under it */
+  details.grp { display: block; } details.grp > * + * { margin-top: 10px; }
+  .opt.disabled { opacity: .4; pointer-events: none; }
+  .nudge { display: grid; grid-template-columns: 40px repeat(2, 1fr) auto repeat(2, 1fr); gap: 6px; align-items: center; }
+  .nudge > span { color: var(--dim); font-size: 13px; }
+  .nudge .b { padding: 0 6px; font-variant-numeric: tabular-nums; gap: 2px; }
+  .nudge .b .i { width: 16px; height: 16px; }
+  .swatch { width: 36px; height: 36px; padding: 0; border: 1px solid var(--edge); cursor: pointer; }
+  .swatch[aria-pressed=true] { outline: 2px solid var(--accent); outline-offset: 3px; }
+  .hint { color: var(--dim); font-size: 12.5px; }
+  .note { font-size: 13.5px; color: var(--dim); background: var(--panel-2); border: 1px solid var(--line);
+    border-left: 3px solid var(--accent); padding: 8px 10px; display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+  .note > span { flex: 1 1 200px; }
+  .note b { color: var(--text); }
+  .err { color: var(--bad); font-size: 14px; }
+  .lines { display: flex; flex-direction: column; border: 1px solid var(--line); }
+  .ln { display: grid; grid-template-columns: 50px 1fr auto auto; gap: 8px; align-items: center;
+    padding: 5px 6px 5px 10px; border-top: 1px solid var(--line); font-size: 14px; }
+  .ln:first-child { border-top: 0; }
+  .ln .txt { cursor: pointer; }
+  .ln.in { background: rgba(255,176,0,.08); }
+  .ln.now { box-shadow: inset 3px 0 0 var(--accent); }
+  .ln .tm { font: 12px var(--mono); color: var(--dim); }
+  .ln button { min-height: 38px; min-width: 40px; padding: 0 10px; font-size: 13px; }
+  .stt { display: flex; flex-direction: column; gap: 6px; }
+  .stt .sl { display: grid; grid-template-columns: 50px 1fr 44px; gap: 8px; align-items: center; }
+  .stt .sl span { font: 12px var(--mono); color: var(--dim); }
+  .stt .sl input { flex: none; min-height: 44px; padding: 7px 9px; font-size: 15px; }
+  .stt .sl.gone input { opacity: .45; text-decoration: line-through; }
+  .stt .sl button { min-height: 44px; padding: 0; }
+  .need { border-color: var(--accent); }
+  .footer { position: fixed; left: 0; right: 0; bottom: 0; z-index: 25; background: rgba(11,12,15,.97);
+    border-top: 1px solid var(--line); padding: 10px 16px calc(env(safe-area-inset-bottom, 0px) + 10px); }
+  .footer-in { max-width: 860px; margin: 0 auto; display: flex; gap: 8px; align-items: center; }
+  .footer .sum { flex: 1; min-width: 0; color: var(--dim); font-size: 12.5px; line-height: 1.35;
+    display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+  .footer .b { min-height: 48px; }
+  .footer .b.primary { padding: 0 22px; font-size: 16px; }
+  .result { background: var(--panel); border: 1px solid var(--line); padding: 12px;
+    display: flex; flex-direction: column; gap: 10px; }
+  .result video, .result img { max-width: 100%; max-height: 50vh; align-self: center; }
+  .heart { position: absolute; left: 0; top: 0; width: 44px; height: 44px; border: 0; padding: 0;
+    display: flex; align-items: center; justify-content: center;
+    background: rgba(0,0,0,.65); color: #fff; cursor: pointer; }
+  .heart .i { width: 22px; height: 22px; }
+  .heart.on { color: var(--accent); }
+  .tagrow { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; }
+  .tag { background: var(--panel-2); border: 1px solid var(--edge); padding: 0 0 0 10px; min-height: 32px;
+    font-size: 12.5px; display: inline-flex; gap: 2px; align-items: center; }
+  .tag button { background: none; border: 0; color: var(--dim); cursor: pointer; padding: 0 6px; min-height: 32px; display: inline-flex; align-items: center; }
+  .tag button .i { width: 14px; height: 14px; }
+  .tagrow input { flex: 0 1 140px; min-height: 32px; padding: 4px 9px; font-size: 13px; }
+  .lib { display: flex; flex-direction: column; gap: 10px; }
+  .li { display: grid; grid-template-columns: 120px 1fr; gap: 12px; background: var(--panel); border: 1px solid var(--line); padding: 10px; }
+  .li .lt { position: relative; aspect-ratio: 16 / 9; background: var(--panel-2); overflow: hidden; cursor: pointer; }
+  .li .lt img { width: 100%; height: 100%; object-fit: cover; display: block; }
+  .li .lt .kind { position: absolute; left: 0; bottom: 0; background: rgba(0,0,0,.8); font-size: 11px; padding: 3px 6px;
+    text-transform: uppercase; letter-spacing: .05em; }
+  .li .lm { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
+  .li .lm .t { font-weight: 600; font-size: 14px; }
+  .li .lm .t small { color: var(--dim); font-weight: 400; }
+  .li .lm .x2 { color: var(--dim); font-size: 13.5px; overflow: hidden; text-overflow: ellipsis; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
+  .li .acts { display: flex; gap: 6px; flex-wrap: wrap; }
+  .statusbar { display: flex; gap: 8px; align-items: center; margin: 2px 0 12px; flex-wrap: wrap; }
+  .statusbar .status { flex: 1 1 auto; min-width: 0; }
+  .statusbar .b { min-height: 38px; }
+  .sc-row { display: grid; grid-template-columns: 26px 96px 1fr auto; gap: 10px; align-items: center;
+    background: var(--panel); border: 1px solid var(--line); padding: 8px; }
+  .sc-row.off { opacity: .5; }
+  .sc-row .st { position: relative; aspect-ratio: 16/9; overflow: hidden; background: var(--panel-2); }
+  .sc-row .st img { width: 100%; height: 100%; object-fit: cover; display: block; }
+  .sc-row .sm { min-width: 0; display: flex; flex-direction: column; gap: 3px; font-size: 13.5px; }
+  .sc-row .sm .t { font-weight: 600; font-size: 13px; }
+  .sc-row .sm .t small { color: var(--dim); font-weight: 400; }
+  .sc-row > .b { width: 44px; padding: 0; }
+  .badge { display: inline-flex; align-items: center; gap: 4px; font-size: 11.5px; padding: 1px 7px; border: 1px solid var(--line); color: var(--dim); }
+  .badge .i { width: 13px; height: 13px; }
+  .badge.ok { color: var(--ok); border-color: #2f5e40; }
+  .badge.warn { color: var(--accent); border-color: #6a4a10; }
+  .badge.bad { color: var(--bad); border-color: #6a2f2f; }
+  .badge.run { color: var(--run); border-color: #2c4a72; }
+  .sclist { display: flex; flex-direction: column; gap: 8px; }
+  details.grp summary { cursor: pointer; color: var(--dim); font-size: 13px; min-height: 28px; display: flex; align-items: center; gap: 6px; }
+  @media (max-width: 480px) {
+    .sc-row { grid-template-columns: 24px 72px 1fr auto; }
+    .li { grid-template-columns: 96px 1fr; }
+    .grid { grid-template-columns: 1fr; } .brand { display: none; }
+    .nudge { grid-template-columns: 34px repeat(2, 1fr) auto repeat(2, 1fr); gap: 5px; }
+    .nudge .b { padding-left: 2px; padding-right: 2px; font-size: 13px; }    /* five buttons a row at 360 px */
+    .opt > span:first-child { width: 68px; }
+    .readrow .b { padding: 0 7px; } .readout { font-size: 12px; }
+  }
+</style>
+</head>
+<body>
+<!-- Icons: Tabler Icons 3.24.0 (MIT, https://tabler.io/icons) -->
+<svg xmlns="http://www.w3.org/2000/svg" style="display:none"><symbol id="i-search" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10 10m-7 0a7 7 0 1 0 14 0a7 7 0 1 0 -14 0"/> <path d="M21 21l-6 -6"/></g></symbol>
+<symbol id="i-heart" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19.5 12.572l-7.5 7.428l-7.5 -7.428a5 5 0 1 1 7.5 -6.566a5 5 0 1 1 7.5 6.572"/></g></symbol>
+<symbol id="i-heart-f" viewBox="0 0 24 24"><g fill="currentColor" stroke="none"><path d="M6.979 3.074a6 6 0 0 1 4.988 1.425l.037 .033l.034 -.03a6 6 0 0 1 4.733 -1.44l.246 .036a6 6 0 0 1 3.364 10.008l-.18 .185l-.048 .041l-7.45 7.379a1 1 0 0 1 -1.313 .082l-.094 -.082l-7.493 -7.422a6 6 0 0 1 3.176 -10.215z"/></g></symbol>
+<symbol id="i-x" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6l-12 12"/> <path d="M6 6l12 12"/></g></symbol>
+<symbol id="i-down" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6l6 -6"/></g></symbol>
+<symbol id="i-left" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 6l-6 6l6 6"/></g></symbol>
+<symbol id="i-right" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 6l6 6l-6 6"/></g></symbol>
+<symbol id="i-movie" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 4m0 2a2 2 0 0 1 2 -2h12a2 2 0 0 1 2 2v12a2 2 0 0 1 -2 2h-12a2 2 0 0 1 -2 -2z"/> <path d="M8 4l0 16"/> <path d="M16 4l0 16"/> <path d="M4 8l4 0"/> <path d="M4 16l4 0"/> <path d="M4 12l16 0"/> <path d="M16 8l4 0"/> <path d="M16 16l4 0"/></g></symbol>
+<symbol id="i-camera" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 7h1a2 2 0 0 0 2 -2a1 1 0 0 1 1 -1h6a1 1 0 0 1 1 1a2 2 0 0 0 2 2h1a2 2 0 0 1 2 2v9a2 2 0 0 1 -2 2h-14a2 2 0 0 1 -2 -2v-9a2 2 0 0 1 2 -2"/> <path d="M9 13a3 3 0 1 0 6 0a3 3 0 0 0 -6 0"/></g></symbol>
+<symbol id="i-repeat" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12v-3a3 3 0 0 1 3 -3h13m-3 -3l3 3l-3 3"/> <path d="M20 12v3a3 3 0 0 1 -3 3h-13m3 3l-3 -3l3 -3"/></g></symbol>
+<symbol id="i-volume" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 8a5 5 0 0 1 0 8"/> <path d="M17.7 5a9 9 0 0 1 0 14"/> <path d="M6 15h-2a1 1 0 0 1 -1 -1v-4a1 1 0 0 1 1 -1h2l3.5 -4.5a.8 .8 0 0 1 1.5 .5v14a.8 .8 0 0 1 -1.5 .5l-3.5 -4.5"/></g></symbol>
+<symbol id="i-volume-off" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 8a5 5 0 0 1 1.912 4.934m-1.377 2.602a5 5 0 0 1 -.535 .464"/> <path d="M17.7 5a9 9 0 0 1 2.362 11.086m-1.676 2.299a9 9 0 0 1 -.686 .615"/> <path d="M9.069 5.054l.431 -.554a.8 .8 0 0 1 1.5 .5v2m0 4v8a.8 .8 0 0 1 -1.5 .5l-3.5 -4.5h-2a1 1 0 0 1 -1 -1v-4a1 1 0 0 1 1 -1h2l1.294 -1.664"/> <path d="M3 3l18 18"/></g></symbol>
+<symbol id="i-play" viewBox="0 0 24 24"><g fill="currentColor" stroke="none"><path d="M6 4v16a1 1 0 0 0 1.524 .852l13 -8a1 1 0 0 0 0 -1.704l-13 -8a1 1 0 0 0 -1.524 .852z"/></g></symbol>
+<symbol id="i-pause" viewBox="0 0 24 24"><g fill="currentColor" stroke="none"><path d="M9 4h-2a2 2 0 0 0 -2 2v12a2 2 0 0 0 2 2h2a2 2 0 0 0 2 -2v-12a2 2 0 0 0 -2 -2z"/> <path d="M17 4h-2a2 2 0 0 0 -2 2v12a2 2 0 0 0 2 2h2a2 2 0 0 0 2 -2v-12a2 2 0 0 0 -2 -2z"/></g></symbol>
+<symbol id="i-stop" viewBox="0 0 24 24"><g fill="currentColor" stroke="none"><path d="M17 4h-10a3 3 0 0 0 -3 3v10a3 3 0 0 0 3 3h10a3 3 0 0 0 3 -3v-10a3 3 0 0 0 -3 -3z"/></g></symbol>
+<symbol id="i-scissors" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 7m-3 0a3 3 0 1 0 6 0a3 3 0 1 0 -6 0"/> <path d="M6 17m-3 0a3 3 0 1 0 6 0a3 3 0 1 0 -6 0"/> <path d="M8.6 8.6l10.4 10.4"/> <path d="M8.6 15.4l10.4 -10.4"/></g></symbol>
+<symbol id="i-type" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20l3 0"/> <path d="M14 20l7 0"/> <path d="M6.9 15l6.9 0"/> <path d="M10.2 6.3l5.8 13.7"/> <path d="M5 20l6 -16l2 0l7 16"/></g></symbol>
+<symbol id="i-adjust" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 6m-2 0a2 2 0 1 0 4 0a2 2 0 1 0 -4 0"/> <path d="M4 6l8 0"/> <path d="M16 6l4 0"/> <path d="M8 12m-2 0a2 2 0 1 0 4 0a2 2 0 1 0 -4 0"/> <path d="M4 12l2 0"/> <path d="M10 12l10 0"/> <path d="M17 18m-2 0a2 2 0 1 0 4 0a2 2 0 1 0 -4 0"/> <path d="M4 18l11 0"/> <path d="M19 18l1 0"/></g></symbol>
+<symbol id="i-target" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 12m-1 0a1 1 0 1 0 2 0a1 1 0 1 0 -2 0"/> <path d="M12 7a5 5 0 1 0 5 5"/> <path d="M13 3.055a9 9 0 1 0 7.941 7.945"/> <path d="M15 6v3h3l3 -3h-3v-3z"/> <path d="M15 9l-3 3"/></g></symbol>
+<symbol id="i-headphones" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 13m0 2a2 2 0 0 1 2 -2h1a2 2 0 0 1 2 2v3a2 2 0 0 1 -2 2h-1a2 2 0 0 1 -2 -2z"/> <path d="M15 13m0 2a2 2 0 0 1 2 -2h1a2 2 0 0 1 2 2v3a2 2 0 0 1 -2 2h-1a2 2 0 0 1 -2 -2z"/> <path d="M4 15v-3a8 8 0 0 1 16 0v3"/></g></symbol>
+<symbol id="i-trash" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7l16 0"/> <path d="M10 11l0 6"/> <path d="M14 11l0 6"/> <path d="M5 7l1 12a2 2 0 0 0 2 2h8a2 2 0 0 0 2 -2l1 -12"/> <path d="M9 7v-3a1 1 0 0 1 1 -1h4a1 1 0 0 1 1 1v3"/></g></symbol>
+<symbol id="i-eye" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10 12a2 2 0 1 0 4 0a2 2 0 0 0 -4 0"/> <path d="M21 12c-2.4 4 -5.4 6 -9 6c-3.6 0 -6.6 -2 -9 -6c2.4 -4 5.4 -6 9 -6c3.6 0 6.6 2 9 6"/></g></symbol>
+<symbol id="i-eye-off" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.585 10.587a2 2 0 0 0 2.829 2.828"/> <path d="M16.681 16.673a8.717 8.717 0 0 1 -4.681 1.327c-3.6 0 -6.6 -2 -9 -6c1.272 -2.12 2.712 -3.678 4.32 -4.674m2.86 -1.146a9.055 9.055 0 0 1 1.82 -.18c3.6 0 6.6 2 9 6c-.666 1.11 -1.379 2.067 -2.138 2.87"/> <path d="M3 3l18 18"/></g></symbol>
+<symbol id="i-clock" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 18 0a9 9 0 0 0 -18 0"/> <path d="M12 7v5l3 3"/></g></symbol>
+<symbol id="i-undo" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 14l-4 -4l4 -4"/> <path d="M5 10h11a4 4 0 1 1 0 8h-1"/></g></symbol>
+<symbol id="i-alert" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 9v4"/> <path d="M10.363 3.591l-8.106 13.534a1.914 1.914 0 0 0 1.636 2.871h16.214a1.914 1.914 0 0 0 1.636 -2.87l-8.106 -13.536a1.914 1.914 0 0 0 -3.274 0z"/> <path d="M12 16h.01"/></g></symbol>
+<symbol id="i-check" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12l5 5l10 -10"/></g></symbol>
+<symbol id="i-pencil" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20h4l10.5 -10.5a2.828 2.828 0 1 0 -4 -4l-10.5 10.5v4"/> <path d="M13.5 6.5l4 4"/></g></symbol>
+<symbol id="i-download" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 17v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2 -2v-2"/> <path d="M7 11l5 5l5 -5"/> <path d="M12 4l0 12"/></g></symbol>
+<symbol id="i-library" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M7 3m0 2.667a2.667 2.667 0 0 1 2.667 -2.667h8.666a2.667 2.667 0 0 1 2.667 2.667v8.666a2.667 2.667 0 0 1 -2.667 2.667h-8.666a2.667 2.667 0 0 1 -2.667 -2.667z"/> <path d="M4.012 7.26a2.005 2.005 0 0 0 -1.012 1.737v10c0 1.1 .9 2 2 2h10c.75 0 1.158 -.385 1.5 -1"/> <path d="M11 7h5"/> <path d="M11 10h6"/> <path d="M11 13h3"/></g></symbol>
+<symbol id="i-hourglass" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6.5 7h11"/> <path d="M6.5 17h11"/> <path d="M6 20v-2a6 6 0 1 1 12 0v2a1 1 0 0 1 -1 1h-10a1 1 0 0 1 -1 -1z"/> <path d="M6 4v2a6 6 0 1 0 12 0v-2a1 1 0 0 0 -1 -1h-10a1 1 0 0 0 -1 1z"/></g></symbol>
+<symbol id="i-minus" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12l14 0"/></g></symbol>
+<symbol id="i-plus" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5l0 14"/> <path d="M5 12l14 0"/></g></symbol>
+<symbol id="i-share" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 12m-3 0a3 3 0 1 0 6 0a3 3 0 1 0 -6 0"/> <path d="M18 6m-3 0a3 3 0 1 0 6 0a3 3 0 1 0 -6 0"/> <path d="M18 18m-3 0a3 3 0 1 0 6 0a3 3 0 1 0 -6 0"/> <path d="M8.7 10.7l6.6 -3.4"/> <path d="M8.7 13.3l6.6 3.4"/></g></symbol></svg>
+
+<header>
+  <div class="bar">
+    <div class="row">
+      <span class="brand">Say the Line</span>
+      <div class="qbox"><svg class="i" aria-hidden="true"><use href="#i-search"/></svg><input id="q" type="search" list="recentQ" placeholder="Search a line of dialogue" aria-label="Search a line of dialogue" autocomplete="off" enterkeyhint="search" autofocus></div>
+      <datalist id="recentQ"></datalist>
+      <button class="hbtn" id="libBtn" title="Saved moments, rendered clips and tags"><svg class="i" aria-hidden="true"><use href="#i-library"/></svg><span class="lbl">Library</span></button>
+    </div>
+    <div class="row">
+      <div class="seg" role="group" aria-label="Match">
+        <button type="button" class="chip" data-mode="phrase" aria-pressed="true">Phrase</button>
+        <button type="button" class="chip" data-mode="any" aria-pressed="false">Any word</button>
+      </div>
+      <div class="seg" role="group" aria-label="Type">
+        <button type="button" class="chip" data-kind="" aria-pressed="true">All</button>
+        <button type="button" class="chip" data-kind="episode" aria-pressed="false">TV</button>
+        <button type="button" class="chip" data-kind="movie" aria-pressed="false">Movies</button>
+      </div>
+    </div>
+  </div>
+</header>
+<main>
+  <div class="statusbar"><div class="status" id="status"></div>
+    <button type="button" class="b" id="showsBtn" hidden aria-pressed="false" aria-expanded="false" aria-controls="facets">All titles<svg class="i" aria-hidden="true"><use href="#i-down"/></svg></button>
+    <button class="b" id="scBtn" hidden title="Join these hits into one video"><svg class="i" aria-hidden="true"><use href="#i-movie"/></svg>Supercut</button></div>
+  <div class="facets" id="facets" hidden>
+    <div class="fhead"><input type="text" id="fFind" placeholder="Find a show or movie…" autocomplete="off" aria-label="Find a show or movie">
+      <button class="b" id="fAll">All</button><button class="b" id="fNone">None</button><button class="b primary" id="fDone">Done</button></div>
+    <div class="hint" id="fInfo"></div>
+    <div class="flist" id="fList"></div>
+  </div>
+  <div class="grid" id="grid"></div>
+  <button class="load" id="load" hidden>Load more</button>
+  <div class="empty" id="empty"></div>
+</main>
+
+<div class="sheet" id="sheet" hidden>
+  <div class="sheet-in">
+    <div class="sheet-head">
+      <div class="t" id="edTitle"></div>
+      <button class="hbtn2" id="edHeart" title="Save this clip as it is now to the library" aria-label="Save to the library"><svg class="i" aria-hidden="true"><use href="#i-heart"/></svg></button>
+      <button class="x" id="edClose" aria-label="Close"><svg class="i" aria-hidden="true"><use href="#i-x"/></svg></button>
+    </div>
+    <div class="tagrow" id="edTags" hidden></div>
+    <div class="note" id="draftNote" hidden></div>
+    <div class="stage" id="stage">
+      <video id="vid" playsinline preload="auto"></video>
+      <div class="frame" id="frame" hidden></div>
+      <div class="cap" id="cap" hidden></div>
+      <div class="loadbar" id="vload" hidden><i></i></div>
+    </div>
+    <div class="timeline" id="tl" title="Tap to seek · drag the amber edges to trim"></div>
+    <div class="readrow">
+      <button class="b" id="wEarlier" title="Show 10 s more before" aria-label="Show 10 seconds more before"><svg class="i" aria-hidden="true"><use href="#i-left"/></svg>10s</button>
+      <span class="readout" id="readout"></span>
+      <button class="b" id="wLater" title="Show 10 s more after" aria-label="Show 10 seconds more after">10s<svg class="i" aria-hidden="true"><use href="#i-right"/></svg></button>
+    </div>
+    <div class="transport">
+      <button class="b primary" id="playSel"><svg class="i" aria-hidden="true"><use href="#i-play"/></svg>Play clip</button>
+      <button class="b" id="loopBtn" aria-pressed="false" title="Play the clip over and over"><svg class="i" aria-hidden="true"><use href="#i-repeat"/></svg>Loop</button>
+      <button class="b" id="muteBtn" aria-pressed="false" title="Mute while editing (the render keeps its sound)" aria-label="Mute"><svg class="i" aria-hidden="true"><use href="#i-volume"/></svg></button>
+      <button class="b" id="stillBtn" title="Save the frame on screen as an image, with its caption"><svg class="i" aria-hidden="true"><use href="#i-camera"/></svg>Still</button>
+    </div>
+
+    <div class="tabs" role="tablist">
+      <button role="tab" data-tab="cut" aria-selected="true"><svg class="i" aria-hidden="true"><use href="#i-scissors"/></svg>Cut</button>
+      <button role="tab" data-tab="captions" aria-selected="false"><svg class="i" aria-hidden="true"><use href="#i-type"/></svg>Captions<span class="dot" id="capDot" hidden></span></button>
+      <button role="tab" data-tab="output" aria-selected="false"><svg class="i" aria-hidden="true"><use href="#i-adjust"/></svg>Output</button>
+    </div>
+
+    <!-- CUT -->
+    <div class="panel" data-panel="cut">
+      <div class="grp">
+        <div class="nudge"><span>In</span>
+          <button class="b" data-nudge="in,-500" aria-label="Half a second earlier">−0.5</button><button class="b" data-nudge="in,-100" aria-label="A tenth of a second earlier">−0.1</button>
+          <button class="b" id="setIn" aria-label="Set the start here">Set</button>
+          <button class="b" data-nudge="in,100" aria-label="A tenth of a second later">+0.1</button><button class="b" data-nudge="in,500" aria-label="Half a second later">+0.5</button></div>
+        <div class="nudge"><span>Out</span>
+          <button class="b" data-nudge="out,-500" aria-label="Half a second earlier">−0.5</button><button class="b" data-nudge="out,-100" aria-label="A tenth of a second earlier">−0.1</button>
+          <button class="b" id="setOut" aria-label="Set the end here">Set</button>
+          <button class="b" data-nudge="out,100" aria-label="A tenth of a second later">+0.1</button><button class="b" data-nudge="out,500" aria-label="Half a second later">+0.5</button></div>
+        <div class="nudge"><span>Shot</span>
+          <button class="b" data-shot="inPrev" aria-label="Start at the camera cut before"><svg class="i" aria-hidden="true"><use href="#i-left"/></svg>In</button>
+          <button class="b" data-shot="inNext" aria-label="Start at the next camera cut">In<svg class="i" aria-hidden="true"><use href="#i-right"/></svg></button>
+          <button class="b" id="wholeShot" title="The whole shot the lines in the clip are in" aria-label="Whole shot">Whole</button>
+          <button class="b" data-shot="outPrev" aria-label="End at the camera cut before"><svg class="i" aria-hidden="true"><use href="#i-left"/></svg>Out</button>
+          <button class="b" data-shot="outNext" aria-label="End at the next camera cut">Out<svg class="i" aria-hidden="true"><use href="#i-right"/></svg></button></div>
+        <div class="hint" id="shotHint"></div>
+        <div class="note" id="shotNote" hidden></div>
+        <div class="opt"><button class="b" id="snap"><svg class="i" aria-hidden="true"><use href="#i-target"/></svg>Snap to speech</button>
+          <span class="hint">Moves the cut onto the spoken words when subtitles run early or late.</span></div>
+        <div class="note" id="snapNote" hidden></div>
+      </div>
+      <div class="hint">Lines: tap text to play from it · <b>Only</b> = clip just that line · <b>+</b> grow the clip to include it · <b>−</b> trim it off</div>
+      <div class="lines" id="lines"></div>
+    </div>
+
+    <!-- CAPTIONS -->
+    <div class="panel" data-panel="captions" hidden>
+      <div class="grp" id="capGrp">
+        <div class="opt"><span>Captions</span><div class="chips" data-opt="subsOn"></div></div>
+        <div class="dependent" style="display:flex;flex-direction:column;gap:10px">
+          <div class="opt"><span>Text from</span><div class="chips" data-opt="captionSrc"></div></div>
+          <div class="opt"><span>Look</span><div class="chips" data-opt="look"></div></div>
+        </div>
+      </div>
+      <div class="grp" id="subBox" hidden>
+        <h3>Caption text</h3>
+        <div class="hint">Fix a word, or <svg class="i" aria-hidden="true"><use href="#i-eye-off"/></svg> hide a line that spills into the cut. Only this clip changes.</div>
+        <div id="subLines" class="stt"></div>
+      </div>
+      <div class="grp need" id="sttBox" hidden>
+        <h3 id="sttTitle">Transcript</h3>
+        <div class="opt"><button class="b" id="sttGo"><svg class="i" aria-hidden="true"><use href="#i-headphones"/></svg>Transcribe</button><span class="hint" id="sttHint"></span></div>
+        <div id="sttLines" class="stt"></div>
+      </div>
+      <div class="grp" id="styleGrp">
+        <h3>Style</h3>
+        <div class="opt"><span>Font</span><select id="font"></select></div>
+        <div class="opt"><span>Size</span><div class="chips" data-opt="size"></div></div>
+        <div class="opt"><span>Text</span><div class="chips" id="colours"></div></div>
+        <div class="opt word-only"><span>Highlight</span><div class="chips" id="hls"></div></div>
+        <div class="opt word-only"><span>Letters</span><div class="chips" data-opt="caps"></div></div>
+        <div class="opt classic-only"><span>Backing</span><div class="chips" data-opt="box"></div></div>
+        <div class="opt"><span>Position</span><div class="chips" data-opt="position"></div></div>
+      </div>
+    </div>
+
+    <!-- OUTPUT -->
+    <div class="panel" data-panel="output" hidden>
+      <div class="grp">
+        <div class="opt"><span>Format</span><div class="chips" data-opt="format"></div></div>
+        <div class="opt"><span>Shape</span><div class="chips" data-opt="aspect"></div></div>
+        <div class="opt" id="fitOpt"><span>Fit</span><div class="chips" data-opt="fit"></div></div>
+        <div class="opt"><span>Size</span><div class="chips" data-opt="res"></div></div>
+        <div class="hint" id="gifHint" hidden>GIFs are silent, 12 fps and at most 480 px wide.</div>
+      </div>
+      <div class="grp" id="audioGrp">
+        <div class="opt"><span>Audio</span><div class="chips" data-opt="audio"></div></div>
+        <div class="hint" id="audioHint" hidden>Separating dialogue from music adds about 1.6× the clip length to the render.</div>
+      </div>
+    </div>
+
+    <div id="result"></div>
+  </div>
+  <div class="footer">
+    <div class="footer-in">
+      <div class="sum" id="summary"></div>
+      <button class="b primary" id="render">Render</button>
+    </div>
+  </div>
+</div>
+
+<div class="sheet" id="libSheet" hidden style="padding-bottom:calc(env(safe-area-inset-bottom, 0px) + 24px)">
+  <div class="sheet-in">
+    <div class="sheet-head"><div class="t">Library<small>Saved moments, rendered clips and tags</small></div><button class="x" id="libClose" aria-label="Close"><svg class="i" aria-hidden="true"><use href="#i-x"/></svg></button></div>
+    <div class="chips" id="libKinds"></div>
+    <div class="chips" id="libTagFilter"></div>
+    <div class="lib" id="libList"></div>
+  </div>
+</div>
+<div class="sheet" id="scSheet" hidden>
+  <div class="sheet-in">
+    <div class="sheet-head"><div class="t" id="scTitle"></div><button class="x" id="scClose" aria-label="Close"><svg class="i" aria-hidden="true"><use href="#i-x"/></svg></button></div>
+    <div style="position:relative"><video id="scVid" playsinline controls hidden style="width:100%;max-height:40vh;background:#000;display:block"></video>
+      <div class="loadbar" id="scLoad" hidden><i></i></div></div>
+    <div class="grp">
+      <div class="opt"><span>Order</span><div class="chips" data-sc="order"></div></div>
+      <div class="opt"><span>Repeats</span><div class="chips" data-sc="dedupe"></div><span class="hint" id="scHidden"></span></div>
+      <div class="opt"><span>Select</span><button class="b" id="scAll">All</button><button class="b" id="scNone">None</button>
+        <button class="b" id="scDropBad" hidden>Untick not-heard</button><span class="hint" id="scCount"></span></div>
+    </div>
+    <details class="grp" id="scSettings" open>
+      <summary>Settings</summary>
+      <div class="opt"><span>Timing</span><div class="chips" data-sc="check"></div></div>
+      <div class="hint">Checking listens to each clip (~5–15 s each) to fix subtitles that run early or late, and finds the exact words.</div>
+      <div class="opt"><span>Cut</span><div class="chips" data-sc="cut"></div></div>
+      <div class="opt"><span>Padding</span><div class="chips" data-sc="padding"></div></div>
+      <div class="opt"><span>Shots</span><div class="chips" data-sc="shots"></div></div>
+      <div class="hint">Trims each clip's padding to the camera cuts nearby, so none opens or ends on a sliver of another shot.</div>
+      <div class="opt"><span>Not heard</span><div class="chips" data-sc="unheard"></div></div>
+      <div class="opt"><span>Joins</span><div class="chips" data-sc="transition"></div></div>
+      <div class="opt"><span>Loudness</span><div class="chips" data-sc="loudnorm"></div></div>
+      <div class="opt"><span>Labels</span><div class="chips" data-sc="label"></div></div>
+      <div class="opt"><span>Captions</span><div class="chips" data-sc="captions"></div></div>
+      <div class="opt"><span>Shape</span><div class="chips" data-sc="aspect"></div></div>
+      <div class="opt" id="scFitOpt"><span>Fit</span><div class="chips" data-sc="fit"></div></div>
+      <div class="opt"><span>Size</span><div class="chips" data-sc="res"></div></div>
+      <div class="hint">Caption font, size and colours follow the editor's Captions settings.</div>
+    </details>
+    <div class="sclist" id="scList"></div>
+    <div id="scResult"></div>
+  </div>
+  <div class="footer"><div class="footer-in">
+    <div class="sum" id="scSum"></div>
+    <button class="b" id="scCheck"><svg class="i" aria-hidden="true"><use href="#i-headphones"/></svg>Check</button>
+    <button class="b primary" id="scRender">Render</button>
+    <button class="b" id="scStop" hidden><svg class="i" aria-hidden="true"><use href="#i-stop"/></svg>Stop</button>
+  </div></div>
+</div>
+<datalist id="tagList"></datalist>
+
+<script>
+const $ = s => document.querySelector(s);
+const $$ = s => [...document.querySelectorAll(s)];
+const ic = n => `<svg class="i" aria-hidden="true"><use href="#i-${n}"/></svg>`;      // Tabler icon from the sprite
+const sleep = ms => new Promise(r => setTimeout(r, ms));
+// ex: titles unticked (group keys "s:<series>" / "m:<item id>"); only: titles ticked after "None" (null = all)
+const state = { q: "", mode: "phrase", kind: "", ex: [], only: null, offset: 0, seq: 0, facets: null, labels: {} };
+const PAGE = 30;
+const COLOURS = { white: "#FFFFFF", yellow: "#FFE14D", cyan: "#6BE4FF", black: "#000000" };
+const HL = { yellow: "#FFE14D", green: "#3CFF6A", cyan: "#6BE4FF", pink: "#FF4FA3", orange: "#FF9A1F" };
+const SIZES = { s: 16, m: 20, l: 26, xl: 34 };                       // classic: libass size on a 288-line script
+const TT_SIZES = { s: 0.075, m: 0.095, l: 0.115, xl: 0.140 };       // word looks: fraction of the short side
+const ASPECT = { "16:9": 16 / 9, "4:3": 4 / 3, "1:1": 1, "9:16": 9 / 16 };
+const CHUNK_RULES = { tiktok: [3, 18, 350], popin: [5, 28, 500], bigword: [1, 999, 0] };   // = media.CHUNK_RULES
+const WORD_LOOKS = [...Object.keys(CHUNK_RULES), "poster"];
+const HEAVY_FONTS = ["Inter Black", "League Spartan Black"];
+const MAX_WIN = 170000, MAX_CLIP = 180000;
+
+function esc(s) { return String(s ?? "").replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c])); }
+function qwords() { return (state.q.toLowerCase().match(/[\w']+/g) || []).filter(w => w.length > 1); }
+function hl(text) {
+  const ws = qwords(); let out = esc(text);
+  if (!ws.length) return out;
+  const re = new RegExp("\\b(" + ws.map(w => w.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).join("|") + ")", "gi");
+  return out.replace(re, "<mark>$1</mark>");
+}
+function fmt(ms) { const s = Math.max(0, Math.floor(ms / 1000)); const h = Math.floor(s / 3600), m = Math.floor(s / 60) % 60, x = s % 60;
+  return (h ? h + ":" + String(m).padStart(2, "0") : m) + ":" + String(x).padStart(2, "0"); }
+function fmtp(ms) { return fmt(ms) + "." + String(Math.floor((Math.max(0, ms) % 1000) / 100)); }
+function bytes(n) { return n > 1e6 ? (n / 1e6).toFixed(1) + " MB" : Math.round(n / 1e3) + " KB"; }
+async function postJob(url, body, onState) {
+  let job = await (await fetch(url, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) })).json();
+  while (job.state && !["done", "error", "cancelled"].includes(job.state)) {
+    onState && onState(job);
+    await sleep(job.state === "queued" ? 800 : 500);
+    job = await (await fetch("/api/job/" + job.id)).json();
+  }
+  if (job.state === "cancelled") throw Object.assign(new Error("Stopped"), { job });
+  if (job.state !== "done") throw new Error(job.error || "failed");
+  return job;
+}
+
+/* ================= library (favourites + tags) ================= */
+const lib = { entries: [], tags: [], kind: "", tag: "" };
+const momentKey = (item, start) => item + ":" + start;
+function savedMoment(item, start) { return lib.entries.find(e => e.kind === "moment" && e.item_id === item && e.start_ms === start); }
+function savedClip(file) { return lib.entries.find(e => e.kind === "clip" && e.file === file); }
+async function loadLibrary() {
+  try {
+    [lib.entries, lib.tags] = await Promise.all([fetch("/api/library").then(r => r.json()), fetch("/api/tags").then(r => r.json())]);
+    $("#tagList").innerHTML = lib.tags.map(t => `<option value="${esc(t.tag)}">`).join("");
+  } catch (e) {}
+}
+async function libSave(data) {
+  const e = await (await fetch("/api/library", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(data) })).json();
+  await loadLibrary(); return e;
+}
+async function libUpdate(id, data) {
+  await fetch("/api/library/" + id, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(data) });
+  await loadLibrary(); return lib.entries.find(e => e.id === id);
+}
+async function libDelete(id) { await fetch(`/api/library/${id}/delete`, { method: "POST" }); await loadLibrary(); }
+function momentFromHit(h, cut) {
+  return { kind: "moment", item_id: h.item_id, idx: h.idx, media_kind: h.kind, label: h.label.replace(/ ".*"$/, ""),
+    title: h.kind === "episode" ? h.title : null, text: h.text, start_ms: h.start_ms, end_ms: h.end_ms, ...(cut || {}) };
+}
+// tag editor: chips with an x button plus an input (Enter or comma adds; suggestions from existing tags)
+function tagEditor(el, entry, onChange) {
+  const tags = entry.tags || [];
+  el.innerHTML = tags.map(t => `<span class="tag">${esc(t)}<button data-t="${esc(t)}" aria-label="Remove tag">${ic("x")}</button></span>`).join("")
+    + `<input type="text" list="tagList" placeholder="+ tag" aria-label="Add tag">`;
+  el.querySelectorAll("button[data-t]").forEach(b => b.onclick = async ev => {
+    ev.stopPropagation(); onChange(await libUpdate(entry.id, { tags: tags.filter(t => t !== b.dataset.t) }));
+  });
+  const inp = el.querySelector("input");
+  const add = async () => {
+    const v = inp.value.split(",").map(x => x.trim()).filter(Boolean);
+    if (!v.length) return;
+    inp.value = "";
+    onChange(await libUpdate(entry.id, { tags: tags.concat(v) }));
+  };
+  inp.onkeydown = e => { if (e.key === "Enter" || e.key === ",") { e.preventDefault(); add(); } };
+  inp.onchange = add;
+  inp.onclick = e => e.stopPropagation();
+}
+
+/* ================= search ================= */
+const filterOn = () => !!state.only || state.ex.length > 0;
+function filterParams(p) {
+  if (state.kind) p.set("kind", state.kind);
+  if (state.only) { if (!state.only.length) p.set("none", "1"); state.only.forEach(k => p.append("only", k)); }
+  else state.ex.forEach(k => p.append("ex", k));
+  return p;
+}
+function syncUrl() {
+  const p = new URLSearchParams();
+  if (state.q) p.set("q", state.q);
+  if (state.mode !== "phrase") p.set("mode", state.mode);
+  filterParams(p);
+  history.replaceState(history.state, "", p.toString() ? "?" + p : location.pathname);
+}
+// a filter saved before titles could be ticked (one show by name) becomes "only that show"
+function loadFilter(src) {
+  state.ex = src.ex || [];
+  state.only = src.only || (src.series ? ["s:" + src.series] : null);
+}
+function setPressed(attr, val) {
+  $$(`header [data-${attr}]`).forEach(c => c.setAttribute("aria-pressed", String(c.dataset[attr] === val)));
+}
+function card(h) {
+  const el = document.createElement("article");
+  el.className = "card"; el.tabIndex = 0;
+  const head = h.kind === "episode"
+    ? `${esc(h.series)} · S${String(h.season ?? 0).padStart(2, "0")}E${String(h.episode ?? 0).padStart(2, "0")}`
+    : `${esc(h.title)}${h.year ? " (" + h.year + ")" : ""}`;
+  el.innerHTML = `
+    <div class="thumb"><img loading="lazy" decoding="async" alt="" src="${h.thumb}"><span class="tc">${fmt(h.start_ms)}</span></div>
+    <div class="body">
+      <div class="meta">${head}<small>${h.kind === "episode" ? esc(h.title) : "Movie"}</small></div>
+      ${h.before ? `<div class="ctx">${esc(h.before)}</div>` : ""}
+      <div class="hit">${hl(h.text)}</div>
+      ${h.after ? `<div class="ctx">${esc(h.after)}</div>` : ""}
+    </div>`;
+  el.querySelector("img").onerror = e => e.target.remove();
+  const heart = document.createElement("button");
+  const paint = () => { const on = !!savedMoment(h.item_id, h.start_ms); heart.className = "heart" + (on ? " on" : ""); heart.innerHTML = ic(on ? "heart-f" : "heart");
+    heart.title = on ? "Saved — tap to remove from the library" : "Save to the library"; heart.setAttribute("aria-label", heart.title); };
+  heart.onclick = async ev => {
+    ev.stopPropagation();
+    const e = savedMoment(h.item_id, h.start_ms);
+    if (e) await libDelete(e.id); else await libSave(momentFromHit(h));
+    paint();
+  };
+  paint();
+  heart.addEventListener("repaint", paint);
+  el.querySelector(".thumb").appendChild(heart);
+  el.onclick = () => { rememberSearch(); openEditor(h); };
+  el.onkeydown = e => { if (e.key === "Enter") { rememberSearch(); openEditor(h); } };
+  return el;
+}
+async function run(append = false) {
+  const seq = ++state.seq;
+  if (!append) { state.offset = 0; $("#grid").innerHTML = ""; }
+  syncUrl();
+  $("#showsBtn").hidden = !state.q.trim();
+  if (!state.q.trim()) { $("#status").textContent = ""; $("#load").hidden = true; $("#scBtn").hidden = true; toggleFacets(false); showEmpty(); return; }
+  $("#empty").innerHTML = "";
+  $("#status").textContent = "Searching…";
+  const p = filterParams(new URLSearchParams({ q: state.q, mode: state.mode, limit: PAGE, offset: state.offset }));
+  const data = await (await fetch("/api/search?" + p)).json();
+  if (seq !== state.seq) return;
+  if (data.error) { $("#status").textContent = data.error; return; }
+  data.hits.forEach(h => $("#grid").appendChild(card(h)));
+  const shown = state.offset + data.hits.length;
+  state.res = { shown, more: data.more, ms: data.ms, key: facetKey() };
+  drawStatus();
+  if (!append) loadFacets();
+  $("#scBtn").hidden = shown < 2;
+  $("#load").hidden = !data.more;
+  clearTimeout(seenTimer);
+  if (shown && !append) { const q = state.q; seenTimer = setTimeout(() => { if (state.q === q) rememberSearch(); }, 3000); }
+}
+/* ================= title filter ================= */
+function labelOf(key) { return state.labels[key] || (key.startsWith("s:") ? key.slice(2) : "a movie"); }
+const facetKey = () => [state.q, state.mode, state.kind].join("\u0000");
+// The exact total comes from the per-title counts (same hits, counted in one query); until they
+// arrive, or for a word too common to count, the page count stands in ("30+").
+function drawStatus() {
+  const r = state.res;
+  if (!r || r.key !== facetKey() || !state.q.trim()) return;
+  let total = null;
+  if (state.facets && state.facets.key === r.key) {
+    const rows = state.facets.rows;
+    total = rows.some(x => x.n === null) ? -1 : rows.filter(x => ticked(x.key)).reduce((a, x) => a + x.n, 0);
+  }
+  const n = total > 0 ? total.toLocaleString() : total === -1 && r.more ? "20,000+" : `${r.shown}${r.more ? "+" : ""}`;
+  const count = total === 0 || !r.shown ? 0 : total > 0 ? total : r.shown;
+  $("#status").innerHTML = (count ? `${n} hit${count === 1 ? "" : "s"} · ${r.ms} ms`
+      : `No hits for “${esc(state.q)}”${filterOn() ? " in the ticked titles" : ""}`)
+    + (filterOn() ? ` · ${esc(filterLabel())} · <button class="clear" id="clearFilter">show all</button>` : "");
+  const cf = $("#clearFilter"); if (cf) cf.onclick = () => setFilter(null, []);
+}
+function filterLabel() {
+  if (state.only) return state.only.length === 1 ? labelOf(state.only[0]) : `${state.only.length} titles`;
+  return state.ex.length === 1 ? `hiding ${labelOf(state.ex[0])}` : `hiding ${state.ex.length} titles`;
+}
+function paintShowsBtn() {
+  const b = $("#showsBtn");
+  b.innerHTML = esc(filterOn() ? (state.only ? filterLabel() : `All but ${state.ex.length}`) : "All titles") + ic("down");
+  b.setAttribute("aria-pressed", String(filterOn()));
+}
+const ticked = key => state.only ? state.only.includes(key) : !state.ex.includes(key);
+let filterTimer = null;
+function setFilter(only, ex) {
+  state.only = only; state.ex = ex;
+  paintShowsBtn(); drawFacets();
+  clearTimeout(filterTimer); filterTimer = setTimeout(() => run(), 250);    // ticking several in a row = one search
+}
+async function loadFacets() {
+  const key = facetKey();
+  if (state.facets && state.facets.key === key) { drawStatus(); return drawFacets(); }
+  const p = new URLSearchParams({ q: state.q, mode: state.mode });
+  if (state.kind) p.set("kind", state.kind);
+  try {
+    const rows = await (await fetch("/api/facets?" + p)).json();
+    if (!Array.isArray(rows) || key !== facetKey()) return;
+    rows.forEach(r => state.labels[r.key] = r.label);
+    state.facets = { key, rows };
+    paintShowsBtn(); drawFacets(); drawStatus();
+  } catch (e) {}
+}
+function drawFacets() {
+  if ($("#facets").hidden) return;
+  const rows = state.facets ? [...state.facets.rows] : [];
+  // titles that are ticked or unticked but have no hits for this search still get a row, so they can be undone
+  const have = new Set(rows.map(r => r.key));
+  [...(state.only || []), ...state.ex].filter(k => !have.has(k)).forEach(k => rows.push({ key: k, label: labelOf(k), kind: k[0] === "s" ? "episode" : "movie", n: 0 }));
+  const counted = rows.some(r => r.n !== null);
+  const total = rows.reduce((a, r) => a + (r.n || 0), 0);
+  $("#fInfo").textContent = !state.q.trim() ? "Search first: the list shows the titles with hits."
+    : !state.facets ? "Counting…"
+    : counted ? `${total.toLocaleString()} hits in ${rows.filter(r => r.n).length} titles · untick to hide one, “only” to see just that one`
+    : `Too many hits to count; every title is listed.`;
+  const find = $("#fFind").value.trim().toLowerCase();
+  const list = $("#fList");
+  const shown = rows.filter(r => !find || r.label.toLowerCase().includes(find)).slice(0, 400);
+  list.innerHTML = shown.map(r => `<label class="frow ${ticked(r.key) ? "" : "off"}" data-k="${esc(r.key)}">
+      <input type="checkbox" ${ticked(r.key) ? "checked" : ""}>
+      <span class="nm">${esc(r.label)}${r.kind === "movie" ? " <small>movie</small>" : ""}</span>
+      <span class="n">${r.n === null ? "" : r.n.toLocaleString()}</span>
+      <button class="only" type="button" title="Show only this title">only</button></label>`).join("")
+    || `<div class="frow"><span></span><span class="hint">${find ? "No title matches." : "No titles."}</span></div>`;
+  list.querySelectorAll(".frow[data-k]").forEach(row => {
+    const k = row.dataset.k;
+    row.querySelector("input").onchange = e => {
+      if (state.only) setFilter(e.target.checked ? [...state.only, k] : state.only.filter(x => x !== k), []);
+      else setFilter(null, e.target.checked ? state.ex.filter(x => x !== k) : [...state.ex, k]);
+    };
+    row.querySelector(".only").onclick = e => { e.preventDefault(); setFilter([k], []); };
+  });
+}
+function toggleFacets(open) {
+  const f = $("#facets");
+  f.hidden = open === undefined ? !f.hidden : !open;
+  $("#showsBtn").setAttribute("aria-expanded", String(!f.hidden));
+  if (!f.hidden) { drawFacets(); if (state.q.trim()) loadFacets(); }
+}
+$("#showsBtn").onclick = () => toggleFacets();
+$("#fDone").onclick = () => toggleFacets(false);
+$("#fAll").onclick = () => setFilter(null, []);
+$("#fNone").onclick = () => setFilter([], []);
+$("#fFind").oninput = drawFacets;
+
+// Settings saved under the old name carry over once.
+try { for (const k of ["recent", "opts.v2", "sc"]) { const v = localStorage.getItem("clipgrep." + k); if (v !== null && localStorage.getItem("saytheline." + k) === null) localStorage.setItem("saytheline." + k, v); } } catch (e) {}
+/* recent searches: kept per device; a search counts once it was used (Enter, a clip opened,
+   a supercut started) or its results were looked at for a few seconds */
+const RECENT_KEY = "saytheline.recent";
+function recentSearches() { try { return JSON.parse(localStorage.getItem(RECENT_KEY) || "[]"); } catch (e) { return []; } }
+function rememberSearch() {
+  const q = state.q.trim(); if (q.length < 2) return;
+  const e = { q, mode: state.mode, kind: state.kind, ex: state.ex, only: state.only,
+    labels: Object.fromEntries([...(state.only || []), ...state.ex].map(k => [k, labelOf(k)])) };
+  const same = x => x.q.toLowerCase() === q.toLowerCase();
+  try { localStorage.setItem(RECENT_KEY, JSON.stringify([e, ...recentSearches().filter(x => !same(x))].slice(0, 12))); } catch (err) {}
+  drawRecentList();
+}
+function drawRecentList() { $("#recentQ").innerHTML = recentSearches().map(r => `<option value="${esc(r.q)}">`).join(""); }
+function applySearch(r) {
+  state.q = r.q; state.mode = r.mode || "phrase"; state.kind = r.kind || "";
+  Object.assign(state.labels, r.labels || {});
+  loadFilter(r); paintShowsBtn();
+  $("#q").value = state.q; setPressed("mode", state.mode); setPressed("kind", state.kind);
+  run();
+}
+let seenTimer = null;
+async function showEmpty() {
+  const rec = recentSearches();
+  let stats = "";
+  try {
+    const s = await (await fetch("/api/stats")).json();
+    stats = `Searching ${s.shows.toLocaleString()} shows, ${s.episodes.toLocaleString()} episodes and ${s.movies.toLocaleString()} movies (${s.cues.toLocaleString()} lines).`;
+  } catch (e) {}
+  if (state.q.trim()) return;                  // the user started typing meanwhile
+  $("#empty").innerHTML = stats
+    + (rec.length ? `<h4>Recent</h4><div class="try">${rec.map((r, i) => `<button type="button" class="chip" data-rec="${i}">${esc(r.q)}${r.series || r.only || (r.ex || []).length ? " <small>· filtered</small>" : ""}</button>`).join("")}</div>
+        <div class="try"><button class="clear" id="clearRecent">Clear recent searches</button></div>` : "")
+    + `<h4>Try</h4><div class="try">${["we need to talk", "are you kidding me", "see you tomorrow", "what just happened"].map(t => `<button type="button" class="chip" data-try="${t}">${t}</button>`).join("")}</div>`;
+  $$("[data-try]").forEach(c => c.onclick = () => applySearch({ q: c.dataset.try, ex: state.ex, only: state.only }));
+  $$("[data-rec]").forEach(c => c.onclick = () => applySearch(rec[+c.dataset.rec]));
+  const cl = $("#clearRecent");
+  if (cl) cl.onclick = () => { try { localStorage.removeItem(RECENT_KEY); } catch (e) {} drawRecentList(); showEmpty(); };
+}
+
+/* ================= options + their rules ================= */
+const opts = { format: "mp4", aspect: "original", fit: "crop", res: 720, audio: "original",
+  subsOn: true, captionSrc: "subs", look: "classic", fontClassic: "Inter", fontWord: "Inter Black",
+  size: "m", colour: "white", hl: "yellow", caps: false, box: false, position: "bottom", tab: "cut", loop: false };
+const CHOICES = {
+  format: [["mp4", "MP4"], ["webm", "WebM"], ["gif", "GIF"]],
+  aspect: [["original", "Original"], ["16:9", "16:9"], ["4:3", "4:3"], ["1:1", "1:1"], ["9:16", "9:16"]],
+  fit: [["crop", "Crop"], ["pad", "Bars"]],
+  res: [[0, "Source"], [1080, "1080"], [720, "720"], [480, "480"]],
+  audio: [["original", "Original"], ["dialogue", "Dialogue only"], ["nodialogue", "No dialogue"]],
+  subsOn: [[true, "On"], [false, "Off"]],
+  captionSrc: [["subs", "Subtitles"], ["speech", "Speech"]],
+  look: [["classic", "Classic"], ["tiktok", "TikTok"], ["popin", "Pop-in"], ["bigword", "Big word"], ["poster", "Poster"]],
+  size: [["s", "S"], ["m", "M"], ["l", "L"], ["xl", "XL"]],
+  caps: [[false, "As spoken"], [true, "ALL CAPS"]],
+  box: [[false, "Outline"], [true, "Box"]],
+  position: [["bottom", "Bottom"], ["middle", "Middle"], ["top", "Top"]],
+};
+try { Object.assign(opts, JSON.parse(localStorage.getItem("saytheline.opts.v2") || "{}")); } catch (e) {}
+function saveOpts() { try { localStorage.setItem("saytheline.opts.v2", JSON.stringify(opts)); } catch (e) {} }
+
+const isWordLook = () => WORD_LOOKS.includes(opts.look);
+const capsOn = () => opts.subsOn;
+const speechMode = () => capsOn() && opts.captionSrc === "speech";
+const wordMode = () => capsOn() && isWordLook();
+const needWords = () => speechMode() || wordMode();       // needs a transcript of the cut
+const wordSource = () => speechMode() ? "speech" : "subs";
+const curFont = () => isWordLook() ? opts.fontWord : opts.fontClassic;
+
+// disabled[key][value] -> reason; chips with a reason are greyed and explain why when tapped
+function disabledReason(key, v) {
+  if (key === "audio" && opts.format === "gif" && v !== "original") return "GIFs have no sound";
+  if (key === "audio" && v !== "original" && !SERVER.stems) return "Needs demucs installed on the server (see README)";
+  if (key === "res" && opts.format === "gif" && v === 1080) return "GIFs are capped at 480 px";
+  return null;
+}
+function setOpt(key, v) {
+  const why = disabledReason(key, v);
+  if (why) { flash(why); return; }
+  opts[key] = v;
+  // follow-on rules
+  if (key === "format" && v === "gif") opts.audio = "original";
+  saveOpts(); refreshAll();
+}
+let flashTimer;
+function flash(msg) {
+  const s = $("#summary"); s.textContent = msg; s.style.color = "var(--accent)";
+  clearTimeout(flashTimer); flashTimer = setTimeout(() => { s.style.color = ""; drawSummary(); }, 1800);
+}
+function buildOptions() {
+  $$("[data-opt]").forEach(box => {
+    const key = box.dataset.opt;
+    box.innerHTML = "";
+    CHOICES[key].forEach(([v, label]) => {
+      const c = document.createElement("button");
+      c.type = "button"; c.className = "chip"; c.textContent = label;
+      c.setAttribute("aria-pressed", String(opts[key] === v));
+      if (disabledReason(key, v)) c.setAttribute("aria-disabled", "true");
+      c.onclick = () => setOpt(key, v);
+      box.appendChild(c);
+    });
+  });
+  const swatches = (el, map, key, skip = []) => {
+    el.innerHTML = "";
+    Object.entries(map).filter(([k]) => !skip.includes(k)).forEach(([k, hex]) => {
+      const sw = document.createElement("button");
+      sw.type = "button"; sw.className = "swatch"; sw.style.background = hex; sw.title = k; sw.setAttribute("aria-label", k);
+      sw.setAttribute("aria-pressed", String(opts[key] === k));
+      sw.onclick = () => setOpt(key, k);
+      el.appendChild(sw);
+    });
+  };
+  // black text only makes sense with a light box behind it, i.e. classic + box
+  const noBlack = isWordLook() || !opts.box;
+  if (noBlack && opts.colour === "black") opts.colour = "white";
+  swatches($("#colours"), COLOURS, "colour", noBlack ? ["black"] : []);
+  swatches($("#hls"), HL, "hl");
+  const fonts = isWordLook() ? FONT_LIST.filter(f => HEAVY_FONTS.includes(f)).concat(FONT_LIST.filter(f => !HEAVY_FONTS.includes(f))) : FONT_LIST;
+  $("#font").innerHTML = fonts.map(f => `<option${f === curFont() ? " selected" : ""}>${esc(f)}</option>`).join("");
+}
+function applyRules() {
+  $("#capGrp").classList.toggle("off", !capsOn());
+  $("#styleGrp").hidden = !capsOn();
+  $$(".word-only").forEach(e => e.hidden = !isWordLook());
+  $$(".classic-only").forEach(e => e.hidden = isWordLook());
+  $("#fitOpt").classList.toggle("disabled", opts.aspect === "original");
+  $("#gifHint").hidden = opts.format !== "gif";
+  $("#audioGrp").classList.toggle("off", opts.format === "gif");
+  $("#audioHint").hidden = opts.audio === "original" || opts.format === "gif";
+}
+function refreshAll() { buildOptions(); applyRules(); drawStt(); drawSubText(); drawOverlay(); drawSummary(); schedulePoster(); autosave(); }
+function drawSummary() {
+  if (!ed.hit) return;
+  const cap = !capsOn() ? "no captions" : `${CHOICES.look.find(l => l[0] === opts.look)[1]} captions from ${speechMode() ? "speech" : "subtitles"}`;
+  const shape = opts.aspect === "original" ? "original shape" : opts.aspect + (opts.fit === "pad" ? " bars" : "");
+  const audio = opts.format === "gif" ? " · silent" : opts.audio === "original" ? "" : opts.audio === "dialogue" ? " · dialogue only" : " · no dialogue";
+  $("#summary").textContent = `${((ed.outMs - ed.inMs) / 1000).toFixed(1)} s · ${opts.format.toUpperCase()} · ${shape} · ${cap}${audio}`;
+  $("#capDot").hidden = !(needWords() && !sttCovers());
+}
+
+/* ================= editor state ================= */
+const PAD_IN = 1500, PAD_OUT = 1000, WIN = 8000;
+// everything about the open clip lives here and is reset when another clip is opened
+const ed = {};
+function resetEd(h) {
+  Object.assign(ed, { hit: h, winA: 0, winB: 0, inMs: 0, outMs: 0, cues: [], stopAt: null,
+    offset: 0,            // subtitle correction found by snap (+ = subtitles early)
+    stt: null,            // transcript / word timing: {item, from, to, source, offset, cues, secs}
+    poster: null, chunkKey: null, loadSeq: (ed.loadSeq || 0) + 1, snapUndo: null,
+    knownOffset: 0,       // offset learnt earlier for this episode (data/offsets.json)
+    lastFile: null,       // the last render of this clip
+    subText: {},          // plain-subtitle edits for this clip: {cue idx: text, or null = hidden}
+    shots: null,          // camera cuts: {cuts: [boundary ms], ranges: [[a, b]] scanned, f: frame ms, anchor: a frame's start}
+    shotsBusy: 0, shotsFailed: false,
+    autoShot: null,       // {a, b, snap}: trim the padding around [a, b] to the cuts once they are known
+    speech: null,         // the heard words' span after a snap: {a, b, offset}
+    seekOnLoad: false, session: (ed.session || 0) + 1,
+    baseState: null });   // the state as opened: a draft is only written once something differs
+}
+// A new clip always opens with plain subtitles, so there is text on screen straight away; looks that
+// need word timing come back only with a saved draft that has its transcript.
+function captionDefaults() { opts.subsOn = true; opts.captionSrc = "subs"; opts.look = "classic"; }
+
+/* drafts: every edited clip is kept (Library > Recent edits); a hearted moment keeps the same state */
+const DRAFT_OPTS = ["subsOn", "captionSrc", "look", "fontClassic", "fontWord", "size", "colour", "hl", "caps", "box", "position",
+  "format", "aspect", "fit", "res", "audio"];
+function edState() {
+  const o = {}; DRAFT_OPTS.forEach(k => o[k] = opts[k]);
+  return { v: 1, in_ms: Math.round(ed.inMs), out_ms: Math.round(ed.outMs), offset_ms: ed.offset, opts: o,
+    stt: ed.stt && ed.stt.item === ed.hit.item_id ? ed.stt : null, sub_text: ed.subText, file: ed.lastFile };
+}
+function applyState(st) {
+  ed.inMs = st.in_ms; ed.outMs = st.out_ms; ed.offset = st.offset_ms || 0;
+  DRAFT_OPTS.forEach(k => { if (st.opts && k in st.opts) opts[k] = st.opts[k]; });
+  ed.stt = st.stt && st.stt.item === ed.hit.item_id ? st.stt : null;
+  ed.lastFile = st.file || null;
+  ed.subText = st.sub_text || {};
+  if (needWords() && !sttCovers()) captionDefaults();       // never reopen to a look with no text
+  saveOpts();
+}
+let draftTimer = null;
+function autosave() {
+  if (!ed.hit || ed.baseState === null) return;
+  clearTimeout(draftTimer); draftTimer = setTimeout(flushDraft, 1200);
+}
+function flushDraft() {
+  clearTimeout(draftTimer); draftTimer = null;
+  if (!ed.hit || ed.baseState === null) return;
+  const st = JSON.stringify(edState());
+  if (st === ed.baseState) return;
+  ed.baseState = st;
+  const cut = { in_ms: Math.round(ed.inMs), out_ms: Math.round(ed.outMs), offset_ms: ed.offset, state: st };
+  const post = (url, body) => fetch(url, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body), keepalive: true }).catch(() => {});
+  post("/api/library", { ...momentFromHit(ed.hit, cut), kind: "recent" });
+  const e = savedMoment(ed.hit.item_id, ed.hit.start_ms);
+  if (e) { Object.assign(e, cut); post("/api/library/" + e.id, cut); }
+}
+window.addEventListener("pagehide", flushDraft);
+document.addEventListener("visibilitychange", () => { if (document.hidden) flushDraft(); });
+function defaultCut() {
+  const h = ed.hit;
+  ed.offset = ed.knownOffset;
+  ed.inMs = Math.max(0, h.start_ms - PAD_IN) + ed.offset; ed.outMs = h.end_ms + PAD_OUT + ed.offset;
+  ed.autoShot = { a: h.start_ms + ed.offset, b: h.end_ms + ed.offset };   // trimmed once the cuts are known
+}
+function offsetNote() {
+  const n = $("#snapNote"), k = ed.knownOffset;
+  if (Math.abs(ed.offset) < 250 || ed.offset !== k) { n.hidden = true; return; }
+  n.hidden = false;
+  n.innerHTML = `<span>${ic("clock")} This episode's subtitles run <b>${Math.abs(k / 1000).toFixed(1)} s ${k < 0 ? "late" : "early"}</b> (learnt earlier) — already corrected.</span>`;
+}
+
+// cut: a library entry's own cut (older entries saved before drafts); entryId: open that entry's state;
+// preset: an editor state to open with (a rendered clip's recipe, from an ?edit= link)
+async function openEditor(h, cut, entryId, preset) {
+  flushDraft();
+  resetEd(h);
+  captionDefaults();
+  const seq = ed.loadSeq;
+  const [known, draft] = await Promise.all([
+    fetch(`/api/offset?item=${h.item_id}`).then(r => r.json()).then(j => j.offset_ms || 0).catch(() => 0),
+    fetch(entryId ? `/api/draft?id=${entryId}` : `/api/draft?item=${h.item_id}&start_ms=${h.start_ms}`).then(r => r.json()).catch(() => ({}))]);
+  if (seq !== ed.loadSeq) return;              // another clip was opened meanwhile
+  ed.knownOffset = Math.abs(known) >= 250 ? known : 0;
+  let st = preset || null;
+  try { if (!st) st = draft && draft.state ? JSON.parse(draft.state) : null; } catch (e) {}
+  if (st) applyState(st);
+  else if (cut && cut.in_ms != null) { ed.inMs = cut.in_ms; ed.outMs = cut.out_ms; ed.offset = cut.offset_ms || 0; }
+  else defaultCut();                           // an offset learnt earlier for this episode applies straight away
+  ed.winA = Math.max(0, Math.min(h.start_ms + ed.offset, ed.inMs) - WIN);
+  ed.winB = Math.max(h.end_ms + ed.offset, ed.outMs) + WIN;
+  drawEdHeart();
+  $("#edTitle").innerHTML = `${esc(h.label.replace(/ ".*"$/, ""))}<small>${h.kind === "episode" ? esc(h.title) + " · " : ""}${fmt(h.start_ms)}</small>`;
+  $("#result").innerHTML = "";
+  offsetNote();
+  drawDraftNote(preset ? { kind: "clip" } : st ? draft : null);
+  paintPlay(); paintLoop(); paintMute();
+  $("#sheet").hidden = false;
+  document.body.style.overflow = "hidden";
+  history.pushState({ sheet: 1 }, "");
+  showTab(opts.tab);
+  refreshAll();
+  ed.baseState = JSON.stringify(edState());
+  await loadWindow();
+}
+function drawDraftNote(d) {
+  const n = $("#draftNote");
+  if (!d) { n.hidden = true; return; }
+  const look = capsOn() ? CHOICES.look.find(l => l[0] === opts.look)[1] + " captions" : "no captions";
+  const what = [look, opts.aspect === "original" ? null : opts.aspect, ((ed.outMs - ed.inMs) / 1000).toFixed(1) + " s"].filter(Boolean).join(" · ");
+  n.hidden = false;
+  n.innerHTML = `<span>${ic("undo")} ${d.kind === "moment" ? "Your saved version" : d.kind === "clip" ? "As rendered" : "Your last edit, " + ago(d.updated)} · ${esc(what)}</span>
+    <button class="b" id="startFresh">Start fresh</button>`;
+  $("#startFresh").onclick = () => {
+    $("#vid").pause();
+    captionDefaults(); saveOpts();
+    ed.stt = null; ed.poster = null; ed.lastFile = null; ed.subText = {}; ed.speech = null;
+    defaultCut();
+    ed.winA = Math.max(0, ed.inMs - WIN); ed.winB = ed.outMs + WIN;
+    n.hidden = true; offsetNote();
+    refreshAll(); loadWindow(); autosave();
+  };
+}
+function ago(iso) {
+  const s = (Date.now() - new Date(iso).getTime()) / 1000;
+  if (!isFinite(s)) return "earlier";
+  if (s < 90) return "just now";
+  if (s < 3600) return Math.round(s / 60) + " min ago";
+  if (s < 86400) return Math.round(s / 3600) + " h ago";
+  return Math.round(s / 86400) + " d ago";
+}
+function closeEditor() {
+  flushDraft();
+  const v = $("#vid"); v.pause(); v.removeAttribute("src"); v.load();
+  $("#sheet").hidden = true; document.body.style.overflow = "";
+  ed.hit = null;
+}
+function showTab(t) {
+  opts.tab = t; saveOpts();
+  $$(".tabs [data-tab]").forEach(b => b.setAttribute("aria-selected", String(b.dataset.tab === t)));
+  $$("[data-panel]").forEach(p => p.hidden = p.dataset.panel !== t);
+}
+$$(".tabs [data-tab]").forEach(b => b.onclick = () => showTab(b.dataset.tab));
+
+// the loading bar shows while a video waits for data (after a short delay, so quick seeks don't flash it)
+function loadbar(video, bar) {
+  let t = null;
+  const show = () => { clearTimeout(t); t = setTimeout(() => { bar.hidden = video.hidden || !video.getAttribute("src"); }, 180); };
+  const hide = () => { clearTimeout(t); bar.hidden = true; };
+  ["loadstart", "waiting", "seeking"].forEach(e => video.addEventListener(e, show));
+  ["loadeddata", "canplay", "playing", "seeked", "error", "emptied"].forEach(e => video.addEventListener(e, hide));
+  video.addEventListener("pause", () => { if (video.readyState >= 2) hide(); });
+  return show;
+}
+const showVidLoad = loadbar($("#vid"), $("#vload"));
+loadbar($("#scVid"), $("#scLoad"));
+
+async function loadWindow() {
+  const seq = ++ed.loadSeq, v = $("#vid");
+  ed.winA = Math.max(0, Math.round(ed.winA / 100) * 100);
+  ed.winB = Math.round(ed.winB / 100) * 100;
+  v.poster = `/thumb/${ed.hit.item_id}/${Math.round(ed.inMs)}.jpg`;      // the cut's first frame while the preview loads
+  showVidLoad();
+  const cues = await (await fetch(`/api/cues?item=${ed.hit.item_id}&from_ms=${ed.winA}&to_ms=${ed.winB}&offset_ms=${ed.offset}`)).json();
+  if (seq !== ed.loadSeq) return;
+  ed.cues = cues;
+  const keepAt = Math.max(ed.inMs, Math.min(absNow() || ed.inMs, ed.outMs));
+  ed.seekOnLoad = ed.seekOnLoad || keepAt <= ed.inMs;     // showing the clip's start: its first frame
+  v.src = `/preview/${ed.hit.item_id}/${ed.winA}-${ed.winB}.mp4`;
+  loadShots();
+  v.onloadedmetadata = () => {
+    if (seq !== ed.loadSeq) return;
+    if (ed.seekOnLoad) { ed.seekOnLoad = false; showIn(); } else v.currentTime = Math.max(0, (keepAt - ed.winA) / 1000);
+    drawAll();
+  };
+  v.onerror = () => { if (seq === ed.loadSeq) flash("Preview failed — try reopening the clip"); };
+  drawAll();
+}
+function absNow() { const v = $("#vid"); return ed.winA + (isFinite(v.currentTime) ? v.currentTime : 0) * 1000; }
+// While a seek is in flight only the latest target is kept, so a fast drag still ends on its own frame.
+let seekWant = null;
+function seekTo(ms) {
+  const v = $("#vid"); seekWant = Math.max(0, (ms - ed.winA) / 1000);
+  if (!v.seeking) { v.currentTime = seekWant; seekWant = null; }
+}
+const LAST_FRAME = 42;          // the out point is exclusive: its last frame starts ~1 frame earlier
+
+/* A render keeps the frames that start at or after the in point and before the out point
+   (media.render: input-side -ss / -t). With the frame grid from the cut scan, the preview can show
+   exactly those: the first frame at the in point, the last at the out point. Until the grid is
+   known these fall back to plain times. */
+function frameF() { return ed.shots && ed.shots.f && ed.shots.anchor != null ? ed.shots.f : null; }
+function firstFrame(ms) { const f = frameF(); return f && ed.shots.anchor + Math.ceil((ms - ed.shots.anchor) / f - 1e-6) * f; }
+function frameOnScreen() { const f = frameF(); return f && ed.shots.anchor + Math.floor((absNow() - ed.shots.anchor) / f + 1e-6) * f; }
+function showIn() { const f = frameF(); seekTo(f ? firstFrame(ed.inMs) + f * 0.3 : ed.inMs); }
+function showOut() { const f = frameF(); seekTo(f ? firstFrame(ed.outMs) - f * 0.7 : ed.outMs - LAST_FRAME); }
+
+// The selection may go anywhere: when it leaves the loaded preview, the preview grows to cover it.
+let growTimer = null;
+function setSel(inMs, outMs, { seek, auto } = {}) {
+  if (!auto) { ed.autoShot = null; $("#shotNote").hidden = true; }    // the user is cutting by hand now
+  inMs = Math.max(0, Math.round(inMs)); outMs = Math.round(outMs);
+  if (outMs - inMs < 200) outMs = inMs + 200;
+  if (outMs - inMs > MAX_CLIP) { flash("Clips are limited to 3 minutes"); outMs = inMs + MAX_CLIP; }
+  ed.inMs = inMs; ed.outMs = outMs;
+  if (inMs < ed.winA || outMs > ed.winB) {
+    clearTimeout(growTimer);
+    growTimer = setTimeout(() => {
+      ed.winA = Math.min(ed.winA, ed.inMs - 3000);
+      ed.winB = Math.max(ed.winB, ed.outMs + 3000);
+      if (ed.winB - ed.winA > MAX_WIN) { ed.winA = ed.inMs - 2000; ed.winB = ed.outMs + 2000; }
+      loadWindow();
+    }, 400);
+  }
+  drawAll();
+  if (seek === "in") showIn(); else if (seek === "out") showOut();
+}
+function drawAll() { drawTimeline(); drawShotRow(); drawLines(); drawSubText(); drawReadout(); drawOverlay(); drawSttHint(); drawSummary(); schedulePoster(); autosave(); }
+function pct(ms) { return ((ms - ed.winA) / Math.max(1, ed.winB - ed.winA)) * 100; }
+function clampPct(x) { return Math.max(0, Math.min(100, x)); }
+function drawTimeline() {
+  $("#tl").innerHTML = ed.cues.map(c => `<div class="cue" style="left:${clampPct(pct(c.start_ms))}%;width:${clampPct(pct(c.end_ms)) - clampPct(pct(c.start_ms))}%"></div>`).join("")
+    + `<div class="selbox" style="left:${clampPct(pct(ed.inMs))}%;width:${clampPct(pct(ed.outMs)) - clampPct(pct(ed.inMs))}%"></div>`
+    + shotCuts().map(c => `<div class="shot" style="left:${pct(c)}%"></div>`).join("")
+    + `<div class="ph" id="ph" style="left:${clampPct(pct(absNow()))}%"></div>`
+    + `<div class="h" data-h="in" style="left:${clampPct(pct(ed.inMs))}%"></div><div class="h" data-h="out" style="left:${clampPct(pct(ed.outMs))}%"></div>`;
+}
+function drawLines() {
+  const now = absNow();
+  $("#lines").innerHTML = ed.cues.length ? ed.cues.map((c, i) => {
+    const inside = c.end_ms > ed.inMs && c.start_ms < ed.outMs;
+    const playing = now >= c.start_ms && now < c.end_ms;
+    return `<div class="ln ${inside ? "in" : ""} ${playing ? "now" : ""}" data-i="${i}">
+      <span class="tm">${fmt(c.start_ms)}</span><span class="txt">${c.idx === ed.hit.idx ? hl(c.text) : esc(c.text)}</span>
+      <button data-act="only" title="Clip just this line">Only</button>
+      ${inside ? `<button class="minus" data-act="minus" title="Trim this line off the clip" aria-label="Trim this line off">${ic("minus")}</button>`
+               : `<button data-act="plus" title="Grow the clip to include this line" aria-label="Grow the clip to this line">${ic("plus")}</button>`}</div>`;
+  }).join("") : `<div class="ln"><span></span><span class="hint">No subtitle lines in this part of the video.</span></div>`;
+}
+function drawReadout() {
+  $("#readout").innerHTML = `<b>${fmtp(ed.inMs)}</b> → <b>${fmtp(ed.outMs)}</b> · ${((ed.outMs - ed.inMs) / 1000).toFixed(1)} s`;
+}
+
+$("#lines").addEventListener("click", e => {
+  const ln = e.target.closest(".ln"); if (!ln || ln.dataset.i === undefined) return;
+  const c = ed.cues[+ln.dataset.i];
+  const act = e.target.dataset.act;
+  // the padding these add is trimmed to the camera cuts in it, like a newly opened clip's
+  const cuts = shotCuts();
+  if (act === "only") return setSel(...fitShots(c.start_ms - PAD_IN, c.end_ms + PAD_OUT, c.start_ms, c.end_ms, cuts), { seek: "in" });
+  if (act === "plus") {           // only the end that grew is trimmed, never into what was already in
+    let a = Math.min(ed.inMs, c.start_ms - PAD_IN), b = Math.max(ed.outMs, c.end_ms + PAD_OUT);
+    const [fa, fb] = fitShots(a, b, c.start_ms, c.end_ms, cuts);
+    if (a < ed.inMs) a = Math.min(fa, ed.inMs);
+    if (b > ed.outMs) b = Math.max(fb, ed.outMs);
+    return setSel(a, b);
+  }
+  if (act === "minus") {
+    // trim from whichever end the line is nearer; never empties the clip
+    const inside = ed.cues.filter(x => x.end_ms > ed.inMs && x.start_ms < ed.outMs);
+    if (inside.length <= 1) return flash("That's the only line left in the clip");
+    const first = inside[0], last = inside[inside.length - 1];
+    const fromStart = c === first || (c !== last && (c.start_ms - ed.inMs) < (ed.outMs - c.end_ms));
+    if (fromStart) {
+      const next = inside[inside.indexOf(c) + 1];
+      return setSel(next ? Math.max(c.end_ms, next.start_ms - 300) : c.end_ms, ed.outMs, { seek: "in" });
+    }
+    const prev = inside[inside.indexOf(c) - 1];
+    return setSel(ed.inMs, prev ? Math.min(c.start_ms, prev.end_ms + 400) : c.start_ms, { seek: "out" });
+  }
+  seekTo(c.start_ms); $("#vid").play();
+});
+
+// timeline: tap to seek, drag an amber edge to trim (dragging past the end grows the preview)
+(() => {
+  const tl = $("#tl"); let drag = null;
+  const msAt = e => { const b = tl.getBoundingClientRect(); return ed.winA + ((e.clientX - b.left) / b.width) * (ed.winB - ed.winA); };
+  tl.addEventListener("pointerdown", e => {
+    const h = e.target.dataset && e.target.dataset.h;
+    if (h) { drag = h; $("#vid").pause(); tl.setPointerCapture(e.pointerId); return; }
+    seekTo(Math.max(ed.winA, Math.min(ed.winB, msAt(e))));
+  });
+  tl.addEventListener("pointermove", e => {
+    if (!drag) return;
+    const ms = nearCut(msAt(e), drag);
+    if (drag === "in") { setSel(Math.min(ms, ed.outMs - 200), ed.outMs); showIn(); }
+    else { setSel(ed.inMs, Math.max(ms, ed.inMs + 200)); showOut(); }
+  });
+  tl.addEventListener("pointerup", () => { drag = null; });
+})();
+// "Set here" takes the frame on screen: it becomes the clip's first (or last) frame
+$("#setIn").onclick = () => { const p = frameOnScreen(); setSel(Math.min(p ? p - frameF() / 2 : absNow(), ed.outMs - 200), ed.outMs); };
+$("#setOut").onclick = () => { const p = frameOnScreen(); setSel(ed.inMs, Math.max(p ? p + frameF() / 2 : absNow(), ed.inMs + 200)); };
+$$("[data-nudge]").forEach(b => b.onclick = () => {
+  const [which, d] = b.dataset.nudge.split(",");
+  if (which === "in") setSel(ed.inMs + +d, ed.outMs, { seek: "in" }); else setSel(ed.inMs, ed.outMs + +d, { seek: "out" });
+});
+$("#wEarlier").onclick = () => { if (ed.winB - ed.winA + 10000 > MAX_WIN) return flash("Preview is at its maximum length"); ed.winA = Math.max(0, ed.winA - 10000); loadWindow(); };
+$("#wLater").onclick = () => { if (ed.winB - ed.winA + 10000 > MAX_WIN) return flash("Preview is at its maximum length"); ed.winB += 10000; loadWindow(); };
+// one button: pause while playing; otherwise play the clip (resuming where it was paused inside it)
+function togglePlay() {
+  const v = $("#vid");
+  if (!v.paused) { v.pause(); return; }
+  const now = absNow();
+  if (now < ed.inMs - 50 || now >= ed.outMs - 150) showIn();
+  ed.stopAt = ed.outMs; v.play().catch(() => {});
+}
+// Loop back, or stop on the clip's last frame. requestVideoFrameCallback reports each frame as it is
+// shown, so playback stops before the next shot's first frame; the animation-frame check alone
+// (older browsers) can let a frame or two of it through.
+const RVFC = "requestVideoFrameCallback" in HTMLVideoElement.prototype;
+function endOfClip() {
+  const v = $("#vid");
+  if (opts.loop) { showIn(); ed.chunkKey = null; } else { v.pause(); ed.stopAt = null; showOut(); }
+}
+let vfc = null;
+function watchFrames() {
+  const v = $("#vid");
+  if (vfc !== null) v.cancelVideoFrameCallback(vfc);
+  vfc = v.requestVideoFrameCallback((now, md) => {
+    vfc = null;
+    if (v.paused || v.ended || $("#sheet").hidden) return;
+    const shown = ed.winA + md.mediaTime * 1000, f = frameF() || 1000 / 24;
+    if (ed.stopAt !== null && shown + f >= ed.outMs - 0.01) endOfClip();     // the next frame is past the out point
+    if (!v.paused) watchFrames();
+  });
+}
+function paintPlay() { const p = !$("#vid").paused; $("#playSel").innerHTML = p ? ic("pause") + "Pause" : ic("play") + "Play clip"; }
+function paintLoop() { $("#loopBtn").setAttribute("aria-pressed", String(!!opts.loop)); }
+function paintMute() {
+  const b = $("#muteBtn"); $("#vid").muted = !!opts.muted;
+  b.innerHTML = ic(opts.muted ? "volume-off" : "volume"); b.setAttribute("aria-pressed", String(!!opts.muted));
+}
+$("#muteBtn").onclick = () => { opts.muted = !opts.muted; saveOpts(); paintMute(); };
+$("#playSel").onclick = togglePlay;
+$("#vid").addEventListener("click", togglePlay);
+["play", "pause", "ended", "emptied"].forEach(ev => $("#vid").addEventListener(ev, paintPlay));
+$("#loopBtn").onclick = () => { opts.loop = !opts.loop; saveOpts(); paintLoop(); };
+$("#vid").addEventListener("timeupdate", () => { if (!$("#sheet").hidden) drawLines(); });
+// timeupdate is only ~4 Hz, slower than fast dialogue: redraw captions every frame while playing
+function frameLoop() {
+  const v = $("#vid");
+  if (v.paused || v.ended || $("#sheet").hidden) return;
+  const ph = $("#ph"); if (ph) ph.style.left = clampPct(pct(absNow())) + "%";
+  // the clip's current out point (it may be trimmed while playing): loop back or stop there
+  if (!RVFC && ed.stopAt !== null && absNow() >= ed.outMs) endOfClip();
+  drawOverlay();
+  requestAnimationFrame(frameLoop);
+}
+$("#vid").addEventListener("play", () => { requestAnimationFrame(frameLoop); if (RVFC) watchFrames(); });
+$("#vid").addEventListener("seeked", () => {
+  if (seekWant !== null) { $("#vid").currentTime = seekWant; seekWant = null; }
+  drawOverlay(); const ph = $("#ph"); if (ph) ph.style.left = clampPct(pct(absNow())) + "%"; });
+window.addEventListener("resize", drawOverlay);
+
+function drawEdHeart() {
+  const e = ed.hit && savedMoment(ed.hit.item_id, ed.hit.start_ms), b = $("#edHeart");
+  b.className = "hbtn2" + (e ? " on" : ""); b.innerHTML = ic(e ? "heart-f" : "heart");
+  b.title = e ? "Saved — keeps following your edits · tap to remove" : "Save this clip as it is now (cut, captions, transcript, output) to the library";
+  $("#edTags").hidden = !e;
+  if (e) tagEditor($("#edTags"), e, () => drawEdHeart());
+}
+$("#edHeart").onclick = async () => {
+  const e = savedMoment(ed.hit.item_id, ed.hit.start_ms);
+  if (e) await libDelete(e.id);
+  else await libSave(momentFromHit(ed.hit, { in_ms: Math.round(ed.inMs), out_ms: Math.round(ed.outMs), offset_ms: ed.offset,
+    state: JSON.stringify(edState()) }));
+  drawEdHeart(); refreshCardHearts();
+};
+// (a hearted moment then follows every edit: see flushDraft)
+function refreshCardHearts() { $$("#grid .card").forEach(c => c.querySelector(".heart") && c.querySelector(".heart").dispatchEvent(new Event("repaint"))); }
+
+/* ================= camera cuts ================= */
+// Cuts come from /api/shots (shots.py) for the whole preview window. A cut is the boundary half a
+// frame before a new shot's first frame, so a clip starting there opens on the new shot and one
+// ending there closes on the outgoing shot's last frame.
+function shotsCover(a, b) { return !!ed.shots && ed.shots.ranges.some(([x, y]) => x <= a && y >= b); }
+function shotCuts() { return ed.shots ? ed.shots.cuts.filter(c => c >= ed.winA && c <= ed.winB) : []; }
+async function loadShots() {
+  const item = ed.hit.item_id, sess = ed.session, a = ed.winA, b = ed.winB;
+  if (shotsCover(a, b)) return applyAutoShot();
+  ed.shotsBusy++; drawShotRow();
+  try {
+    const r = await fetch(`/api/shots?item=${item}&from_ms=${a}&to_ms=${b}`), j = await r.json();
+    if (sess !== ed.session) return;
+    if (!r.ok) throw new Error(j.error || "scan failed");
+    const s = ed.shots || { cuts: [], ranges: [] };
+    s.cuts = [...new Set([...s.cuts, ...j.cuts.map(c => c.ms)])].sort((x, y) => x - y);
+    s.ranges.push([j.from_ms, j.to_ms]);
+    if (j.frame_ms) { s.f = j.frame_ms; s.anchor = j.anchor_ms; }          // the grid measured near here
+    s.margin = j.margin_ms || 0;                                             // files with guessed frame times
+    ed.shots = s; ed.shotsFailed = false;
+  } catch (e) {
+    if (sess === ed.session) ed.shotsFailed = true;
+  } finally {
+    if (sess === ed.session) { ed.shotsBusy--; drawTimeline(); drawShotRow(); applyAutoShot(); }
+  }
+}
+// = shots.fit: trim the padding to the cuts in it, not into [keepA, keepB] beyond SHOT_TOL. A cut is
+// used `margin` inward (a frame, on files whose frame times are guessed; else 0).
+const SHOT_TOL = 120;           // = shots.SPEECH_TOL_MS
+function shotMargin() { return ed.shots ? ed.shots.margin || 0 : 0; }
+function fitShots(inMs, outMs, keepA, keepB, cuts, m = shotMargin()) {
+  const pre = cuts.map(c => c + m).filter(c => c > inMs && c <= keepA + SHOT_TOL);
+  const post = cuts.map(c => c - m).filter(c => c >= keepB - SHOT_TOL && c < outMs);
+  const a = pre.length ? Math.max(...pre) : inMs, b = post.length ? Math.min(...post) : outMs;
+  return b - a >= 300 ? [a, b] : [inMs, outMs];
+}
+function applyAutoShot() {
+  const p = ed.autoShot;
+  if (!p || !ed.hit || !shotsCover(ed.inMs, ed.outMs)) return;
+  ed.autoShot = null;
+  const before = { inMs: ed.inMs, outMs: ed.outMs }, [a, b] = fitShots(ed.inMs, ed.outMs, p.a, p.b, ed.shots.cuts);
+  if (a === ed.inMs && b === ed.outMs) return;
+  const v = $("#vid"), loaded = v.readyState >= 1, untouched = ed.baseState === JSON.stringify(edState());
+  setSel(a, b, { auto: true, seek: loaded ? "in" : undefined });
+  if (!loaded) ed.seekOnLoad = true;
+  if (untouched) { clearTimeout(draftTimer); ed.baseState = JSON.stringify(edState()); }   // not an edit: no draft
+  const said = [a > before.inMs ? `starts on the line's shot (${((a - before.inMs) / 1000).toFixed(1)} s later)` : "",
+                b < before.outMs ? `ends before the next (${((before.outMs - b) / 1000).toFixed(1)} s earlier)` : ""].filter(Boolean).join(", ");
+  if (p.snap) {                                  // the snap note's Undo covers this too
+    const t = $("#snapNote .trimmed"); if (t) t.textContent = " · trimmed to the shot";
+    return;
+  }
+  const n = $("#shotNote");
+  n.hidden = false;
+  n.innerHTML = `<span>${ic("scissors")} Clip ${esc(said)}.</span><button class="b" id="shotUndo">Undo</button>`;
+  $("#shotUndo").onclick = () => { setSel(before.inMs, before.outMs, { seek: "in" }); };
+}
+// a dragged handle sticks to a cut within ~12 px (at most 0.25 s); side: "in" or "out"
+function nearCut(ms, side) {
+  const tol = Math.min(250, 12 / Math.max(1, $("#tl").clientWidth) * (ed.winB - ed.winA)), m = side === "in" ? shotMargin() : -shotMargin();
+  let best = null;
+  for (const c of shotCuts().map(c => c + m)) if (Math.abs(c - ms) <= tol && (best === null || Math.abs(c - ms) < Math.abs(best - ms))) best = c;
+  return best === null ? ms : best;
+}
+function shotTargets() {
+  const m = shotMargin(), ci = shotCuts().map(c => c + m), co = shotCuts().map(c => c - m);   // as starts / as ends
+  const a = ed.inMs, b = ed.outMs, last = xs => xs.length ? xs[xs.length - 1] : undefined;
+  // the lines in the clip (or the heard words after a snap): the shot "the line is in"
+  const sp = ed.speech && ed.speech.offset === ed.offset && ed.speech.a < b && ed.speech.b > a ? ed.speech : null;
+  const inside = ed.cues.filter(x => x.end_ms > a && x.start_ms < b);
+  const ka = sp ? sp.a : inside.length ? Math.max(a, inside[0].start_ms) : a;
+  const kb = sp ? sp.b : inside.length ? Math.min(b, inside[inside.length - 1].end_ms) : b;
+  const wi = last(ci.filter(x => x <= ka + SHOT_TOL)), wo = co.find(x => x >= kb - SHOT_TOL);   // = shots.whole_shot
+  const whole = wi === undefined || wo === undefined || wo - wi >= 300;
+  return { inPrev: last(ci.filter(x => x < a - 1)), inNext: ci.find(x => x > a + 1 && x < b - 200),
+           outPrev: last(co.filter(x => x < b - 1 && x > a + 200)), outNext: co.find(x => x > b + 1),
+           wholeIn: whole ? wi : undefined, wholeOut: whole ? wo : undefined };
+}
+function drawShotRow() {
+  if (!ed.hit) return;
+  const t = shotTargets(), n = shotCuts().length;
+  $$("[data-shot]").forEach(b => b.disabled = t[b.dataset.shot] === undefined);
+  const w = $("#wholeShot");
+  w.disabled = (t.wholeIn === undefined || t.wholeIn === ed.inMs) && (t.wholeOut === undefined || t.wholeOut === ed.outMs);
+  $("#shotHint").textContent = ed.shotsBusy ? "Finding camera cuts…"
+    : ed.shotsFailed ? "Couldn't scan this video for camera cuts."
+    : !ed.shots ? "" : n ? `The arrows move an end to the camera cut before or after it (the white ticks: ${n} here).`
+    : "No camera cuts found in this part of the video.";
+}
+$$("[data-shot]").forEach(b => b.onclick = () => {
+  const k = b.dataset.shot, t = shotTargets()[k];
+  if (t === undefined) return;
+  if (k.startsWith("in")) setSel(t, ed.outMs, { seek: "in" }); else setSel(ed.inMs, t, { seek: "out" });
+});
+$("#wholeShot").onclick = () => {
+  const t = shotTargets();
+  setSel(t.wholeIn ?? ed.inMs, t.wholeOut ?? ed.outMs, { seek: "in" });
+};
+
+/* ================= snap to speech ================= */
+$("#snap").onclick = async () => {
+  const btn = $("#snap"), note = $("#snapNote");
+  const before = { inMs: ed.inMs, outMs: ed.outMs, offset: ed.offset, winA: ed.winA, winB: ed.winB, speech: ed.speech };
+  btn.disabled = true; note.hidden = true;
+  try {
+    const job = await postJob("/api/snap", { item: ed.hit.item_id, in_ms: Math.round(ed.inMs), out_ms: Math.round(ed.outMs), offset_ms: ed.offset },
+      j => btn.innerHTML = j.state === "queued" ? ic("hourglass") + "Waiting…" : ic("headphones") + "Listening…");
+    note.hidden = false;
+    if (!job.found) { note.innerHTML = `Couldn't hear the subtitle words here (${esc(job.reason || "")}). Cut unchanged.`; return; }
+    if (Math.abs(job.offset_ms) >= 250) ed.offset += job.offset_ms;
+    const off = ed.offset, drift = Math.abs(off) < 250 ? "Subtitles were on time" : `Subtitles were ${Math.abs(off / 1000).toFixed(1)} s ${off < 0 ? "late" : "early"}`;
+    note.innerHTML = `<span>${ic("check")} <b>${drift}</b> · heard “${esc(job.heard)}” · ${job.secs} s<span class="trimmed"></span></span><button class="b" id="snapUndo">Undo</button>`;
+    $("#snapUndo").onclick = async () => { Object.assign(ed, before, { autoShot: null }); note.hidden = true; await loadWindow(); };
+    if (job.in_ms < ed.winA || job.out_ms > ed.winB) { ed.winA = Math.max(0, job.in_ms - WIN); ed.winB = job.out_ms + WIN; }
+    $("#shotNote").hidden = true;
+    ed.inMs = job.in_ms; ed.outMs = job.out_ms;
+    ed.speech = { a: job.first_s, b: job.last_e, offset: ed.offset };
+    ed.autoShot = { a: job.first_s, b: job.last_e, snap: true };           // never into the heard words
+    ed.seekOnLoad = true;
+    await loadWindow(); showIn();
+  } catch (e) {
+    note.hidden = false; note.innerHTML = `<span class="err">${esc(e.message)}</span>`;
+  } finally { btn.disabled = false; btn.innerHTML = ic("target") + "Snap to speech"; }
+};
+
+/* ================= transcript (word timing) ================= */
+function sttCovers() {
+  const s = ed.stt;
+  return !!s && s.item === ed.hit.item_id && s.source === wordSource() && s.offset === ed.offset && s.from <= ed.inMs && s.to >= ed.outMs;
+}
+function captionCues() { return needWords() ? (sttCovers() ? ed.stt.cues : []) : subCues(); }
+// plain subtitles with this clip's edits (= web.subtitle_cues)
+function subCues() {
+  return ed.cues.map(c => c.idx in ed.subText ? { ...c, text: ed.subText[c.idx] ?? "" } : c).filter(c => c.text.trim());
+}
+function drawSubText() {
+  const box = $("#subLines"), show = !!ed.hit && capsOn() && !needWords();
+  $("#subBox").hidden = !show;
+  if (!show) return;
+  const cues = ed.cues.filter(c => c.end_ms > ed.inMs && c.start_ms < ed.outMs);
+  const key = cues.map(c => c.idx + (ed.subText[c.idx] === null ? "x" : "")).join();
+  if (box.dataset.key === key) return;                   // unchanged: don't rebuild under the user's typing
+  box.dataset.key = key; box.innerHTML = cues.length ? "" : `<div class="hint">No subtitle lines in this cut.</div>`;
+  cues.forEach(c => {
+    const gone = ed.subText[c.idx] === null, row = document.createElement("div");
+    row.className = "sl" + (gone ? " gone" : "");
+    row.innerHTML = `<span>${fmt(c.start_ms)}</span><input type="text" aria-label="Caption text"><button title="${gone ? "Show this line again" : "Hide this line"}" aria-label="${gone ? "Show line" : "Hide line"}">${ic(gone ? "eye" : "eye-off")}</button>`;
+    const inp = row.querySelector("input");
+    inp.value = gone || !(c.idx in ed.subText) ? c.text : ed.subText[c.idx]; inp.disabled = gone;
+    inp.oninput = () => { if (inp.value === c.text) delete ed.subText[c.idx]; else ed.subText[c.idx] = inp.value; drawOverlay(); autosave(); };
+    inp.onfocus = () => { $("#vid").pause(); seekTo(Math.max(c.start_ms, ed.inMs) + 1); };
+    row.querySelector("button").onclick = () => {
+      if (gone) delete ed.subText[c.idx]; else ed.subText[c.idx] = null;
+      drawSubText(); drawOverlay(); autosave();
+    };
+    box.appendChild(row);
+  });
+}
+function drawSttHint() {
+  if (!ed.hit) return;
+  const go = $("#sttGo"), hint = $("#sttHint");
+  $("#sttTitle").textContent = speechMode() ? "Transcript" : "Word timing";
+  if (!ed.stt || ed.stt.item !== ed.hit.item_id || ed.stt.source !== wordSource()) {
+    go.innerHTML = ic("headphones") + (speechMode() ? "Transcribe" : "Time the words");
+    hint.textContent = speechMode() ? "Turns the speech in this cut into caption text (~5 s)." : `The ${CHOICES.look.find(l => l[0] === opts.look)[1]} look needs each word's timing, taken from the audio (~5 s).`;
+  } else if (!sttCovers()) {
+    go.innerHTML = ic("headphones") + "Redo for this cut"; hint.textContent = "The cut changed since — redo so the captions cover it.";
+  } else {
+    go.innerHTML = ic("headphones") + "Redo"; hint.textContent = `Done in ${ed.stt.secs} s · fix any word below, or delete a line.`;
+  }
+  $("#sttBox").classList.toggle("need", !sttCovers());
+}
+function drawStt() {
+  $("#sttBox").hidden = !needWords();
+  if (!needWords() || !ed.hit) return;
+  const box = $("#sttLines");
+  box.innerHTML = "";
+  const s = ed.stt && ed.stt.item === ed.hit.item_id && ed.stt.source === wordSource() ? ed.stt : null;
+  (s ? s.cues : []).forEach((c, i) => {
+    const row = document.createElement("div"); row.className = "sl";
+    row.innerHTML = `<span>${fmt(c.start_ms)}</span><input type="text" value="${esc(c.text)}" aria-label="Caption text"><button title="Delete this line" aria-label="Delete line">${ic("trash")}</button>`;
+    const inp = row.querySelector("input");
+    inp.oninput = () => { c.text = inp.value; retime(c, inp.value); drawOverlay(); schedulePoster(); autosave(); };
+    inp.onfocus = () => seekTo(c.start_ms);
+    row.querySelector("button").onclick = () => { s.cues.splice(i, 1); drawStt(); drawOverlay(); schedulePoster(); autosave(); };
+    box.appendChild(row);
+  });
+  drawSttHint();
+}
+async function transcribe() {
+  const btn = $("#sttGo"); btn.disabled = true;
+  const item = ed.hit.item_id, from = Math.round(ed.inMs), to = Math.round(ed.outMs), source = wordSource(), offset = ed.offset;
+  try {
+    const job = await postJob("/api/transcribe", { item, from_ms: from, to_ms: to, source, offset_ms: offset },
+      j => btn.innerHTML = j.state === "queued" ? ic("hourglass") + "Waiting…" : ic("headphones") + "Listening…");
+    if (!ed.hit || ed.hit.item_id !== item) return;           // the user moved on to another clip
+    ed.stt = { item, from, to, source, offset, cues: job.cues, secs: job.secs };
+    if (!job.cues.length) flash("No speech heard in this cut");
+  } catch (e) { flash(e.message); }
+  finally { btn.disabled = false; drawStt(); drawOverlay(); drawSummary(); schedulePoster(); autosave(); }
+}
+$("#sttGo").onclick = transcribe;
+function normalizeWords(words, minMs = 70) {   // = media.normalize_words: re-space bunched runs evenly
+  const ws = [...words].map(x => ({ ...x })).sort((a, b) => a.s - b.s), n = ws.length;
+  for (let i = 0; i < n; ) {
+    let j = i;
+    while (j + 1 < n && ws[j + 1].s - ws[j].s < minMs) j++;
+    if (j > i) {
+      const a = ws[i].s; let b = Math.max(ws[j].e, a + (j - i + 1) * minMs);
+      if (j + 1 < n) b = Math.min(b, Math.max(ws[j + 1].s, a + (j - i + 1) * minMs));
+      const step = (b - a) / (j - i + 1);
+      for (let k = i; k <= j; k++) { ws[k].s = Math.round(a + (k - i) * step); ws[k].e = Math.max(ws[k].e, Math.round(a + (k - i + 1) * step)); }
+    }
+    i = j + 1;
+  }
+  ws.forEach((x, k) => {
+    x.e = Math.max(x.e, x.s + minMs);
+    if (k > 0 && x.s < ws[k - 1].s + minMs) { x.s = ws[k - 1].s + minMs; x.e = Math.max(x.e, x.s + minMs); }
+  });
+  return ws;
+}
+// pop length mirrors media._pop: <110 ms on screen = no pop, else up to 150 ms
+function popAttr(dur) { return dur < 110 ? "" : ` class="pop" style="animation-duration:${Math.min(150, dur * 0.45)}ms;`; }
+function retime(cue, text) {                   // an edited line keeps its word times when the count matches
+  const ws = text.split(/\s+/).filter(Boolean);
+  if (cue.words && cue.words.length === ws.length) { cue.words = cue.words.map((w, i) => ({ ...w, w: ws[i] })); return; }
+  const step = (cue.end_ms - cue.start_ms) / Math.max(1, ws.length);
+  cue.words = ws.map((w, i) => ({ w, s: Math.round(cue.start_ms + i * step), e: Math.round(cue.start_ms + (i + 1) * step) }));
+}
+
+/* ================= caption preview ================= */
+function cropRect() {
+  const v = $("#vid"); const W = v.clientWidth, H = v.clientHeight;
+  const left = v.offsetLeft, top = v.offsetTop;
+  if (!W || !H || opts.aspect === "original" || opts.fit === "pad") return { left, top, W, H };
+  const r = ASPECT[opts.aspect], src = W / H;
+  if (Math.abs(r - src) < 0.01) return { left, top, W, H };
+  if (r < src) { const w = H * r; return { left: left + (W - w) / 2, top, W: w, H }; }
+  const h = W / r; return { left, top: top + (H - h) / 2, W, H: h };
+}
+function drawOverlay() {
+  if ($("#sheet").hidden || !ed.hit) return;
+  const r = cropRect(), fr = $("#frame"), cap = $("#cap");
+  fr.hidden = !(opts.aspect !== "original" && opts.fit === "crop");
+  Object.assign(fr.style, { left: r.left + "px", top: r.top + "px", width: r.W + "px", height: r.H + "px" });
+  cap.removeAttribute("style");            // every look sets its own style from scratch
+  cap.className = "cap";
+  const now = absNow();
+  if (!capsOn() || now < ed.inMs || now > ed.outMs) { cap.hidden = true; return; }
+  if (opts.look === "poster") return drawPoster(cap, r, now);
+  if (isWordLook()) return drawWords(cap, r, now);
+  // classic
+  const text = captionCues().filter(c => now >= c.start_ms && now < c.end_ms).map(c => c.text).join("\n");
+  cap.hidden = !text;
+  if (!text) return;
+  cap.textContent = text;
+  const px = r.H * SIZES[opts.size] / 288, col = COLOURS[opts.colour];
+  const pos = opts.position;
+  Object.assign(cap.style, {
+    left: (r.left + r.W * 0.04) + "px", width: (r.W * 0.92) + "px", fontWeight: 700, lineHeight: 1.15,
+    fontFamily: `"${curFont()}", system-ui, sans-serif`, fontSize: px + "px", color: col,
+    top: pos === "top" ? (r.top + r.H * 0.05) + "px" : pos === "middle" ? (r.top + r.H / 2 - px) + "px" : "auto",
+    bottom: pos === "bottom" ? ($("#stage").clientHeight - (r.top + r.H) + r.H * 0.05) + "px" : "auto",
+    background: opts.box ? (opts.colour === "black" ? "rgba(255,255,255,.75)" : "rgba(0,0,0,.5)") : "transparent",
+    textShadow: opts.box ? "none" : "0 0 2px #000, 0 0 2px #000, 1px 1px 2px #000",
+  });
+}
+function chunkWords(words, [maxW, maxC, gap] = [3, 18, 350]) {   // = media.chunk_words
+  const chunks = []; let cur = [];
+  for (const w of words) {
+    if (cur.length) {
+      const text = cur.map(x => x.w).join(" ");
+      if (cur.length >= maxW || text.length + 1 + w.w.length > maxC || w.s - cur[cur.length - 1].e > gap
+          || /[.?!,]$/.test(cur[cur.length - 1].w)) { chunks.push(cur); cur = []; }
+    }
+    cur.push(w);
+  }
+  if (cur.length) chunks.push(cur);
+  return chunks;
+}
+function wordStyle(cap, r, fs, look) {
+  const pos = opts.position || (look === "bigword" ? "middle" : "bottom");
+  Object.assign(cap.style, {
+    left: (r.left + r.W * 0.06) + "px", width: (r.W * 0.88) + "px", fontWeight: 900, lineHeight: 1.1,
+    fontFamily: `"${curFont()}", system-ui, sans-serif`, fontSize: fs + "px", paintOrder: "stroke fill",
+    WebkitTextStroke: (fs * 0.18) + "px #000", textShadow: `0 ${fs * 0.05}px ${fs * 0.06}px rgba(0,0,0,.55)`,
+    top: pos === "top" ? (r.top + r.H * 0.12) + "px" : pos === "middle" ? (r.top + r.H / 2 - fs * 0.6) + "px" : "auto",
+    bottom: pos === "bottom" ? ($("#stage").clientHeight - (r.top + r.H) + r.H * 0.22) + "px" : "auto",
+  });
+}
+function drawWords(cap, r, now) {
+  const look = opts.look;
+  cap.className = "cap tt";
+  let words = normalizeWords(captionCues().flatMap(c => c.words || []).filter(w => w.e > ed.inMs && w.s < ed.outMs && w.w.trim()));
+  if (opts.caps) words = words.map(w => ({ ...w, w: w.w.toUpperCase() }));
+  const chunks = chunkWords(words, CHUNK_RULES[look]);       // big word: strictly one word per chunk
+  const hold = look === "bigword" ? 200 : 150;
+  let active = null, ci = -1, chEnd = 0;
+  for (let i = 0; i < chunks.length; i++) {
+    const ch = chunks[i];
+    let end = ch[ch.length - 1].e + hold;
+    if (i + 1 < chunks.length) end = Math.min(end, chunks[i + 1][0].s);
+    if (now >= ch[0].s && now < end) { active = ch; ci = i; chEnd = end; break; }
+  }
+  if (!active) { cap.hidden = true; ed.chunkKey = null; return; }
+  let k = 0; active.forEach((w, i) => { if (w.s <= now) k = i; });
+  const key = look === "popin" ? ci + ":" + k : ci + ":" + active[0].s;
+  const pop = key !== ed.chunkKey; ed.chunkKey = key;
+  const base = COLOURS[opts.colour] || "#FFFFFF", hlc = HL[opts.hl];
+  let fs = Math.min(r.W, r.H) * TT_SIZES[opts.size] * (look === "bigword" ? 1.7 : 1);
+  // how long the current event is on screen (the pop must fit inside it)
+  const evEnd = k + 1 < active.length ? active[k + 1].s : chEnd;
+  const evStart = look === "tiktok" && k === 0 ? active[0].s : active[k].s;
+  const pa = dur => pop ? popAttr(dur) : "";
+  const open = (extra, dur) => { const p = pa(dur); return p ? `<span${p}${extra}">` : `<span style="${extra}">`; };
+  if (look === "bigword") {
+    const text = active[0].w;
+    fs = Math.min(fs, r.W * 0.88 / Math.max(1, 0.62 * text.length));
+    cap.innerHTML = open(`color:${text.endsWith("!") ? hlc : base}`, chEnd - active[0].s) + esc(text) + "</span>";
+  } else {
+    cap.innerHTML = active.map((w, i) => look === "popin"
+      ? (i === k ? open(`color:${hlc}`, evEnd - evStart) : `<span style="${i > k ? "visibility:hidden;" : ""}color:${base}">`) + esc(w.w) + "</span>"
+      // the spoken word grows via font-size, not transform, so its neighbours make room
+      : (k === 0 ? open(`color:${i === k ? hlc : base};${i === k ? "font-size:1.12em" : ""}`, evEnd - evStart)
+                 : `<span style="color:${i === k ? hlc : base};${i === k ? "font-size:1.12em" : ""}">`) + esc(w.w) + "</span>").join("");
+  }
+  wordStyle(cap, r, fs, look);
+  cap.hidden = false;
+}
+
+/* poster: the server lays it out (spaCy tiers + real font metrics); the preview scales it */
+let posterTimer = null;
+function posterRequest() {
+  return { item: ed.hit.item_id, in_ms: Math.round(ed.inMs), out_ms: Math.round(ed.outMs),
+    aspect: opts.aspect, fit: opts.fit, res: opts.res,
+    caption_cues: sttCovers() ? ed.stt.cues.map(c => ({ start_ms: c.start_ms, end_ms: c.end_ms, text: c.text, words: c.words || [] })) : [],
+    subs: { font: curFont(), size: opts.size, caps: opts.caps, position: opts.position, hl: opts.hl } };
+}
+function schedulePoster() {
+  if (!ed.hit || !capsOn() || opts.look !== "poster" || !sttCovers()) return;
+  const req = posterRequest(), key = JSON.stringify(req);
+  if (ed.poster && ed.poster.key === key) return;
+  clearTimeout(posterTimer);
+  posterTimer = setTimeout(async () => {
+    try {
+      const job = await postJob("/api/poster", req);
+      if (ed.hit && ed.hit.item_id === req.item) { ed.poster = { key, w: job.w, h: job.h, posters: job.posters }; ed.chunkKey = null; drawOverlay(); }
+    } catch (e) {}
+  }, 350);
+}
+function drawPoster(cap, r, now) {
+  const P = ed.poster;
+  const p = P && P.key === JSON.stringify(posterRequest()) ? P.posters.find(x => now >= x.start_ms && now < x.end_ms) : null;
+  if (!p) { cap.hidden = true; ed.chunkKey = null; return; }
+  cap.className = "cap tt";
+  const flat = p.lines.flatMap(l => l.words);
+  let k = 0; flat.forEach((w, i) => { if (w.s <= now) k = i; });
+  const key = p.start_ms + ":" + k, pop = key !== ed.chunkKey; ed.chunkKey = key;
+  const sc = r.W / P.w, base = COLOURS[opts.colour] || "#FFFFFF", hlc = HL[opts.hl];
+  let j = 0;
+  cap.innerHTML = p.lines.map(l => `<div style="position:absolute;left:0;right:0;top:${l.y * sc}px;line-height:${l.height * sc}px;white-space:nowrap">`
+    + l.words.map(w => { const i = j++; const sz = w.size * sc;
+        const col = w.tier === 4 ? hlc : w.tier <= 1 ? "#D9D9D9" : base;
+        return `<span class="${pop && i === k ? "pop" : ""}" style="margin:0 .12em;visibility:${i <= k ? "visible" : "hidden"};font-family:'${w.font}',system-ui,sans-serif;font-size:${sz}px;color:${col};-webkit-text-stroke:${sz * 0.15}px #000;paint-order:stroke fill">${esc(w.w)}</span>`; }).join("")
+    + `</div>`).join("");
+  Object.assign(cap.style, { left: r.left + "px", top: r.top + "px", width: r.W + "px", height: r.H + "px",
+    fontWeight: 900, textShadow: "0 2px 3px rgba(0,0,0,.5)" });
+  cap.hidden = false;
+}
+$("#font").onchange = e => { if (isWordLook()) opts.fontWord = e.target.value; else opts.fontClassic = e.target.value; saveOpts(); refreshAll(); };
+
+/* ================= render ================= */
+function renderBody() {
+  return { item: ed.hit.item_id, in_ms: Math.round(ed.inMs), out_ms: Math.round(ed.outMs),
+    moment: { idx: ed.hit.idx, start_ms: ed.hit.start_ms, end_ms: ed.hit.end_ms, text: ed.hit.text },   // for re-opening it later
+    format: opts.format, aspect: opts.aspect, fit: opts.fit, res: opts.res, audio: opts.format === "gif" ? "original" : opts.audio,
+    caption_source: speechMode() ? "speech" : "subs", offset_ms: ed.offset,
+    sub_text: needWords() ? undefined : ed.subText,
+    caption_cues: needWords() ? ed.stt.cues.map(c => ({ start_ms: c.start_ms, end_ms: c.end_ms, text: c.text, words: c.words || [] })) : undefined,
+    subs: { on: capsOn(), font: curFont(), size: opts.size, colour: opts.colour, box: opts.box, position: opts.position,
+            style: isWordLook() ? opts.look : "classic", hl: opts.hl, caps: opts.caps } };
+}
+// word timing first (when the look needs it), so captions match the cut; false if that failed
+async function ensureWords(btn) {
+  if (!needWords() || sttCovers()) return true;
+  const was = btn.innerHTML;
+  btn.disabled = true; btn.textContent = "Timing words…";
+  await transcribe();
+  btn.disabled = false; btn.innerHTML = was;
+  return sttCovers();
+}
+$("#render").onclick = async () => {
+  const btn = $("#render");
+  if (!await ensureWords(btn)) return;
+  btn.disabled = true; btn.textContent = "Rendering…";
+  $("#result").innerHTML = "";
+  try {
+    const job = await postJob("/api/render", renderBody(), j => btn.textContent = j.state === "queued" ? "Waiting…" : "Rendering…");
+    ed.lastFile = job.file; autosave();
+    showResult(job, `${job.width}×${job.height} · ${job.seconds} s · ${bytes(job.bytes)} · rendered in ${job.secs} s`);
+  } catch (e) {
+    $("#result").innerHTML = `<div class="err">${esc(e.message)}</div>`;
+  } finally { btn.disabled = false; btn.textContent = "Render"; }
+};
+// Still: the frame on screen, framed and captioned as the preview shows it (pause where you want it)
+$("#stillBtn").onclick = async () => {
+  const btn = $("#stillBtn"), v = $("#vid");
+  v.pause();
+  const at = Math.round(absNow());
+  if (at >= ed.inMs && at < ed.outMs && !await ensureWords(btn)) return;
+  btn.disabled = true; btn.innerHTML = ic("camera") + "…";
+  $("#result").innerHTML = "";
+  try {
+    const job = await postJob("/api/still", { ...renderBody(), at_ms: at });
+    showResult(job, `Frame at ${fmtp(at)} · ${job.width}×${job.height} · ${bytes(job.bytes)}`);
+  } catch (e) {
+    $("#result").innerHTML = `<div class="err">${esc(e.message)}</div>`;
+  } finally { btn.disabled = false; btn.innerHTML = ic("camera") + "Still"; }
+};
+function showResult(job, info) {
+  const url = "/clips/" + encodeURIComponent(job.file), still = job.file.endsWith(".jpg");
+  const media = /\.(gif|jpg)$/.test(job.file) ? `<img src="${url}" alt="">` : `<video src="${url}" controls playsinline></video>`;
+  $("#result").innerHTML = `<div class="result">${media}
+    <div class="hint">${esc(job.file)}<br>${info}</div>
+    <div class="opt"><a class="b primary" href="${url}?dl=1" download>${ic("download")}Download</a><button class="b" id="shareBtn" hidden>${ic("share")}Share</button>
+      <button class="b" id="saveClip"></button></div>
+    <div class="tagrow" id="clipTags" hidden></div></div>`;
+  const clipEntry = { kind: "clip", file: job.file, item_id: job.item_id, in_ms: job.in_ms, out_ms: job.out_ms, offset_ms: ed.offset,
+    idx: ed.hit.idx, media_kind: ed.hit.kind, label: ed.hit.label.replace(/ ".*"$/, ""), title: ed.hit.kind === "episode" ? ed.hit.title : null,
+    text: ed.hit.text, start_ms: ed.hit.start_ms, end_ms: ed.hit.end_ms, state: JSON.stringify(edState()) };
+  const paintClip = () => { const e = savedClip(job.file); $("#saveClip").innerHTML = e ? ic("heart-f") + "Saved" : ic("heart") + `Save ${still ? "image" : "clip"}`;
+    $("#clipTags").hidden = !e; if (e) tagEditor($("#clipTags"), e, paintClip); };
+  $("#saveClip").onclick = async () => { const e = savedClip(job.file); if (e) await libDelete(e.id); else await libSave(clipEntry); paintClip(); };
+  paintClip();
+  if (navigator.canShare) {
+    const sb = $("#shareBtn"); sb.hidden = false;
+    sb.onclick = async () => {
+      const blob = await (await fetch(url)).blob();
+      const file = new File([blob], job.file, { type: blob.type });
+      if (navigator.canShare({ files: [file] })) navigator.share({ files: [file] }).catch(() => {});
+    };
+  }
+  $("#result").scrollIntoView({ behavior: "smooth", block: "nearest" });
+}
+
+/* ================= supercut ================= */
+const SC_CHOICES = {
+  order: [["match", "Best match"], ["air", "Air date"], ["show", "Show & episode"], ["shuffle", "Shuffle"]],
+  dedupe: [[true, "Hide repeats"], [false, "Show all"]],
+  check: [[true, "Check against speech"], [false, "Trust subtitles"]],
+  cut: [["line", "Whole line"], ["phrase", "Just the phrase"]],
+  padding: [["tight", "Tight"], ["normal", "Normal"], ["loose", "Loose"]],
+  shots: [[true, "Start & end on the shot"], [false, "Ignore"]],
+  unheard: [["skip", "Skip it"], ["keep", "Keep it"]],
+  transition: [["cut", "Hard cut"], ["fade", "Quick fade"]],
+  loudnorm: [[true, "Even out"], [false, "As is"]],
+  label: [[true, "Show · episode"], [false, "None"]],
+  captions: [["off", "Off"], ["classic", "Subtitles"], ["tiktok", "TikTok"], ["popin", "Pop-in"], ["bigword", "Big word"]],
+  aspect: [["16:9", "16:9"], ["9:16", "9:16"], ["1:1", "1:1"], ["4:3", "4:3"]],
+  fit: [["crop", "Fill (crop)"], ["pad", "Whole picture (bars)"]],
+  res: [[1080, "1080"], [720, "720"], [480, "480"]],
+};
+const SC_PAD = { tight: [150, 250], normal: [450, 550], loose: [900, 1000] };
+const sc = { q: "", hits: [], sel: new Set(), checks: {}, busy: false, seed: 1,
+  o: { order: "match", dedupe: true, check: true, cut: "line", padding: "normal", unheard: "skip", transition: "cut",
+       loudnorm: true, label: true, captions: "off", aspect: "16:9", fit: "crop", res: 720, shots: true } };
+try { Object.assign(sc.o, JSON.parse(localStorage.getItem("saytheline.sc") || "{}")); } catch (e) {}
+const scKey = h => h.item_id + ":" + h.start_ms;
+function scNorm(t) { return (t || "").toLowerCase().replace(/[^a-z0-9 ]/g, "").replace(/\s+/g, " ").trim(); }
+// the same line from the same episode (two copies of a file, a "previously on" recap, two hits a second apart)
+function scVisible() {
+  let list = [...sc.hits], hidden = 0;
+  if (sc.o.dedupe) {
+    const seen = new Set(), out = [];
+    for (const h of list) {
+      const who = h.kind === "episode" ? `${(h.series || "").toLowerCase()}|${h.season}|${h.episode}` : `${(h.title || "").toLowerCase()}|${h.year}`;
+      const k1 = who + "|" + scNorm(h.text);
+      const near = out.some(o => o.item_id === h.item_id && Math.abs(o.start_ms - h.start_ms) < 1500);
+      if (seen.has(k1) || near) { hidden++; continue; }
+      seen.add(k1); out.push(h);
+    }
+    list = out;
+  }
+  if (sc.o.order === "air") list.sort((a, b) => (a.year || 0) - (b.year || 0) || (a.season || 0) - (b.season || 0) || (a.episode || 0) - (b.episode || 0) || a.start_ms - b.start_ms);
+  else if (sc.o.order === "show") list.sort((a, b) => (a.series || a.title || "").localeCompare(b.series || b.title || "") || (a.season || 0) - (b.season || 0) || (a.episode || 0) - (b.episode || 0) || a.start_ms - b.start_ms);
+  else if (sc.o.order === "shuffle") {
+    let x = sc.seed; const rnd = () => (x = (x * 16807) % 2147483647) / 2147483647;
+    list = list.map(h => [rnd(), h]).sort((a, b) => a[0] - b[0]).map(p => p[1]);
+  }
+  return { list, hidden };
+}
+function scStatus(h) {
+  const c = sc.checks[scKey(h)];
+  if (sc.busy && sc.current === scKey(h)) return `<span class="badge run">listening…</span>`;
+  if (!c) return "";
+  if (!c.found) return `<span class="badge bad" title="${esc(c.status)}">${ic("alert")}not heard</span>`;
+  const off = c.offset_ms || 0;
+  const drift = Math.abs(off) < 400 ? "on time" : `subs ${Math.abs(off / 1000).toFixed(1)} s ${off < 0 ? "late" : "early"} · fixed`;
+  return `<span class="badge ok" title="heard: ${esc(c.heard || "")}">${ic("check")}${drift}</span>`;
+}
+function scDuration(list) {
+  const [pi, po] = SC_PAD[sc.o.padding];
+  return list.filter(h => sc.sel.has(scKey(h))).reduce((t, h) => {
+    const c = sc.checks[scKey(h)];
+    const len = c && c.found ? (sc.o.cut === "phrase" && c.phrase_s != null ? c.phrase_e - c.phrase_s : c.line_e - c.line_s) : h.end_ms - h.start_ms;
+    return t + len + pi + po;
+  }, 0);
+}
+function scNeedsCheck() { return sc.o.check || sc.o.cut === "phrase" || ["tiktok", "popin", "bigword"].includes(sc.o.captions); }
+function drawSc() {
+  $$("[data-sc]").forEach(box => {
+    const key = box.dataset.sc; box.innerHTML = "";
+    SC_CHOICES[key].forEach(([v, label]) => {
+      const c = document.createElement("button"); c.type = "button"; c.className = "chip"; c.textContent = label;
+      c.setAttribute("aria-pressed", String(sc.o[key] === v));
+      c.onclick = () => { if (sc.busy) return; sc.o[key] = v; if (key === "order" && v === "shuffle") sc.seed = 1 + Math.floor(Math.random() * 1e6);
+        try { localStorage.setItem("saytheline.sc", JSON.stringify(sc.o)); } catch (e) {} drawSc(); };
+      box.appendChild(c);
+    });
+  });
+  $("#scFitOpt").hidden = sc.o.aspect === "16:9";      // 16:9 always shows the whole picture
+  const { list, hidden } = scVisible();
+  $("#scHidden").textContent = sc.o.dedupe && hidden ? `${hidden} repeat${hidden === 1 ? "" : "s"} hidden` : "";
+  const vis = new Set(list.map(scKey));
+  [...sc.sel].forEach(k => { if (!vis.has(k)) sc.sel.delete(k); });
+  const chosen = list.filter(h => sc.sel.has(scKey(h)));
+  const unchecked = chosen.filter(h => !sc.checks[scKey(h)]).length;
+  const bad = chosen.filter(h => sc.checks[scKey(h)] && !sc.checks[scKey(h)].found).length;
+  $("#scDropBad").hidden = !bad;
+  const dur = scDuration(list) / 1000;
+  const estCheck = scNeedsCheck() ? unchecked * 9 : 0, estRender = chosen.length * 1.6 + 3;
+  $("#scCount").textContent = `${chosen.length} of ${list.length} selected`;
+  $("#scSum").textContent = chosen.length
+    ? `${chosen.length} clips · ~${dur < 60 ? dur.toFixed(0) + " s" : (dur / 60).toFixed(1) + " min"}`
+      + (bad && sc.o.unheard === "skip" ? ` · ${bad} not heard will be skipped` : "")
+      + ` · ready in ~${Math.max(1, Math.round((estCheck + estRender) / 60 * 10) / 10)} min`
+      + (chosen.length > 80 ? " · only the first 80 are used" : "")
+    : "Tick the clips to include";
+  $("#scRender").disabled = sc.busy || !chosen.length;
+  $("#scCheck").disabled = sc.busy || !chosen.length;
+  $("#scCheck").hidden = !scNeedsCheck() || sc.busy;
+  $("#scRender").hidden = sc.busy;
+  $("#scStop").hidden = !(sc.busy && sc.job);
+  const listEl = $("#scList"); listEl.innerHTML = "";
+  list.forEach(h => {
+    const k = scKey(h), on = sc.sel.has(k), c = sc.checks[k];
+    const row = document.createElement("div"); row.className = "sc-row" + (on ? "" : " off");
+    const head = h.kind === "episode" ? `${esc(h.series)} · S${String(h.season ?? 0).padStart(2, "0")}E${String(h.episode ?? 0).padStart(2, "0")}` : `${esc(h.title)} (${h.year || ""})`;
+    row.innerHTML = `<input type="checkbox" ${on ? "checked" : ""} aria-label="Include">
+      <div class="st"><img loading="lazy" src="${h.thumb}" alt=""></div>
+      <div class="sm"><div class="t">${head} <small>${fmt(h.start_ms)}</small></div><div>${hl(h.text)}</div><div>${scStatus(h)}</div></div>
+      <button class="b" title="Preview this clip" aria-label="Preview this clip">${ic("play")}</button>`;
+    row.querySelector("img").onerror = e => e.target.remove();
+    row.querySelector("input").onchange = e => { if (e.target.checked) sc.sel.add(k); else sc.sel.delete(k); drawSc(); };
+    row.querySelector("button").onclick = () => {
+      const [pi, po] = SC_PAD[sc.o.padding];
+      let a, b;
+      if (c && c.found) { a = (sc.o.cut === "phrase" && c.phrase_s != null ? c.phrase_s : c.line_s) - pi; b = (sc.o.cut === "phrase" && c.phrase_e != null ? c.phrase_e : c.line_e) + po; }
+      else { a = h.start_ms - pi; b = h.end_ms + po; }
+      a = Math.max(0, Math.round(a / 100) * 100); b = Math.round(b / 100) * 100;
+      const v = $("#scVid"); v.hidden = false; v.src = `/preview/${h.item_id}/${a}-${b}.mp4`; v.play().catch(() => {});
+      v.scrollIntoView({ behavior: "smooth", block: "nearest" });
+    };
+    listEl.appendChild(row);
+  });
+}
+async function openSupercut() {
+  sc.q = state.q; sc.checks = {}; sc.sel = new Set(); sc.busy = false; sc.job = null;
+  // only the best 300 hits are loaded: say so when there are more, so a huge search isn't mistaken for all of it
+  const total = state.facets && state.facets.key === facetKey() && !state.facets.rows.some(x => x.n === null)
+    ? state.facets.rows.filter(x => ticked(x.key)).reduce((a, x) => a + x.n, 0) : null;
+  const scope = total > 300 ? ` · best 300 of ${total.toLocaleString()} (narrow with the title filter)`
+    : total === null && state.res && state.res.more ? " · best 300 matches" : "";
+  $("#scTitle").innerHTML = `Supercut<small>“${esc(state.q)}”${filterOn() ? " · " + esc(filterLabel()) : ""}${scope}</small>`;
+  $("#scResult").innerHTML = ""; $("#scVid").hidden = true;
+  $("#scSheet").hidden = false; document.body.style.overflow = "hidden"; history.pushState({ sheet: 3 }, "");
+  $("#scList").innerHTML = `<div class="empty">Loading hits…</div>`;
+  const p = filterParams(new URLSearchParams({ q: state.q, mode: state.mode, limit: 300, offset: 0 }));
+  const data = await (await fetch("/api/search?" + p)).json();
+  sc.hits = data.hits || [];
+  const { list } = scVisible();
+  list.slice(0, 30).forEach(h => sc.sel.add(scKey(h)));      // a sensible start; tick more as needed
+  drawSc();
+}
+function scChosen() { return scVisible().list.filter(h => sc.sel.has(scKey(h))).slice(0, 80); }
+async function scRunCheck() {
+  const hits = scChosen().map(h => ({ item: h.item_id, start_ms: h.start_ms, end_ms: h.end_ms }));
+  sc.busy = true; drawSc();
+  try {
+    let job = await (await fetch("/api/supercut/check", { method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ query: sc.q, hits, checks: sc.checks }) })).json();
+    sc.job = job.id; sc.kind = "check"; drawSc();
+    while (!["done", "error", "cancelled"].includes(job.state)) {
+      await sleep(1200);
+      job = await (await fetch("/api/job/" + job.id)).json();
+      Object.assign(sc.checks, job.results || {}); sc.current = job.current;
+      $("#scSum").textContent = job.state === "queued" ? "Waiting for the renderer…" : `Listening ${Math.min((job.done || 0) + 1, job.total || 1)} of ${job.total || hits.length}…`;
+      drawSc();
+    }
+    if (job.state === "error") throw new Error(job.error);
+    Object.assign(sc.checks, job.results || {});
+    if (job.state === "cancelled") { sc.busy = false; sc.job = null; drawSc(); return flashSc("Stopped. The hits checked so far are kept."); }
+  } catch (e) { flashSc(e.message); }
+  finally { sc.busy = false; sc.current = null; sc.job = null; drawSc(); }
+}
+function flashSc(msg) { $("#scSum").textContent = msg; }
+$("#scCheck").onclick = scRunCheck;
+$("#scAll").onclick = () => { scVisible().list.forEach(h => sc.sel.add(scKey(h))); drawSc(); };
+$("#scNone").onclick = () => { sc.sel.clear(); drawSc(); };
+$("#scDropBad").onclick = () => { Object.entries(sc.checks).forEach(([k, c]) => { if (!c.found) sc.sel.delete(k); }); drawSc(); };
+$("#scRender").onclick = async () => {
+  const chosen = scChosen();
+  if (!chosen.length) return;
+  sc.busy = true; drawSc(); $("#scResult").innerHTML = "";
+  const look = sc.o.captions;
+  const body = { query: sc.q, hits: chosen.map(h => ({ item: h.item_id, start_ms: h.start_ms, end_ms: h.end_ms })), checks: sc.checks,
+    check: sc.o.check, cut: sc.o.cut, padding: sc.o.padding, shots: sc.o.shots, unheard: sc.o.unheard, transition: sc.o.transition, loudnorm: sc.o.loudnorm,
+    label: sc.o.label, aspect: sc.o.aspect, res: sc.o.res, fit: sc.o.fit,
+    subs: { on: look !== "off", style: look === "classic" ? "classic" : look, font: look === "classic" ? opts.fontClassic : opts.fontWord,
+            size: opts.size, colour: opts.colour, box: opts.box, position: look === "bigword" ? "middle" : opts.position, hl: opts.hl, caps: opts.caps } };
+  try {
+    const job = await postJob("/api/supercut", body, j => {
+      if (sc.job !== j.id) { sc.job = j.id; sc.kind = "render"; drawSc(); }
+      if (j.state === "checking") $("#scSum").textContent = `Listening ${(j.done || 0) + 1} of ${j.total}…`;
+      else if (j.state === "shots") $("#scSum").textContent = `Finding camera cuts ${(j.done || 0) + 1} of ${j.total}…`;
+      else if (j.state === "rendering") $("#scSum").textContent = `Rendering clip ${(j.done || 0) + 1} of ${j.total}…`;
+      else $("#scSum").textContent = "Waiting for the renderer…";
+    });
+    Object.assign(sc.checks, job.checks || {});
+    const url = "/clips/" + encodeURIComponent(job.file);
+    const notes = (job.report || []).filter(r => !["checked", "subtitle timing"].includes(r.status));
+    $("#scResult").innerHTML = `<div class="result"><video src="${url}" controls playsinline></video>
+      <div class="hint">${esc(job.file)}<br>${job.segments} clips · ${job.seconds} s · ${bytes(job.bytes)} · ${job.secs} s to render${notes.length ? `<br>${notes.length} note${notes.length === 1 ? "" : "s"}: ${esc([...new Set(notes.map(n => n.status))].join("; "))}` : ""}</div>
+      <div class="opt"><a class="b primary" href="${url}?dl=1" download>${ic("download")}Download</a><button class="b" id="scSave"></button></div>
+      <div class="tagrow" id="scTags" hidden></div></div>`;
+    const entry = { kind: "clip", file: job.file, item_id: job.item_id, in_ms: job.in_ms, out_ms: job.out_ms,
+      label: `Supercut · ${job.segments} clips`, text: `“${sc.q}”`, start_ms: job.in_ms, end_ms: job.out_ms, media_kind: "episode" };
+    const paint = () => { const e = savedClip(job.file); $("#scSave").innerHTML = e ? ic("heart-f") + "Saved" : ic("heart") + "Save to library";
+      $("#scTags").hidden = !e; if (e) tagEditor($("#scTags"), e, paint); };
+    $("#scSave").onclick = async () => { const e = savedClip(job.file); if (e) await libDelete(e.id); else await libSave({ ...entry, tags: ["supercut"] }); paint(); };
+    paint();
+    $("#scResult").scrollIntoView({ behavior: "smooth", block: "nearest" });
+  } catch (e) {
+    if (e.job) Object.assign(sc.checks, e.job.checks || {});
+    $("#scResult").innerHTML = e.message === "Stopped" ? `<div class="hint">Stopped. Nothing was rendered; the checks so far are kept.</div>`
+      : `<div class="err">${esc(e.message)}</div>`;
+  } finally { sc.busy = false; sc.job = null; drawSc(); }
+};
+async function scStop() {
+  if (!sc.job) return;
+  $("#scStop").disabled = true;
+  try { await fetch(`/api/job/${sc.job}/cancel`, { method: "POST" }); } catch (e) {}
+  $("#scStop").disabled = false;
+  flashSc("Stopping after the current clip…");
+}
+$("#scStop").onclick = scStop;
+$("#scBtn").onclick = () => { rememberSearch(); openSupercut(); };
+$("#scClose").onclick = () => history.back();
+
+/* ?edit=<clip id>: open a rendered clip (made here, or by an agent over MCP) as it was made */
+function recipeState(c) {
+  const r = c.request || {}, st = r.subs || {};
+  const look = st.on && st.style ? st.style : "classic";
+  const o = { subsOn: !!st.on, captionSrc: r.caption_source === "speech" ? "speech" : "subs", look,
+    size: st.size || "m", colour: st.colour || "white", hl: st.hl || "yellow", caps: !!st.caps, box: !!st.box,
+    position: st.position || "bottom", format: ["mp4", "webm", "gif"].includes(r.format) ? r.format : "mp4",
+    aspect: r.aspect || "original", fit: r.fit || "crop", res: r.res ?? 720, audio: r.audio || "original" };
+  if (st.font) o[WORD_LOOKS.includes(look) ? "fontWord" : "fontClassic"] = st.font;
+  const stt = r.caption_cues ? { item: r.item, from: r.in_ms, to: r.out_ms, source: o.captionSrc, offset: r.offset_ms || 0,
+    cues: r.caption_cues, secs: 0 } : null;
+  return { v: 1, in_ms: r.in_ms, out_ms: r.out_ms, offset_ms: r.offset_ms || 0, opts: o, stt, sub_text: r.sub_text || {}, file: c.file };
+}
+async function openClipLink(cid) {
+  try {
+    const c = await (await fetch("/api/clip/" + encodeURIComponent(cid))).json();
+    const r = c.request;
+    if (!r || c.supercut) return flash(c.error || "That clip can't be opened in the editor");
+    const it = c.item || {}, mo = r.moment || {}, off = r.offset_ms || 0;
+    openEditor({ item_id: r.item, idx: mo.idx ?? -1, kind: it.kind || "episode", label: c.label || c.file, title: it.title || "",
+      text: mo.text || "", start_ms: mo.start_ms ?? r.in_ms - off, end_ms: mo.end_ms ?? r.out_ms - off }, null, null, recipeState(c));
+  } catch (e) {}
+}
+
+/* ================= clips list + navigation ================= */
+async function drawLibrary() {
+  await loadLibrary();
+  const files = await (await fetch("/api/clips")).json().catch(() => []);
+  $("#libKinds").innerHTML = [["", "All saved"], ["moment", ic("heart") + "Moments"], ["clip", ic("movie") + "Clips"], ["recent", ic("pencil") + "Recent edits"], ["files", "All rendered"]]
+    .map(([k, l]) => `<button type="button" class="chip" data-k="${k}" aria-pressed="${lib.kind === k}">${l}</button>`).join("");
+  $("#libKinds").querySelectorAll("[data-k]").forEach(c => c.onclick = () => { lib.kind = c.dataset.k; drawLibrary(); });
+  $("#libTagFilter").innerHTML = ["files", "recent"].includes(lib.kind) ? "" : (lib.tags.length ? `<button type="button" class="chip" data-t="" aria-pressed="${!lib.tag}">Any tag</button>` : "")
+    + lib.tags.map(t => `<button type="button" class="chip" data-t="${esc(t.tag)}" aria-pressed="${lib.tag === t.tag}">${esc(t.tag)} · ${t.n}</button>`).join("");
+  $("#libTagFilter").querySelectorAll("[data-t]").forEach(c => c.onclick = () => { lib.tag = c.dataset.t; drawLibrary(); });
+  const list = $("#libList"); list.innerHTML = "";
+  if (lib.kind === "files") {
+    if (!files.length) list.innerHTML = `<div class="empty">No rendered clips yet.</div>`;
+    files.forEach(f => {
+      const e = savedClip(f.file);
+      const row = document.createElement("div"); row.className = "li";
+      row.innerHTML = `<div class="lt">${/\.(gif|jpg)$/.test(f.file) ? `<img src="${f.url}" alt="" style="width:100%;height:100%;object-fit:cover">` : `<video src="${f.url}#t=0.5" preload="metadata" muted playsinline style="width:100%;height:100%;object-fit:cover"></video>`}<span class="kind">${f.file.split(".").pop().toUpperCase()}</span></div>
+        <div class="lm"><div class="x2">${esc(f.file)}</div><div class="hint">${bytes(f.bytes)}${e ? " · saved" : ""}</div>
+        <div class="acts"><a class="b" href="${f.url}" target="_blank">${ic("play")}Play</a><a class="b" href="${f.url}?dl=1" download>${ic("download")}Download</a></div></div>`;
+      list.appendChild(row);
+    });
+    return;
+  }
+  const recent = lib.kind === "recent";
+  const shown = recent ? await (await fetch("/api/library?kind=recent")).json().catch(() => [])
+    : lib.entries.filter(e => (!lib.kind || e.kind === lib.kind) && (!lib.tag || (e.tags || []).includes(lib.tag)));
+  if (!shown.length) list.innerHTML = `<div class="empty">${recent ? "Clips you edit show up here automatically, with their captions and settings."
+    : lib.entries.length ? "Nothing matches this filter." : `Nothing saved yet. Tap ${ic("heart")} on a search result, in the editor, or on a rendered clip.`}</div>`;
+  shown.forEach(e => {
+    const row = document.createElement("div"); row.className = "li";
+    const mid = e.in_ms != null ? Math.round((e.in_ms + e.out_ms) / 2) : Math.round((e.start_ms + e.end_ms) / 2) + (e.offset_ms || 0);
+    const len = e.in_ms != null ? ` · ${((e.out_ms - e.in_ms) / 1000).toFixed(1)} s cut` : "";
+    const clipUrl = e.kind === "clip" ? "/clips/" + encodeURIComponent(e.file) : null;
+    const kept = recent && savedMoment(e.item_id, e.start_ms);
+    row.innerHTML = `<div class="lt"><img loading="lazy" src="/thumb/${e.item_id}/${mid}.jpg" alt=""><span class="kind">${recent ? "Draft" : e.kind === "clip" ? "Clip" : "Moment"}</span></div>
+      <div class="lm"><div class="t">${esc(e.label || "")} <small>${e.title ? esc(e.title) + " · " : ""}${fmt(e.start_ms)}${len}${recent ? " · edited " + ago(e.updated) : ""}</small></div>
+        <div class="x2">${esc(e.text || e.file || "")}</div>
+        ${recent ? "" : `<div class="tagrow"></div>`}
+        <div class="acts">
+          <button class="b" data-a="open">${ic("scissors")}${recent ? "Continue" : "Edit"}</button>
+          ${clipUrl ? `<a class="b" href="${clipUrl}" target="_blank">${ic("play")}Play</a><a class="b" href="${clipUrl}?dl=1" download>${ic("download")}Download</a>` : ""}
+          ${recent ? `<button class="b" data-a="keep" ${kept ? "disabled" : ""}>${kept ? ic("heart-f") + "Saved" : ic("heart") + "Save"}</button>
+                      <button class="b" data-a="del" title="Forget this draft">${ic("x")}Forget</button>`
+                   : `<button class="b" data-a="del" title="Remove from the library">${ic("trash")}Remove</button>`}</div></div>`;
+    row.querySelector("img").onerror = ev => ev.target.remove();
+    if (!recent) tagEditor(row.querySelector(".tagrow"), e, () => drawLibrary());
+    const open = () => {
+      history.back();          // close the library sheet first
+      setTimeout(() => openEditor({ item_id: e.item_id, idx: e.idx, kind: e.media_kind || "episode", label: e.label || "", title: e.title || "",
+        text: e.text || "", start_ms: e.start_ms, end_ms: e.end_ms }, { in_ms: e.in_ms, out_ms: e.out_ms, offset_ms: e.offset_ms }, e.id), 50);
+    };
+    row.querySelector("[data-a=open]").onclick = open;
+    row.querySelector(".lt").onclick = open;
+    if (recent) row.querySelector("[data-a=keep]").onclick = async () => {
+      const d = await (await fetch("/api/draft?id=" + e.id)).json();
+      const { id, kind, tags, created, updated, has_state, ...rest } = d;
+      await libSave({ ...rest, kind: "moment" }); drawLibrary(); refreshCardHearts();
+    };
+    row.querySelector("[data-a=del]").onclick = async () => { await libDelete(e.id); drawLibrary(); refreshCardHearts(); };
+    list.appendChild(row);
+  });
+}
+$("#libBtn").onclick = () => { $("#libSheet").hidden = false; history.pushState({ sheet: 2 }, ""); drawLibrary(); };
+$("#libClose").onclick = () => history.back();
+$("#edClose").onclick = () => history.back();
+window.addEventListener("popstate", () => {
+  // closing the sheet stops a check (its results would be lost with the sheet); a render carries on
+  // and lands in Library > All rendered
+  if (!$("#scSheet").hidden && sc.busy && sc.job && sc.kind === "check") fetch(`/api/job/${sc.job}/cancel`, { method: "POST" }).catch(() => {});
+  if (!$("#scSheet").hidden) { const v = $("#scVid"); v.pause(); v.removeAttribute("src"); $("#scSheet").hidden = true;
+    document.body.style.overflow = ""; return; }
+  if (!$("#libSheet").hidden) { $("#libSheet").hidden = true; refreshCardHearts(); return; }
+  if (!$("#sheet").hidden) { closeEditor(); refreshCardHearts(); }
+});
+
+let timer;
+$("#q").addEventListener("input", e => { state.q = e.target.value; clearTimeout(timer); timer = setTimeout(run, 300); });
+$("#q").addEventListener("keydown", e => { if (e.key === "Enter") { clearTimeout(timer); run(); rememberSearch(); e.target.blur(); } });
+$$("header [data-mode]").forEach(c => c.onclick = () => { state.mode = c.dataset.mode; setPressed("mode", state.mode); run(); });
+$$("header [data-kind]").forEach(c => c.onclick = () => { state.kind = c.dataset.kind; setPressed("kind", state.kind); run(); });
+$("#load").onclick = () => { state.offset += PAGE; run(true); };
+
+let FONT_LIST = ["Inter", "Inter Black", "League Spartan Black"];
+const SERVER = { stems: true };          // what this install can do (from /api/options)
+(async () => {
+  const p = new URLSearchParams(location.search);
+  state.q = p.get("q") || ""; state.mode = p.get("mode") || "phrase"; state.kind = p.get("kind") || "";
+  loadFilter({ ex: p.getAll("ex"), only: p.get("none") ? [] : p.getAll("only").length ? p.getAll("only") : null, series: p.get("series") });
+  paintShowsBtn();
+  $("#q").value = state.q; setPressed("mode", state.mode); setPressed("kind", state.kind);
+  await loadLibrary();
+  drawRecentList();
+  run();
+  if (p.get("edit")) openClipLink(p.get("edit"));
+  try { const o = await (await fetch("/api/options")).json(); FONT_LIST = o.fonts; SERVER.stems = !!o.stems; } catch (e) {}
+  buildOptions(); applyRules();
+})();
+</script>
+</body>
+</html>

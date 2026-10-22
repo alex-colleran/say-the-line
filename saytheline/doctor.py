@@ -1,0 +1,82 @@
+"""`python -m saytheline doctor`: check that everything Say the Line needs is in place, and say how to fix
+what is not. Exit code 1 if something required is missing."""
+import os
+import shutil
+import subprocess
+
+from . import config, db, jellyfin, media
+
+OK, WARN, BAD = "ok  ", "warn", "FAIL"
+
+
+def _run(cmd, **kw):
+    try:
+        return subprocess.run(cmd, capture_output=True, text=True, timeout=60, **kw)
+    except (OSError, subprocess.TimeoutExpired) as e:
+        return subprocess.CompletedProcess(cmd, 1, "", str(e))
+
+
+def checks():
+    yield OK, f"settings: {config.loaded_from() or 'no saytheline.toml found (environment variables / defaults)'}"
+    yield OK, f"data folder: {config.data_dir()}"
+
+    ff = shutil.which("ffmpeg")
+    if not ff or not shutil.which("ffprobe"):
+        yield BAD, "ffmpeg/ffprobe not on PATH (install ffmpeg)"
+    else:
+        filters = _run([ff, "-hide_banner", "-filters"]).stdout
+        if " subtitles " not in filters:
+            yield BAD, "ffmpeg has no 'subtitles' filter: install a build with libass"
+        else:
+            yield OK, "ffmpeg with libass"
+        if config.vaapi():
+            yield OK, f"hardware previews via VAAPI ({config.vaapi()}), with CPU fallback"
+
+    py = config.stt_python()
+    r = _run([py, "-c", "import faster_whisper, numpy; print('ok')"])
+    yield (OK, f"speech: faster-whisper in {py}") if r.returncode == 0 else \
+        (WARN, f"speech features off: {py} has no faster-whisper (pip install -r requirements.txt)")
+    r = _run([py, "-c", "import spacy; spacy.load('en_core_web_sm'); print('ok')"])
+    yield (OK, "Poster look: spaCy + en_core_web_sm") if r.returncode == 0 else \
+        (WARN, "Poster look off: python -m spacy download en_core_web_sm")
+    try:
+        import PIL  # noqa: F401
+        yield OK, "Pillow (Poster layout)"
+    except ImportError:
+        yield WARN, "Poster look off: pip install pillow"
+    yield (OK, f"stem audio: {config.demucs()}") if config.demucs() else \
+        (WARN, "Dialogue only / No dialogue off (optional: pip install -r requirements-stems.txt)")
+    missing = [f for f in media.FONTS if not os.path.isfile(os.path.join(media.FONT_DIR, media.FONT_FILES[f]))]
+    yield (BAD, f"bundled fonts missing: {', '.join(missing)}") if missing else (OK, "caption fonts")
+
+    try:
+        src = jellyfin.source()
+    except RuntimeError as e:
+        yield BAD, str(e)
+        return
+    try:
+        items = jellyfin.list_items(src, movies=True)[:200] or jellyfin.list_items(src)[:200]
+    except Exception as e:
+        yield BAD, f"Jellyfin ({src[0]}): {e}"
+        return
+    yield OK, f"Jellyfin via {'API ' + src[1] if src[0] == 'api' else 'database ' + src[1]}"
+    if not items:
+        yield WARN, "Jellyfin returned no movies or episodes"
+        return
+    pmap = db.path_map()
+    found = sum(os.path.exists(db.to_host(i["path"], pmap)) for i in items)
+    if found == 0:
+        yield BAD, (f"none of {len(items)} sample files exist here, e.g. {items[0]['path']} -> "
+                    f"{db.to_host(items[0]['path'], pmap)}: set [jellyfin] path_map")
+    elif found < len(items):
+        yield WARN, f"{len(items) - found} of {len(items)} sample files not found (check path_map)"
+    else:
+        yield OK, f"media files readable ({found} sampled)"
+
+
+def main():
+    bad = False
+    for level, msg in checks():
+        print(f"[{level}] {msg}")
+        bad = bad or level == BAD
+    return 1 if bad else 0

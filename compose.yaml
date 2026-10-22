@@ -1,0 +1,18 @@
+services:
+  say-the-line:
+    build: .
+    container_name: say-the-line
+    restart: unless-stopped
+    user: "${UID:-1000}:${GID:-1000}"    # files in ./data belong to you, not root
+    ports:
+      - "127.0.0.1:8765:8765"          # local only: no login (see README > Security)
+    volumes:
+      - ./saytheline.toml:/app/saytheline.toml:ro
+      - ./data:/data
+      # Your media, read-only. Mount it at the same path Jellyfin uses and no path_map is needed.
+      - /path/to/media:/media:ro
+    extra_hosts:
+      - "host.docker.internal:host-gateway"   # url = "http://host.docker.internal:8096"
+    # Optional hardware previews on Linux (Intel/AMD):
+    # devices:
+    #   - /dev/dri:/dev/dri
