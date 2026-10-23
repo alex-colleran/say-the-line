@@ -1,7 +1,8 @@
 # Say the Line MCP server
 
 `python -m saytheline mcp` lets an AI agent (Claude Code, Claude Desktop, any MCP client) search your
-library and make clips, reaction GIFs, stills and supercuts, then refine them from your feedback.
+library, read a title's script, and make clips, reaction GIFs, stills, supercuts and Say Anything
+sentences, then refine them from your feedback.
 
 ## Set up
 
@@ -28,6 +29,8 @@ links an agent hands you open on your phone.
 | `saytheline_recent_clips` | What was rendered lately (here or in the app), with ids. |
 | `saytheline_save` | Heart a clip into the Library with tags. |
 | `saytheline_supercut` | Every place a line is said, checked against the speech, in one MP4. |
+| `saytheline_say_anything` | A typed sentence said by the library: each word or phrase from a line where it's heard, joined into one MP4. Words nobody says are left out and named. |
+| `saytheline_script` | One movie's or episode's subtitles in order (or just the lines with some words, with a line either side), each with a moment id: for scenes whose exact words aren't known. |
 
 Prompts (slash commands in Claude Code): `reaction_gif` (feeling) and `clip_from_description`.
 
@@ -77,7 +80,8 @@ The `reaction_gif` prompt asks the agent to:
 
 - **Read-only on media and Jellyfin.** Everything is written under the data folder.
 - **Nothing is deleted.** Refining makes a new file.
-- **Annotations:** search, look and recent are read-only; make, refine, save and supercut create files.
+- **Annotations:** search, look, script and recent are read-only; make, refine, save, supercut and
+  say_anything create files.
 - **Same limits as the UI:** 3 min per clip; supercuts of 40 clips at most, one at a time, each
   hit checked against the speech.
 - **stdio only, for now.** The server is a local process of the agent app; nothing is exposed on

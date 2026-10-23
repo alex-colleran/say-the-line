@@ -22,6 +22,7 @@ saytheline/
   pos_worker.py  spaCy child process: emphasis tier per word (Poster look)
   poster.py      Poster layout with real font metrics (Pillow)
   kinetic.py     Kinetic look: Poster's layout as justified stacks + lockups, animated per frame
+  sayany.py      Say Anything: plan a sentence into heard takes, measured cut points
   library.py     favourites, tags, drafts (data/library.db; separate from the index)
   web.py         HTTP server (stdlib ThreadingHTTPServer) + JSON API + job queue
   doctor.py      `python -m saytheline doctor`

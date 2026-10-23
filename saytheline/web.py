@@ -102,7 +102,8 @@ def find_clip(cid):
         item = side.get("item") or {}
         return dict(id=cid, file=f, url="/clips/" + quote(f), path=os.path.abspath(p), bytes=os.path.getsize(p),
                     item=item, label=srch.label(item) if item.get("kind") else None,
-                    request=side.get("request"), result=side.get("result"), supercut="supercut" in side)
+                    request=side.get("request"), result=side.get("result"),
+                    supercut="supercut" in side or "sayanything" in side)     # many sources: not one editor cut
     return None
 
 

@@ -43,7 +43,8 @@ SHAPES = ("original", "16:9", "9:16", "1:1", "4:3")
 WORD_LOOKS = LOOKS[1:]
 
 INSTRUCTIONS = """Say the Line searches everything said in the user's own movie and TV library (by subtitles) and
-renders clips from it: GIFs, MP4/WebM clips, captioned stills and supercuts.
+renders clips from it: GIFs, MP4/WebM clips, captioned stills, supercuts, and Say Anything (a typed
+sentence said by the library, a word or phrase per clip).
 
 Workflow:
 1. saytheline_search for a line. For reactions, set short_lines_only=true: the line is little more
@@ -60,6 +61,9 @@ Workflow:
 5. For feedback ("start earlier", "bigger text", "no captions", "make it vertical"), use
    saytheline_refine_clip with the clip id; it renders a new version and keeps the old one.
    edit_url opens the clip in the web editor if the user wants to fine-tune it by hand.
+
+Don't know the exact words of a scene? saytheline_script reads a title's subtitles in order (or just
+the lines with some words), with a moment id per line.
 
 Keep reaction GIFs short (1-4 s): one line, maybe the beat after it. Prefer well-known scenes.
 This is the user's personal library: don't list its contents beyond what the task needs."""
@@ -208,7 +212,7 @@ async def _clip_payload(job, req, notes):
     res = clip.get("result") or {}
     secs = res.get("seconds")
     w, h = job.get("width") or res.get("width"), job.get("height") or res.get("height")
-    src = "several titles (supercut)" if clip.get("supercut") else clip.get("label")
+    src = "several titles" if clip.get("supercut") else clip.get("label")
     s = dict(clip_id=clip["id"], file=clip["file"], path=clip["path"], url=PUBLIC + clip["url"],
              edit_url=None if clip.get("supercut") else f"{PUBLIC}/?edit={clip['id']}", format=fmt, seconds=secs,
              width=w, height=h, bytes=clip["bytes"], source=src, in_ms=req.get("in_ms"), out_ms=req.get("out_ms"), notes=notes)
@@ -217,7 +221,7 @@ async def _clip_payload(job, req, notes):
     size = f"{clip['bytes'] / 1e6:.1f} MB" if clip["bytes"] > 1e6 else f"{clip['bytes'] // 1000} KB"
     shown = "; ".join(f"{ln['line']} \"{ln['text']}\" {ln['from_ms'] / 1000:.1f}-{ln['to_ms'] / 1000:.1f} s"
                       + (" (hidden)" if ln["hidden"] else "") for ln in lines)
-    text = (f"Made {clip['id']}: {fmt.upper()} {w}x{h}{f', {secs} s' if secs else ''}, {size} from {src}."
+    text = (f"Made {clip['id']}: {fmt.upper()}{f' {w}x{h}' if w and h else ''}{f', {secs} s' if secs else ''}, {size} from {src}."
             + (f" Notes: {'; '.join(notes)}." if notes else "")
             + (f"\nSubtitle lines (number, text, on screen): {shown}" if shown else "")
             + f"\nFile: {clip['path']}\nLink: {s['url']}" + (f"\nEdit by hand: {s['edit_url']}" if s["edit_url"] else "")
@@ -703,6 +707,91 @@ async def saytheline_supercut(ctx: Context, query: str, match: str = "phrase", t
     skipped = [r for r in job.get("report") or [] if str(r.get("status", "")).startswith(("skipped", "left out"))]
     notes = [f"{job.get('segments')} clips"] + ([f"{len(skipped)} skipped (not heard or over the limit)"] if skipped else [])
     return await _clip_payload(job, dict(in_ms=None, out_ms=None), notes)
+
+
+SA_CAPTIONS = {"subtitles": "classic", "none": "off", "popin": "popin", "bigword": "bigword"}
+
+
+@mcp.tool(title="Say anything", annotations=ToolAnnotations(read_only_hint=False, destructive_hint=False,
+                                                          idempotent_hint=False, open_world_hint=False))
+async def saytheline_say_anything(ctx: Context, sentence: str, kind: str = "all", padding: str = "normal",
+                                  captions: str = "subtitles", shape: str = "16:9") -> CallToolResult:
+    """Make the library say a sentence: each word or phrase is cut from a line where it is really said
+    (checked against the speech), and the pieces are joined into one MP4 ("sentence mixing").
+
+    Longest phrases are tried first, so common phrases come from a single line. A word nobody in the
+    library says is left out and named in the notes: offer the user a different word.
+    kind: "all", "tv" or "movies". padding: "tight", "normal" (default) or "loose" room around each piece.
+    captions: "subtitles" (the sentence builds up; default), "none", "popin" or "bigword" (each piece's words).
+    shape: "16:9", "9:16", "1:1" or "4:3". Up to 40 words.
+    Slow: about 5 s of listening per piece (a 10-word sentence takes about a minute), then seconds to render."""
+    k = {"tv": "episode", "movies": "movie", "movie": "movie", "episode": "episode"}.get(kind)
+    plan = await run_job(ctx, "/api/sayany/plan", dict(sentence=sentence, kind=k), "finding the words")
+    pieces = [p for p in plan.get("pieces") or [] if p.get("take")]
+    missing = [p["text"] for p in plan.get("pieces") or [] if not p.get("take")]
+    if not pieces:
+        raise ToolError("none of the words were heard anywhere in the library: try more common words"
+                        + (f" (not found: {', '.join(missing)})" if missing else ""))
+    look = SA_CAPTIONS.get(captions, "classic")
+    pad = padding if padding in ("tight", "normal", "loose") else "normal"
+    body = dict(sentence=plan["sentence"], padding=pad, loudnorm=True, aspect=shape if shape in SHAPES[1:] else "16:9", res=720,
+                fit="crop", pieces=[dict(text=p["text"], take=p["take"], nudge_in=0, nudge_out=0) for p in pieces],
+                subs=dict(on=look != "off", style=look if look != "off" else "classic",
+                          font="Inter Black" if look in WORD_LOOKS else "Inter", size="m", colour="white", box=False,
+                          position="middle" if look == "bigword" else "bottom", hl="yellow", caps=False))
+    job = await run_job(ctx, "/api/sayany/render", body, "say anything")
+    notes = [f"{len(pieces)} pieces: " + " | ".join(f'"{p["text"]}" from {p["take"]["label"]}' for p in pieces)]
+    if missing:
+        notes.append("left out (nobody says them clearly): " + ", ".join(missing))
+    return await _clip_payload(job, dict(in_ms=None, out_ms=None), notes)
+
+
+@mcp.tool(title="Read a script", annotations=ToolAnnotations(read_only_hint=True, idempotent_hint=True, open_world_hint=False))
+async def saytheline_script(title: str, season: int = 0, episode: int = 0, find: str = "",
+                            from_line: int = 0, lines: int = 40) -> CallToolResult:
+    """Read one movie's or episode's subtitles in order, each line with a moment id for saytheline_make_clip.
+
+    Use it to find a scene when you don't know its exact words, or to see what is said around a moment.
+    title: a movie or show name. For a show, also give season and episode.
+    find: only the lines containing these words (case-insensitive), each with the line before and after.
+    Otherwise `lines` lines (up to 200) starting at line number from_line (the number after the colon)."""
+    titles = await api("GET", "/api/browse?" + urllib.parse.urlencode({"q": title}))
+    if not titles:
+        raise ToolError(f'no title matching "{title}" has subtitles in the library: check the name, or saytheline_search a line from it')
+    t = titles[0]
+    if t["kind"] == "series":
+        if not season or not episode:
+            raise ToolError(f'"{t["name"]}" is a show ({t["seasons"]} season{"s" if t["seasons"] != 1 else ""} with subtitles): '
+                            'give season and episode')
+        eps = await api("GET", "/api/browse?" + urllib.parse.urlencode({"series": t["name"]}))
+        ep = next((e for e in eps if (e["season"] or 0) == season and (e["episode"] or 0) == episode), None)
+        if not ep:
+            raise ToolError(f'"{t["name"]}" has no S{season:02d}E{episode:02d} with subtitles in the library')
+        item_id = ep["id"]
+    else:
+        item_id = t["id"]
+    data = await api("GET", f"/api/lines?item={item_id}")
+    rows, label = data["lines"], _label(data["item"]) + (f' "{data["item"]["title"]}"' if data["item"].get("kind") == "episode" else "")
+    if find.strip():
+        words = find.lower().split()
+        hit = [i for i, r in enumerate(rows) if all(w in r[3].lower() for w in words)]
+        keep = sorted({j for i in hit for j in (i - 1, i, i + 1) if 0 <= j < len(rows)})
+        if not hit:
+            raise ToolError(f'no line in {label} contains "{find}"')
+    else:
+        start = next((i for i, r in enumerate(rows) if r[0] >= from_line), len(rows))
+        keep = list(range(start, min(len(rows), start + max(1, min(int(lines), 200)))))
+    out, prev = [], None
+    for i in keep:
+        if prev is not None and i != prev + 1:
+            out.append("…")
+        idx, a, b, text = rows[i]
+        out.append(f"[{item_id}:{idx}] {_fmt(a)} {text}")
+        prev = i
+    more = "" if find.strip() or not keep or keep[-1] == len(rows) - 1 else f"\n(more from line {rows[keep[-1] + 1][0]})"
+    return _result(f"{label}, {len(rows)} lines:\n" + "\n".join(out) + more,
+                   dict(item_id=item_id, label=label, total_lines=len(rows),
+                        lines=[dict(moment_id=f"{item_id}:{rows[i][0]}", start_ms=rows[i][1], end_ms=rows[i][2], text=rows[i][3]) for i in keep]))
 
 
 # ---------------------------------------------------------------- prompts

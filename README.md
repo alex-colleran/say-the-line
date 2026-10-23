@@ -1,12 +1,13 @@
 # Say the Line
 
 **Search everything ever said in your Jellyfin library, then cut it into a clip, a GIF, a still
-or a supercut, from your phone.**
+or a supercut, or make it say a sentence of your own, from your phone.**
 
 Say the Line indexes the subtitles of your movies and episodes. Type a line ("we need to talk") and you
 get every scene where it's said, with thumbnails. Tap one to open a small editor: trim the cut,
 snap it onto the spoken words, add captions (plain subtitles, or TikTok-style word-by-word
-looks), pick a shape (16:9, 9:16, 1:1…) and render. Or join every hit into one supercut.
+looks), pick a shape (16:9, 9:16, 1:1…) and render. Or join every hit into one supercut, read a
+title's whole script, or type a sentence and have your library say it, a word or phrase per clip.
 
 It runs on the machine that has your media, next to Jellyfin, and is used from a browser.
 
@@ -30,6 +31,10 @@ It runs on the machine that has your media, next to Jellyfin, and is used from a
   matches first, then close ones (the words a few apart); `"quotes"` for exactly those words,
   `-word` to leave lines out, `word*` for any word starting so. "doin" also finds "doing";
   filter by TV / movies / show, with the lines before and after each hit and recent searches.
+  A show or movie's name brings up the title itself first (All / Titles / Lines to filter).
+- **Scripts**: open a title (a show goes season → episode) to read its subtitles in order. Find
+  in the page with ▲▼ through the matches and marks on the scrollbar; tap a line, or a first and
+  last line, to clip it. ‹ › step to the episode before or after.
 - **Editor**: preview window, drag-to-trim timeline, ±0.1 s nudges, play / pause / loop / mute,
   line list (clip just this line, grow, trim), editable caption text.
 - **Clean edges**: a new clip never opens or closes on half of the line before or after it, and it
@@ -50,7 +55,13 @@ It runs on the machine that has your media, next to Jellyfin, and is used from a
 - **Audio** (optional): *Dialogue only* or *No dialogue* via demucs stem separation.
 - **Supercut**: every hit for a search in one video. It checks each hit against the audio,
   skips lines that are never actually heard, can cut to just the phrase, trims each clip to its
-  shot, hides repeats, evens out loudness and adds labels and captions.
+  shot, hides repeats, evens out loudness and adds labels and captions. Each clip previews in its
+  own thumbnail.
+- **Say Anything**: type a sentence and the library says it. Each word or phrase (longest first)
+  comes from a line where it's really heard, cut on measured silence. Swap any piece for another
+  take with ‹ ›, trim either edge, preview pieces in place while others are still listening, and
+  render with captions that build the sentence up or pop in word by word. A word nobody says is
+  marked with the reason.
 - **Library**: heart moments and clips, tag them for projects; every edited clip is kept as a
   draft (Library → Recent edits) with its captions, transcript and settings. Heart a supercut or Say
   Anything that isn't rendered yet to keep it under Library → Drafts and finish it later.
@@ -156,7 +167,8 @@ More detail, including design decisions and their reasons, is in [`docs/how-it-w
 ## For AI agents: the MCP server
 
 `python -m saytheline mcp` gives an agent (Claude Code, Claude Desktop, …) tools to search your
-library, look at candidate frames, make GIFs / clips / stills / supercuts, and refine them from
+library, read a title's script, look at candidate frames, make GIFs / clips / stills / supercuts
+and Say Anything sentences, and refine them from
 your feedback ("start earlier, bigger text"). Ask it to "reply with a reaction GIF from my
 library" and it can. Setup and design: [`docs/mcp.md`](docs/mcp.md).
 
@@ -197,7 +209,8 @@ be. It shares no code with any of them.
 What Say the Line adds to the mix: exact search across the whole library with the lines around each
 hit, cuts that land on the shot changes so no stray frames from the next scene slip in, snapping
 a cut onto the spoken words (which also spots out-of-sync subtitles), word-by-word caption
-looks, supercuts that check each line is really said, and an MCP server so an AI agent can make
+looks, supercuts that check each line is really said, Say Anything (sentence mixing from takes
+that are listened to, not guessed from subtitle timing), and an MCP server so an AI agent can make
 clips for you.
 
 ## Personal use

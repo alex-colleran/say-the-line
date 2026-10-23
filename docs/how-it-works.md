@@ -186,6 +186,30 @@ Design notes: what each part does and why it is built that way. For setup, see t
   joined with the concat demuxer without re-encoding.
 - Limits: 80 clips, 10 minutes.
 
+## Say Anything (`sayany.py`)
+- **Plan:** the sentence is split into words (hyphens and slashes split too). From each position
+  the longest phrase (up to 6 words) that some subtitle line has exactly is tried first; a
+  multi-word piece is kept only if it's heard cleanly, otherwise shorter pieces are tried.
+- **Candidates:** up to 8 lines per phrase, the line that is just the phrase first, then lines that
+  start or end with it, then short lines. Each candidate is listened to (snap, word timing) and
+  scored on the gap before and after the words, each word's length and loudness.
+- **Budget:** about 5 listens per word (40–150 a sentence). Past it, the rest get one try each and
+  a missing word says so ("rushed"), with the untried lines kept so › can listen to the next one.
+  Lines already heard in this sentence are reused, and results are cached in `data/listen.db`
+  (bump `LISTEN_V` when listening changes).
+- **Cuts:** each take's cut points are measured on the audio (quiet 10 ms frames) per padding, so
+  the browser preview (`saCut`) and the render (`sayany.cut`) cut the same place; trim nudges add
+  to them.
+- **Render:** the supercut renderer with plain cuts; Subtitles show the sentence so far, word
+  looks show each piece's own words.
+
+## Scripts and drafts
+- `/api/browse` finds titles by name (exact, then starts-with, then contains) for the main search
+  and the script picker; `/api/lines` returns a title's whole subtitle in order.
+- A Say Anything or supercut that is hearted is a library entry of kind `draft` whose state is
+  the whole sheet (pieces and takes, or hits, ticks and checks). Later changes are saved into it
+  about a second after they happen.
+
 ## Speech-to-text cost
 faster-whisper `small.en` int8 on 4 CPU cores runs at about 2–3× realtime with word timestamps.
 That is a few seconds per clip, but far too slow to transcribe a whole library. Use subtitles
