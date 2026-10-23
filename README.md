@@ -26,7 +26,9 @@ It runs on the machine that has your media, next to Jellyfin, and is used from a
 
 ## Features
 
-- **Search**: phrase or any-word search across every subtitle line (SQLite FTS5, a few ms),
+- **Search**: phrase or any-word search across every subtitle line (SQLite FTS5, a few ms). Exact
+  matches first, then close ones (the words a few apart); `"quotes"` for exactly those words,
+  `-word` to leave lines out, `word*` for any word starting so. "doin" also finds "doing";
   filter by TV / movies / show, with the lines before and after each hit and recent searches.
 - **Editor**: preview window, drag-to-trim timeline, ±0.1 s nudges, play / pause / loop / mute,
   line list (clip just this line, grow, trim), editable caption text.

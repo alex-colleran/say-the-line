@@ -175,7 +175,7 @@ class Index(unittest.TestCase):
             c.close()
             self.assertEqual([h["idx"] for h in search.search(p, "i am the danger")], [1])
             self.assertEqual([h["idx"] for h in search.search(p, "opens his door and gets")], [2])
-            self.assertEqual(search.facets(p, "danger"), [{"key": "s:Show", "kind": "episode", "label": "Show", "n": 2}])
+            self.assertEqual(search.facets(p, "danger"), [{"key": "s:Show", "kind": "episode", "label": "Show", "n": 2, "exact": 2}])
             self.assertEqual(search.search(p, "danger", exclude=["s:Show"]), [])
             self.assertEqual(len(search.search(p, "danger", only=["s:Show"])), 2)
             self.assertEqual(search.search(p, "danger", only=[]), [])
@@ -308,14 +308,33 @@ class CaptionEdits(unittest.TestCase):
 
 class DroppedG(unittest.TestCase):
     def test_search_tries_both_spellings(self):
-        self.assertEqual(search.fts_query("how you doin", "phrase"), '"how you doin" OR "how you doing"')
-        self.assertEqual(search.fts_query("nothin' to lose", "phrase"), '"nothin to lose" OR "nothing to lose"')
+        self.assertEqual(search.fts_query("how you doin", "phrase"), '(("how you doin" OR "how you doing"))')
+        self.assertEqual(search.fts_query("nothin' to lose", "phrase"), '(("nothin to lose" OR "nothing to lose"))')
         for w in ("thing", "sing", "king", "bring", "tin", "skin"):         # not a dropped g
             self.assertEqual(search.spellings(w), [w])
 
     def test_speech_and_subtitles_compare_as_one_word(self):
         self.assertEqual({snap.norm(w) for w in ("doing", "doin'", "Doin", "DOING?")}, {"doin"})
         self.assertEqual(snap.norm("thing"), "thing")
+
+
+class SearchSyntax(unittest.TestCase):
+    def test_tiers(self):
+        t = search.fts_tiers("an offer refuse", "phrase")
+        self.assertEqual(len(t), 3)
+        self.assertIn('"an offer refuse"', t[0])
+        self.assertIn("NEAR(", t[1])
+        self.assertIn("AND", t[2])
+
+    def test_quotes_minus_and_prefix(self):
+        t = search.fts_tiers('"an offer" refus* -godfather', "phrase")
+        self.assertTrue(all('"an offer"' in x and 'NOT ("godfather")' in x for x in t))
+        self.assertIn('"refus" *', t[0])
+        self.assertEqual(search.fts_tiers('"exactly this"', "phrase"), ['("exactly this")'])
+
+    def test_in_order(self):
+        self.assertTrue(search._in_order("I'll make him an offer he can't refuse.", ["an", "offer", "refuse"]))
+        self.assertFalse(search._in_order("Refuse? He made an offer.", ["an", "offer", "refuse"]))
 
 
 class CaptionShift(unittest.TestCase):

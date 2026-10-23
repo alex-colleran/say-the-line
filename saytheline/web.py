@@ -758,7 +758,7 @@ def hit_json(h):
         item_id=h["item_id"], idx=h["idx"], kind=it["kind"], series=it["series"],
         season=it["season"], episode=it["episode"], title=it["title"], year=it["year"],
         label=srch.label(it), start_ms=h["start_ms"], end_ms=h["end_ms"],
-        time=srch.fmt_ms(h["start_ms"]), text=h["text"], before=h["before"], after=h["after"],
+        time=srch.fmt_ms(h["start_ms"]), text=h["text"], before=h["before"], after=h["after"], tier=h.get("tier", 1),
         thumb=f"/thumb/{h['item_id']}/{(h['start_ms'] + h['end_ms']) // 2}.jpg")
 
 
@@ -873,7 +873,7 @@ class Handler(BaseHTTPRequestHandler):
                 try:
                     hits = srch.search(INDEX, q.get("q", ""), mode, q.get("series") or None,
                                        limit + 1, offset, kind, only=[] if q.get("none") else only,
-                                       exclude=multi.get("ex"), short=q.get("short") == "1")
+                                       exclude=multi.get("ex"), short=q.get("short") == "1", exact=q.get("exact") == "1")
                 except sqlite3.OperationalError as e:  # bad FTS5 syntax in raw mode
                     return self.send(400, {"error": str(e)})
                 return self.send(200, {"hits": [hit_json(h) for h in hits[:limit]],

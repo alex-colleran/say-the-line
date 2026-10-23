@@ -117,6 +117,7 @@
   button.load { display: flex; margin: 18px auto 0; padding: 0 22px; min-height: 44px; font-size: 15px; }
   .empty { color: var(--dim); text-align: center; padding: 40px 10px; }
   .empty .try { display: flex; gap: 8px; justify-content: center; flex-wrap: wrap; margin-top: 12px; }
+  .card .meta .close { color: var(--accent); }
   .empty h4 { margin: 22px 0 0; font-size: 12px; font-weight: 600; color: var(--dim); text-transform: uppercase; letter-spacing: .08em; }
   .empty .chip small { color: var(--dim); margin-left: 4px; }
   .empty .clear { background: none; border: 0; color: var(--dim); text-decoration: underline; cursor: pointer; font-size: 12.5px; padding: 8px; }
@@ -491,6 +492,7 @@
       <div class="loadbar" id="scLoad" hidden><i></i></div></div>
     <div id="scResult"></div>
     <div class="grp">
+      <div class="opt"><span>Matches</span><div class="chips" data-sc="matches"></div></div>
       <div class="opt"><span>Order</span><div class="chips" data-sc="order"></div></div>
       <div class="opt"><span>Repeats</span><div class="chips" data-sc="dedupe"></div><span class="hint" id="scHidden"></span></div>
       <div class="opt"><span>Select</span><button class="b" id="scAll">All</button><button class="b" id="scNone">None</button>
@@ -547,14 +549,22 @@ const MAX_WIN = 170000, MAX_CLIP = 180000;
 
 function esc(s) { return String(s ?? "").replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c])); }
 // a dropped-g word highlights both spellings: "doin" is a prefix of "doing" (= search.spellings)
-function qwords() {
-  return (state.q.toLowerCase().match(/[\w']+/g) || []).map(w => w.replace(/^'+|'+$/g, ""))
+function qwords() {        // the words to highlight: not -excluded ones; a trailing * kept
+  return (state.q.toLowerCase().replace(/-"[^"]*"|(^|\s)-\S+/g, " ").match(/[\w']+\*?/g) || []).map(w => w.replace(/^'+|'+(?=\*?$)/g, ""))
     .map(w => /ing$/.test(w) && /[aeiouy]/.test(w.slice(0, -3)) ? w.slice(0, -1) : w).filter(w => w.length > 1);
 }
+// whole words only ("an" no longer lights up "and"), with the endings search also finds:
+// talk -> talks / talked / talking; doin -> doing / doin'; offer* -> any word starting "offer"
 function hl(text) {
   const ws = qwords(); let out = esc(text);
   if (!ws.length) return out;
-  const re = new RegExp("\\b(" + ws.map(w => w.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).join("|") + ")", "gi");
+  const pat = w => {
+    const star = w.endsWith("*"), b = w.replace(/\*$/, "").replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    if (star) return b + "\\w*";
+    const g = /in$/.test(b) && /[aeiouy]/.test(b.slice(0, -2)) ? "(?:g|&#39;|')?" : "";
+    return b + g + (b.length >= 4 ? "(?:s|es|ed|d|ing|&#39;s|'s)?" : "");     // "an" + d is "and"
+  };
+  const re = new RegExp("\\b(" + ws.map(pat).join("|") + ")(?![\\w])", "gi");
   return out.replace(re, "<mark>$1</mark>");
 }
 function fmt(ms) { const s = Math.max(0, Math.floor(ms / 1000)); const h = Math.floor(s / 3600), m = Math.floor(s / 60) % 60, x = s % 60;
@@ -657,7 +667,7 @@ function card(h) {
   el.innerHTML = `
     <div class="thumb"><img loading="lazy" decoding="async" alt="" src="${h.thumb}"><span class="tc">${fmt(h.start_ms)}</span></div>
     <div class="body">
-      <div class="meta">${head}<small>${h.kind === "episode" ? esc(h.title) : "Movie"}</small></div>
+      <div class="meta">${head}<small>${h.kind === "episode" ? esc(h.title) : "Movie"}${h.tier > 1 ? ` · <span class="close">${h.tier === 2 ? "close match" : "all the words"}</span>` : ""}</small></div>
       ${h.before ? `<div class="ctx">${esc(h.before)}</div>` : ""}
       <div class="hit">${hl(h.text)}</div>
       ${h.after ? `<div class="ctx">${esc(h.after)}</div>` : ""}
@@ -709,14 +719,18 @@ const facetKey = () => [state.q, state.mode, state.kind].join("\u0000");
 function drawStatus() {
   const r = state.res;
   if (!r || r.key !== facetKey() || !state.q.trim()) return;
-  let total = null;
+  let total = null, exact = null;
   if (state.facets && state.facets.key === r.key) {
-    const rows = state.facets.rows;
-    total = rows.some(x => x.n === null) ? -1 : rows.filter(x => ticked(x.key)).reduce((a, x) => a + x.n, 0);
+    const rows = state.facets.rows.filter(x => ticked(x.key));
+    total = state.facets.rows.some(x => x.n === null) ? -1 : rows.reduce((a, x) => a + x.n, 0);
+    exact = total > 0 ? rows.reduce((a, x) => a + (x.exact ?? x.n), 0) : null;
   }
   const n = total > 0 ? total.toLocaleString() : total === -1 && r.more ? "20,000+" : `${r.shown}${r.more ? "+" : ""}`;
   const count = total === 0 || !r.shown ? 0 : total > 0 ? total : r.shown;
-  $("#status").innerHTML = (count ? `${n} hit${count === 1 ? "" : "s"} · ${r.ms} ms`
+  // close matches (the words near each other, or anywhere in the line) are counted apart from exact ones
+  const split = exact !== null && exact < total
+    ? (exact ? `${exact.toLocaleString()} exact · ${(total - exact).toLocaleString()} close` : `No exact match · ${n} close`) : null;
+  $("#status").innerHTML = (count ? `${split || `${n} hit${count === 1 ? "" : "s"}`} · ${r.ms} ms`
       : `No hits for “${esc(state.q)}”${filterOn() ? " in the ticked titles" : ""}`)
     + (filterOn() ? ` · ${esc(filterLabel())} · <button class="clear" id="clearFilter">show all</button>` : "");
   const cf = $("#clearFilter"); if (cf) cf.onclick = () => setFilter(null, []);
@@ -1879,6 +1893,7 @@ function showResult(job, info) {
 
 /* ================= supercut ================= */
 const SC_CHOICES = {
+  matches: [["exact", "Exact"], ["close", "Close too"]],
   order: [["match", "Best match"], ["air", "Air date"], ["show", "Show & episode"], ["shuffle", "Shuffle"], ["custom", "Your order"]],
   dedupe: [[true, "Hide repeats"], [false, "Show all"]],
   check: [[true, "Check against speech"], [false, "Trust subtitles"]],
@@ -1897,7 +1912,7 @@ const SC_CHOICES = {
 };
 const SC_PAD = { tight: [150, 250], normal: [450, 550], loose: [900, 1000] };
 const sc = { q: "", hits: [], sel: new Set(), checks: {}, busy: false, seed: 1, custom: null,   // custom: keys in the dragged order
-  o: { order: "match", dedupe: true, check: true, cut: "line", padding: "normal", unheard: "skip", transition: "cut",
+  o: { matches: "exact", order: "match", dedupe: true, check: true, cut: "line", padding: "normal", unheard: "skip", transition: "cut",
        loudnorm: true, label: true, captions: "off", aspect: "16:9", fit: "crop", res: 720, shots: true } };
 try { Object.assign(sc.o, JSON.parse(localStorage.getItem("saytheline.sc") || "{}")); } catch (e) {}
 // a dragged order belongs to one search, so it is never remembered as the default
@@ -1958,7 +1973,7 @@ function drawSc() {
       const c = document.createElement("button"); c.type = "button"; c.className = "chip"; c.textContent = label;
       c.setAttribute("aria-pressed", String(sc.o[key] === v));
       c.onclick = () => { if (sc.busy) return; sc.o[key] = v; if (key === "order" && v === "shuffle") sc.seed = 1 + Math.floor(Math.random() * 1e6);
-        saveSc(); drawSc(); };
+        saveSc(); if (key === "matches") scFetch(); else drawSc(); };
       box.appendChild(c);
     });
   });
@@ -2057,7 +2072,7 @@ function scDrag(row) {
   };
 }
 async function openSupercut() {
-  sc.q = state.q; sc.checks = {}; sc.sel = new Set(); sc.busy = false; sc.job = null; sc.custom = null;
+  sc.q = state.q; sc.checks = {}; sc.sel = new Set(); sc.hits = []; sc.busy = false; sc.job = null; sc.custom = null;
   if (sc.o.order === "custom") sc.o.order = "match";
   // only the best 300 hits are loaded: say so when there are more, so a huge search isn't mistaken for all of it
   const total = state.facets && state.facets.key === facetKey() && !state.facets.rows.some(x => x.n === null)
@@ -2067,12 +2082,17 @@ async function openSupercut() {
   $("#scTitle").innerHTML = `Supercut<small>“${esc(state.q)}”${filterOn() ? " · " + esc(filterLabel()) : ""}${scope}</small>`;
   $("#scResult").innerHTML = ""; $("#scVid").hidden = true;
   $("#scSheet").hidden = false; document.body.style.overflow = "hidden"; history.pushState({ sheet: 3 }, "");
+  await scFetch();
+}
+// the hits for the supercut: exact matches only unless "Close too"; checks and ticks are kept
+async function scFetch() {
   $("#scList").innerHTML = `<div class="empty">Loading hits…</div>`;
-  const p = filterParams(new URLSearchParams({ q: state.q, mode: state.mode, limit: 300, offset: 0 }));
+  const p = filterParams(new URLSearchParams({ q: sc.q, mode: state.mode, limit: 300, offset: 0 }));
+  if (sc.o.matches !== "close") p.set("exact", "1");
   const data = await (await fetch("/api/search?" + p)).json();
+  const fresh = !sc.hits.length || !sc.sel.size;
   sc.hits = data.hits || [];
-  const { list } = scVisible();
-  list.slice(0, 30).forEach(h => sc.sel.add(scKey(h)));      // a sensible start; tick more as needed
+  if (fresh) scVisible().list.slice(0, 30).forEach(h => sc.sel.add(scKey(h)));   // a sensible start; tick more as needed
   drawSc();
 }
 function scChosen() { return scVisible().list.filter(h => sc.sel.has(scKey(h))).slice(0, 80); }

@@ -322,7 +322,9 @@ async def saytheline_search(query: str, match: str = "phrase", kind: str = "all"
                           limit: int = 8, offset: int = 0) -> CallToolResult:
     """Find where a line is said in the user's movies and TV shows (subtitle search).
 
-    query: words to find, e.g. "i'll be back". Stemmed: "twin" also finds "twins".
+    query: words to find, e.g. "i'll be back". Stemmed: "twin" also finds "twins". Exact matches come
+      first, then close ones (the words a few apart, flagged); "quotes" = exactly those words,
+      -word leaves lines with it out, word* = any word starting so.
     match: "phrase" (the words in order, default) or "any" (any of the words).
     kind: "all", "tv" or "movies".
     titles / exclude_titles: show or movie names to keep / drop, e.g. ["Some Show"].
@@ -349,7 +351,8 @@ async def saytheline_search(query: str, match: str = "phrase", kind: str = "all"
     total = None if short_lines_only or not counted else \
         sum(f["n"] for f in facets if (not titles or f["key"] in only) and f["key"] not in ex)
     hits = [dict(moment_id=f"{h['item_id']}:{h['idx']}", title=_label(h), episode_title=h["title"] if h["kind"] == "episode" else None,
-                 time=_fmt(h["start_ms"]), line=h["text"], before=h["before"], after=h["after"])
+                 time=_fmt(h["start_ms"]), line=h["text"], before=h["before"], after=h["after"],
+                 close=h.get("tier", 1) > 1)
             for h in data["hits"]]
     if not hits:
         raise ToolError(f'no hits for "{query}"' + (" with these filters" if titles or exclude_titles or short_lines_only else "")
@@ -359,7 +362,8 @@ async def saytheline_search(query: str, match: str = "phrase", kind: str = "all"
     for i, h in enumerate(hits, 1 + int(offset)):
         ep = f' "{h["episode_title"]}"' if h["episode_title"] else ""
         before = f'  (before: "{h["before"]}")' if h["before"] else ""
-        out.append(f'{i}. [{h["moment_id"]}] {h["title"]}{ep} @{h["time"]}: "{h["line"]}"{before}')
+        close = " (close match: not the exact words)" if h["close"] else ""
+        out.append(f'{i}. [{h["moment_id"]}] {h["title"]}{ep} @{h["time"]}: "{h["line"]}"{close}{before}')
     if counted and not titles:
         out.append("Most hits: " + ", ".join(f"{f['label']} {f['n']}" for f in facets[:5]))
     if data.get("more"):
@@ -669,7 +673,7 @@ async def saytheline_supercut(ctx: Context, query: str, match: str = "phrase", t
     captions: "none" (default), "classic", "tiktok", "popin" or "bigword". cut: "phrase" or "line".
     Slow: about 5-10 s per clip to check, then a few seconds to render; progress is reported."""
     mode = "any" if match == "any" else "phrase"
-    p = [("q", query), ("mode", mode), ("limit", 300)]
+    p = [("q", query), ("mode", mode), ("limit", 300), ("exact", "1")]      # a supercut wants the line itself
     p += [("only", k) for k in await _title_keys(query, mode, titles)]
     p += [("ex", k) for k in await _title_keys(query, mode, exclude_titles)]
     if short_lines_only:
