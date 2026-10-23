@@ -55,6 +55,20 @@ class Words(unittest.TestCase):
         self.assertTrue(all(b - a >= media.MIN_WORD_MS for a, b in zip(starts, starts[1:])))
         self.assertTrue(all(w["e"] - w["s"] >= media.MIN_WORD_MS for w in out))
 
+    def test_unheard_word_stays_in_reading_order(self):
+        # subtitles ~4 s ahead of the voice; the second "Anne" isn't matched. It used to fall back
+        # to its line's subtitle time, landing among the previous line's words ("call Anne me").
+        cues = [dict(idx=1, start_ms=0, end_ms=1000, text="Did you just call me"),
+                dict(idx=2, start_ms=1000, end_ms=2000, text="than Anne Bancroft."),
+                dict(idx=3, start_ms=2000, end_ms=3000, text="Anne Bancroft was hot.")]
+        heard = [dict(w=w, s=s, e=s + 90) for w, s in [("Did", 900), ("you", 1000), ("just", 1100), ("call", 1200),
+                 ("me", 1400), ("than", 5000), ("Anne", 5200), ("Bancroft", 5300), ("Bancroft", 6000), ("was", 6500), ("hot", 6600)]]
+        out = snap.align_words(cues, heard)
+        flat = [w for c in out for w in c["words"]]
+        self.assertEqual([w["s"] for w in flat], sorted(w["s"] for w in flat), [(w["w"], w["s"]) for w in flat])
+        anne = out[2]["words"][0]
+        self.assertTrue(5300 <= anne["s"] < 6000, anne)
+
     def test_bigword_is_one_word(self):
         ws = [dict(w=w, s=i * 100, e=i * 100 + 90) for i, w in enumerate("one two three four".split())]
         chunks = media.chunk_words(ws, *media.CHUNK_RULES["bigword"])

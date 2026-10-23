@@ -227,8 +227,14 @@ def align_words(sub_cues, words):
         heard_in = [x["s"] for x in words if lo - 100 <= x["s"] < hi]
         if heard_in and not (i and disp[i - 1][1] is cue):
             lo = max(lo, min(heard_in))
+        # and never out of reading order: subtitles seconds ahead of the voice put a line's own start
+        # among the previous line's spoken words, so a missed first word showed in the wrong caption
+        if i:
+            lo = max(lo, times[i - 1][1])
         if hi <= lo:
             hi = lo + 120 * (j - i)
+        if j < len(disp) and lo < times[j][0] < hi:
+            hi = times[j][0]
         step = (hi - lo) / (j - i)
         for k in range(i, j):
             times[k] = (round(lo + step * (k - i)), round(lo + step * (k - i + 1)))
