@@ -127,7 +127,10 @@ Design notes: what each part does and why it is built that way. For setup, see t
 - **Timing fixes:**
   - Whisper starts a word where the previous one ended, so after a pause the caption appeared in
     the silence. `stt_worker.refine_starts` moves each start *later* to where the voice energy
-    rises, never earlier.
+    rises, never earlier, searching the whole word (one was stretched 0.9 s into a pause).
+  - A faint word followed by silence is one Whisper put on a breath or a noise ahead of the speech
+    ("I" 1.3 s before "I didn't do it"). `stt_worker.place_strays` moves it to just before the next
+    word: 15 dB under the clip's typical word, with at least 0.3 s of silence after it.
   - Given silence between lines, greedy decoding can drop a line and stretch the next over the
     gap (in one test episode the caption sat over the previous speaker's line). A snapped match
     with a word longer than 1.2 s is heard again ±3 s with beam search (`stt_worker --careful`)

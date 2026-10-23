@@ -441,3 +441,32 @@ class AudioTracks(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+STT_PY = config.stt_python()
+WORKER_CHECK = r"""
+import json, sys
+import numpy as np
+sys.path.insert(0, sys.argv[1])
+import stt_worker as w
+# 10 ms frames: a loud line 0-1 s, a faint noise 1.4-1.8 s, silence, then speech 3.0-4.0 s
+db = np.full(500, 30.0); db[0:100] = 65; db[140:180] = 45; db[300:400] = 65
+words = [{"w": "Say", "s": 0, "e": 500}, {"w": "it.", "s": 500, "e": 1000},
+         {"w": "I", "s": 1400, "e": 1860}, {"w": "didn't", "s": 1860, "e": 3500},
+         {"w": "do", "s": 3500, "e": 3700}, {"w": "it.", "s": 3700, "e": 4000}]
+print(json.dumps(w.loudness(w.place_strays(w.refine_starts(words, db), db), db)))
+"""
+
+
+@unittest.skipUnless(os.path.exists(STT_PY), "the speech Python is not installed")
+class WordOnsets(unittest.TestCase):
+    def test_a_stretched_word_and_a_word_on_a_noise_move_to_the_speech(self):
+        import json
+        import subprocess
+        r = subprocess.run([STT_PY, "-c", WORKER_CHECK, os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "saytheline")],
+                           capture_output=True, text=True, check=True)
+        ws = {(x["w"], i): x for i, x in enumerate(json.loads(r.stdout))}
+        didnt, i = ws[("didn't", 3)], ws[("I", 2)]
+        self.assertEqual(didnt["s"], 3000)          # 1.1 s into the word: past the old 0.6 s look
+        self.assertEqual((i["s"], i["e"]), (2900, 3000))
+        self.assertEqual(ws[("Say", 0)]["s"], 0)    # already loud: left alone

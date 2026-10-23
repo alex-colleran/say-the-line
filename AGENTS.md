@@ -77,7 +77,9 @@ sed -n '/<script>/,/<\/script>/p' saytheline/static/index.html | sed '1d;$d' > /
 - Subtitle files can be tens of seconds off: snap tries ±5 s then ±45 s, picks the occurrence whose
   neighbouring lines also match, and remembers the offset per item (`data/offsets.json`).
 - Whisper starts a word where the previous one ended; `stt_worker.refine_starts` moves starts later
-  to the real voice onset so captions never appear before speech.
+  to the real voice onset so captions never appear before speech, and `place_strays` moves a faint
+  word sitting on a noise before a pause onto the speech after it. The worker imports faster-whisper
+  only under `__main__`, so tests can load its timing functions with the speech Python.
 - A systemd `Type=oneshot` job is capped with `TimeoutStartSec`, not `RuntimeMaxSec`.
 - Input-side `-t` can let one frame past the out point through: renders start their video chain
   with `trim=end=` so a clip ending on a camera cut never shows the next shot.
