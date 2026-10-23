@@ -61,6 +61,9 @@ async def shoot_at(b, query, width, out):
     await shot("1-results")
     await pg.click(".card >> nth=0")
     await pg.wait_for_timeout(2500)
+    if await pg.locator("#startFresh").count():                          # a draft from an earlier run
+        await pg.click("#startFresh")
+        await pg.wait_for_timeout(1500)
     await until(pg, "!document.querySelector('#shotHint').textContent.includes('Finding')", 60)
     await pg.wait_for_timeout(1500)
     await shot("2-editor")
@@ -68,8 +71,15 @@ async def shoot_at(b, query, width, out):
         await pg.click("[data-tab=captions]")
         await pg.click("[data-opt=look] .chip:nth-child(2)")
         await pg.click("#sttGo")
-        await until(pg, "document.querySelector('#sttHint').textContent.startsWith('Done')", 120)
-        await shot("3-captions")
+        await pg.wait_for_timeout(1000)
+        await until(pg, "!document.querySelector('#sttGo').disabled && "
+                        "document.querySelector('#sttHint').textContent.startsWith('Done')", 120)
+        await pg.evaluate("seekTo(ed.inMs + 1600)")                     # mid-line, so a word is lit
+        await pg.wait_for_timeout(1200)
+        await pg.evaluate("document.querySelector('.stage').scrollIntoView({block:'start'}); drawOverlay()")
+        await pg.wait_for_timeout(400)
+        await shot("3-captions")                                        # preview with captions over the Look row
+        await pg.evaluate("document.querySelector('#sheet').scrollTop = 0")
         await pg.click("[data-tab=output]")
         await pg.click("[data-opt=format] .chip:nth-child(3)")
         await pg.click("#render")

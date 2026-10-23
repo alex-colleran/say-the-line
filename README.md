@@ -10,7 +10,7 @@ looks), pick a shape (16:9, 9:16, 1:1…) and render. Or join every hit into one
 
 It runs on the machine that has your media, next to Jellyfin, and is used from a browser.
 
-![Searching for "story" on a phone, the editor with the cut on the timeline, and the finished GIF](docs/screenshots/phone.png)
+![Searching for "story" on a phone, the editor with the cut on the timeline, the Captions tab with TikTok-style captions on the preview, and the finished GIF](docs/screenshots/phone.png)
 
 <p align="center"><img src="docs/screenshots/clip.gif" alt="A GIF made with Say the Line, with TikTok-style word-by-word captions" width="360"></p>
 
@@ -18,7 +18,7 @@ It runs on the machine that has your media, next to Jellyfin, and is used from a
 <summary>On a desktop</summary>
 
 ![Search results in a grid](docs/screenshots/desktop-search.png)
-![The editor with TikTok-style captions](docs/screenshots/desktop-editor.png)
+![The editor with the cut on the timeline](docs/screenshots/desktop-editor.png)
 
 </details>
 
