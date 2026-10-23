@@ -44,6 +44,10 @@ Design notes: what each part does and why it is built that way. For setup, see t
     subtitle lines also line up.
   - The offset found is remembered per item (`data/offsets.json`), and the editor applies it when
     the episode is opened again.
+- **Neighbouring lines:** a new clip's padding stops between lines (`shots.fit_lines`): if it would
+  start partway through the line before, it starts once that line ends; if it would end partway
+  through the next, it ends before that one starts. Otherwise most clips open or close on half a
+  sentence. Like the shot trim it only shortens the padding, never the line itself.
 - **Camera cuts:** see below. A new clip's padding is trimmed to the cuts in it, with a note and
   Undo; ticks mark the cuts on the timeline, the handles stick to them, and the arrow buttons (Shot row) move
   either end to the cut before or after it. *Whole* takes the entire shot the lines are in.

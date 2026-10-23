@@ -255,6 +255,20 @@ def fit(in_ms, out_ms, keep_a, keep_b, cuts, margin=0):
     return (a, b) if b - a >= 300 else (in_ms, out_ms)
 
 
+def fit_lines(in_ms, out_ms, keep_a, keep_b, cues):
+    """Trim a cut's padding so it doesn't start or end partway through a neighbouring line (= JS
+    fitLines): start once the line before ends, end before the next one starts. Otherwise the clip
+    opens or closes on half a sentence. `cues`: dicts with start_ms / end_ms on the clip's clock.
+    Only ever trims, and never into [keep_a, keep_b]."""
+    a, b = in_ms, out_ms
+    for c in cues:
+        if c["start_ms"] < a < c["end_ms"]:
+            a = max(a, min(c["end_ms"], keep_a))
+        if c["start_ms"] < b < c["end_ms"]:
+            b = min(b, max(c["start_ms"], keep_b))
+    return (a, b) if b - a >= 300 else (in_ms, out_ms)
+
+
 def whole_shot(keep_a, keep_b, cuts, margin=0):
     """The shot(s) holding [keep_a, keep_b] (= JS shotTargets): from the last cut at or before its
     start to the first at or after its end (None for a side with no cut found)."""

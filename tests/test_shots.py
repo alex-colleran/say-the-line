@@ -85,6 +85,17 @@ class Fit(unittest.TestCase):
     def test_never_leaves_a_sliver(self):
         self.assertEqual(shots.fit(0, 1000, 450, 550, [560, 440]), (0, 1000))
 
+    def test_padding_stops_at_neighbouring_lines(self):
+        # the line 1000-2000; the one before ends at 700, the next starts at 2300
+        cues = [dict(start_ms=-2000, end_ms=700), dict(start_ms=1000, end_ms=2000), dict(start_ms=2300, end_ms=5000)]
+        self.assertEqual(shots.fit_lines(-500, 3000, 1000, 2000, cues), (700, 2300))
+        self.assertEqual(shots.fit_lines(800, 2200, 1000, 2000, cues), (800, 2200))   # already in the gaps
+
+    def test_line_fit_never_trims_into_the_line(self):
+        # subtitles overlap the kept words: the edge stops at the words, not past them
+        cues = [dict(start_ms=0, end_ms=1400), dict(start_ms=1600, end_ms=4000)]
+        self.assertEqual(shots.fit_lines(500, 3000, 1000, 2000, cues), (1000, 2000))
+
     def test_whole_shot(self):
         self.assertEqual(shots.whole_shot(1000, 2000, [-3000, 400, 1500, 2600, 5000]), (400, 2600))
         self.assertEqual(shots.whole_shot(1000, 2000, [2600]), (None, 2600))

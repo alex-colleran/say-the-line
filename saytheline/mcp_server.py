@@ -50,11 +50,12 @@ Workflow:
    than the words, which makes clean clips. Each hit has a moment id like "51:99".
 2. Optional: saytheline_look at a few candidates (one numbered image) to judge faces and framing.
 3. saytheline_make_clip with the moment id. Defaults suit a reaction GIF: snapped to the spoken words
-   (subtitle timing is often off by seconds), tight padding trimmed to the camera cuts (so it
-   neither opens nor ends on a sliver of another shot), plain subtitles burned in. whole_shot=true
+   (subtitle timing is often off by seconds), tight padding that stops between lines (no half
+   sentence either side) and at the camera cuts (so it neither opens nor ends on a sliver of
+   another shot), plain subtitles burned in. whole_shot=true
    takes the entire shot the line is in: often the best reaction face.
 4. Check the preview image and the subtitle lines listed in the result (a neighbouring line that
-   only flashes at an edge is hidden for you; hide_lines / line_text handle the rest). Then give the user the file: the result has its local
+   is cut off at an edge and on screen under a second is hidden for you; hide_lines / line_text handle the rest). Then give the user the file: the result has its local
    path (in Claude Code, send it with SendUserFile) and a link.
 5. For feedback ("start earlier", "bigger text", "no captions", "make it vertical"), use
    saytheline_refine_clip with the clip id; it renders a new version and keeps the old one.
@@ -252,7 +253,7 @@ async def _captions_for(ctx, req, captions, look, caption_text):
     req["caption_cues"] = cues
 
 
-FLASH_LINE_MS = 500        # a neighbouring line on screen for less than this at an edge is only a flash
+FLASH_LINE_MS = 1000       # a neighbouring line cut off at an edge and on screen for less than this is hidden
 
 
 async def _lines_on_screen(req):
@@ -311,7 +312,7 @@ def _hide_flashes(req, lines, keep=()):
             edits[str(ln["line"])] = None
             ln["hidden"] = True
             gone.append(f"line {ln['line']} (on screen {(ln['to_ms'] - ln['from_ms']) / 1000:.1f} s)")
-    return f"hid {', '.join(gone)}: only a flash at the edge; show_lines brings it back" if gone else ""
+    return f"hid {', '.join(gone)}: cut off at the edge, too brief to read; show_lines brings it back" if gone else ""
 
 
 # ---------------------------------------------------------------- tools
@@ -489,6 +490,10 @@ async def saytheline_make_clip(ctx: Context, moment_id: str, format: str = "gif"
         in_ms, out_ms = in_ms - 150, out_ms + 350
     if fmt == "gif":
         out_ms += 300                               # a beat after the line: reactions land better
+    if not whole_shot:                              # no half sentence from the lines either side
+        others = [dict(start_ms=c["start_ms"] + off, end_ms=c["end_ms"] + off)
+                  for c in lines if not first["idx"] <= c["idx"] <= last["idx"]]
+        in_ms, out_ms = shotcuts.fit_lines(in_ms, out_ms, keep[0], keep[1], others)
     if shots or whole_shot:
         in_ms, out_ms, note = await _fit_shots(m["item_id"], in_ms, out_ms, keep, whole_shot)
         if note:

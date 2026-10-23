@@ -922,7 +922,8 @@ function resetEd(h) {
     shots: null,          // camera cuts: {cuts: [boundary ms], ranges: [[a, b]] scanned, f: frame ms, anchor: a frame's start}
     shotsBusy: 0, shotsFailed: false,
     autoShot: null,       // {a, b, snap}: trim the padding around [a, b] to the cuts once they are known
-    speech: null,         // the heard words' span after a snap: {a, b, offset}
+    autoLines: false,     // trim a fresh default cut's padding to the lines either side once they load
+    speech: null,        // the heard words' span after a snap: {a, b, offset}
     seekOnLoad: false, session: (ed.session || 0) + 1,
     baseState: null });   // the state as opened: a draft is only written once something differs
 }
@@ -971,6 +972,7 @@ function defaultCut() {
   ed.offset = ed.knownOffset;
   ed.inMs = Math.max(0, h.start_ms - PAD_IN) + ed.offset; ed.outMs = h.end_ms + PAD_OUT + ed.offset;
   ed.autoShot = { a: h.start_ms + ed.offset, b: h.end_ms + ed.offset };   // trimmed once the cuts are known
+  ed.autoLines = true;                                                     // and once the lines are
 }
 function offsetNote() {
   const n = $("#snapNote"), k = ed.knownOffset;
@@ -1073,6 +1075,13 @@ async function loadWindow() {
   const cues = await (await fetch(`/api/cues?item=${ed.hit.item_id}&from_ms=${ed.winA}&to_ms=${ed.winB}&offset_ms=${ed.offset}`)).json();
   if (seq !== ed.loadSeq) return;
   ed.cues = cues;
+  if (ed.autoLines) {                            // no half sentence from the lines either side
+    ed.autoLines = false;
+    const untouched = ed.baseState === JSON.stringify(edState());
+    [ed.inMs, ed.outMs] = fitLines(ed.inMs, ed.outMs, ed.hit.start_ms + ed.offset, ed.hit.end_ms + ed.offset,
+                                   cues.filter(c => c.idx !== ed.hit.idx));
+    if (untouched) ed.baseState = JSON.stringify(edState());      // not an edit: no draft
+  }
   const keepAt = Math.max(ed.inMs, Math.min(absNow() || ed.inMs, ed.outMs));
   ed.seekOnLoad = ed.seekOnLoad || keepAt <= ed.inMs;     // showing the clip's start: its first frame
   v.src = `/preview/${ed.hit.item_id}/${ed.winA}-${ed.winB}.mp4`;
@@ -1156,7 +1165,10 @@ $("#lines").addEventListener("click", e => {
   const act = e.target.dataset.act;
   // the padding these add is trimmed to the camera cuts in it, like a newly opened clip's
   const cuts = shotCuts();
-  if (act === "only") return setSel(...fitShots(c.start_ms - PAD_IN, c.end_ms + PAD_OUT, c.start_ms, c.end_ms, cuts), { seek: "in" });
+  if (act === "only") {
+    const [a, b] = fitLines(c.start_ms - PAD_IN, c.end_ms + PAD_OUT, c.start_ms, c.end_ms, ed.cues.filter(x => x !== c));
+    return setSel(...fitShots(a, b, c.start_ms, c.end_ms, cuts), { seek: "in" });
+  }
   if (act === "plus") {           // only the end that grew is trimmed, never into what was already in
     let a = Math.min(ed.inMs, c.start_ms - PAD_IN), b = Math.max(ed.outMs, c.end_ms + PAD_OUT);
     const [fa, fb] = fitShots(a, b, c.start_ms, c.end_ms, cuts);
@@ -1313,6 +1325,16 @@ function fitShots(inMs, outMs, keepA, keepB, cuts, m = shotMargin()) {
   const pre = cuts.map(c => c + m).filter(c => c > inMs && c <= keepA + SHOT_TOL);
   const post = cuts.map(c => c - m).filter(c => c >= keepB - SHOT_TOL && c < outMs);
   const a = pre.length ? Math.max(...pre) : inMs, b = post.length ? Math.min(...post) : outMs;
+  return b - a >= 300 ? [a, b] : [inMs, outMs];
+}
+// = shots.fit_lines: trim the padding so it neither starts nor ends partway through a neighbouring
+// line (`cues`, on the clip's clock), never into [keepA, keepB].
+function fitLines(inMs, outMs, keepA, keepB, cues) {
+  let a = inMs, b = outMs;
+  for (const c of cues) {
+    if (c.start_ms < a && a < c.end_ms) a = Math.max(a, Math.min(c.end_ms, keepA));
+    if (c.start_ms < b && b < c.end_ms) b = Math.min(b, Math.max(c.start_ms, keepB));
+  }
   return b - a >= 300 ? [a, b] : [inMs, outMs];
 }
 function applyAutoShot() {

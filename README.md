@@ -30,9 +30,10 @@ It runs on the machine that has your media, next to Jellyfin, and is used from a
   filter by TV / movies / show, with the lines before and after each hit and recent searches.
 - **Editor**: preview window, drag-to-trim timeline, ±0.1 s nudges, play / pause / loop / mute,
   line list (clip just this line, grow, trim), editable caption text.
-- **Camera cuts**: a new clip starts on the line's own shot and ends before the next one (no
-  half-second of another scene at either end). Cuts are marked on the timeline, the trim handles
-  stick to them, the arrow buttons jump an end to the next cut, *Whole* takes the entire shot. Frame-exact.
+- **Clean edges**: a new clip never opens or closes on half of the line before or after it, and it
+  starts on the line's own shot and ends before the next one (no half-second of another scene).
+- **Camera cuts**: marked on the timeline; the trim handles stick to them, the arrow buttons jump
+  an end to the next cut, *Whole* takes the entire shot. Frame-exact.
 - **Snap to speech**: listens to the cut (faster-whisper) and moves it onto the spoken words.
   It also finds subtitles that run seconds early or late, and remembers that per episode.
 - **Captions**: burned in with libass. Classic subtitles, or word-synced looks: **TikTok**,
