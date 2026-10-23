@@ -16,5 +16,5 @@ ffmpeg -i demo-data/clips/<name>.gif -filter_complex \
 ```
 
 `social-preview.png` (1280×640) is the repo's GitHub social preview image (Settings → Social
-preview, which GitHub shows only on public repos): the Captions shot on the brand
+preview, which GitHub shows only on public repos): the search results and Captions shots on the brand
 dark background, with the repo name and tagline.
