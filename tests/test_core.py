@@ -69,6 +69,23 @@ class Words(unittest.TestCase):
         anne = out[2]["words"][0]
         self.assertTrue(5300 <= anne["s"] < 6000, anne)
 
+    def test_word_far_off_the_scene_offset_is_retimed(self):
+        # Whisper pins the first words of a long window to its start: "I went to" 2 s early, while
+        # every other word lands ~0.4 s after its subtitle. They belong just before "the".
+        cues = [dict(idx=1, start_ms=10000, end_ms=12500, text="I went to the woods because I wanted"),
+                dict(idx=2, start_ms=12700, end_ms=14000, text="to live deliberately."),
+                dict(idx=3, start_ms=14200, end_ms=15000, text="I'll second that."),
+                dict(idx=4, start_ms=15200, end_ms=16500, text="To put to rout")]
+        heard = [dict(w=w, s=s, e=s + 150) for w, s in [("I", 8000), ("went", 8300), ("to", 8300), ("the", 10500),
+                 ("woods", 10600), ("because", 10850), ("I", 11100), ("wanted", 11300), ("to", 13100), ("live", 13300),
+                 ("deliberately", 13500), ("I'll", 14600), ("second", 14800), ("that", 15000), ("To", 15600),
+                 ("put", 15800), ("to", 16000), ("rout", 16200)]]
+        out = snap.align_words(cues, heard)
+        first = out[0]["words"][:3]
+        self.assertTrue(all(9500 <= w["s"] < 10500 for w in first), first)
+        flat = [w["s"] for c in out for w in c["words"]]
+        self.assertEqual(flat, sorted(flat))
+
     def test_bigword_is_one_word(self):
         ws = [dict(w=w, s=i * 100, e=i * 100 + 90) for i, w in enumerate("one two three four".split())]
         chunks = media.chunk_words(ws, *media.CHUNK_RULES["bigword"])

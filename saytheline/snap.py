@@ -18,6 +18,7 @@ STT_PY = config.stt_python()          # the Python with faster-whisper / spaCy
 WORKER = os.path.join(os.path.dirname(os.path.abspath(__file__)), "stt_worker.py")
 SLACK_MS = 5000          # listen this far beyond the subtitle-timed cut on each side
 LEAD_MS, TAIL_MS = 250, 400
+OFF_SCENE_MS = 1200       # a heard word this far outside its line, given the scene's offset, is mistimed
 
 
 def norm(w):
@@ -220,15 +221,30 @@ def align_words(sub_cues, words):
     for b in m.get_matching_blocks():
         for k in range(b.size):
             times[b.a + k] = (words[b.b + k]["s"], words[b.b + k]["e"])
+    # Subtitles run early or late by a steady amount across a scene: the typical gap between a
+    # line's subtitle and its first heard word. A matched word far outside its own line's window
+    # shifted by that gap is Whisper mistiming it (it pins the first words of a long window to the
+    # window's start), so it is placed like an unheard word instead: between the words either side.
+    first = {}
+    for k, (_, c) in enumerate(disp):
+        first.setdefault(id(c), (k, c))
+    leads = sorted(times[k][0] - c["start_ms"] for k, c in first.values() if times[k])
+    if len(leads) >= 3:
+        typical = leads[len(leads) // 2]
+        for k, (_, c) in enumerate(disp):
+            if times[k] and not (c["start_ms"] + typical - OFF_SCENE_MS <= times[k][0]
+                                 <= c["end_ms"] + typical + OFF_SCENE_MS):
+                times[k] = None
+    matched = {k for k in range(len(disp)) if times[k]}
     i = 0
     while i < len(disp):                         # fill runs of unmatched words
         if times[i] is not None:
             i += 1
             continue
         j = i
-        while j < len(disp) and times[j] is None:
-            j += 1
         cue = disp[i][1]
+        while j < len(disp) and times[j] is None and disp[j][1] is cue:     # one line's run at a time
+            j += 1
         lo = times[i - 1][1] if i and disp[i - 1][1] is cue else cue["start_ms"]
         hi = times[j][0] if j < len(disp) and disp[j][1] is cue else cue["end_ms"]
         # anchor to heard speech, not the subtitle's own timing (which can lead the voice)
@@ -241,13 +257,13 @@ def align_words(sub_cues, words):
             lo = max(lo, times[i - 1][1])
         if hi <= lo:
             hi = lo + 120 * (j - i)
-        if j < len(disp) and lo < times[j][0] < hi:
-            hi = times[j][0]
+        nxt = next((times[k][0] for k in range(j, len(disp)) if times[k]), None)
+        if nxt is not None and lo < nxt < hi:
+            hi = nxt
         step = (hi - lo) / (j - i)
         for k in range(i, j):
             times[k] = (round(lo + step * (k - i)), round(lo + step * (k - i + 1)))
         i = j
-    matched = {k for b in m.get_matching_blocks() for k in range(b.a, b.a + b.size)}
     out = []
     for c in sub_cues:
         mine = [k for k, (_, cc) in enumerate(disp) if cc is c]
@@ -266,12 +282,15 @@ def subtitle_words(src, in_ms, out_ms, sub_cues, margin_ms=1500):
     """Word times for the subtitle lines said inside [in_ms, out_ms]. `sub_cues` should reach
     SUB_REACH_MS beyond the cut: when subtitles run early or late, the speech inside the cut belongs
     to lines whose subtitles sit outside it. Those are kept only when their words were heard
-    inside the cut; lines whose subtitles are inside it are kept as before. Only the cut (plus a
+    inside the cut; lines whose subtitles are mostly inside it are kept as before. Only the cut (plus a
     margin) is listened to: a longer window crosses Whisper's 30 s chunks, which can drop words."""
     words = transcribe(src, max(0, in_ms - margin_ms), out_ms + margin_ms)
     out = []
     for c, sub in zip(align_words(sub_cues, words), sub_cues):
-        inside_sub = sub["end_ms"] > in_ms and sub["start_ms"] < out_ms
+        # an unheard line counts only when most of its subtitle is inside the cut: one that just
+        # overlaps the edge would flash its last word at the start
+        overlap = min(sub["end_ms"], out_ms) - max(sub["start_ms"], in_ms)
+        inside_sub = overlap > (sub["end_ms"] - sub["start_ms"]) / 2
         said_inside = any(w["e"] > in_ms and w["s"] < out_ms for w in c["words"])
         if said_inside and (inside_sub or c["heard"]):
             out.append(c)
