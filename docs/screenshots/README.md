@@ -10,8 +10,8 @@ P="scale=390:-1,pad=iw+24:ih:12:0:color=0x0b0c0f"
 ffmpeg -i shots/390-1-results.png -i shots/390-2-editor.png -i shots/390-3-captions.png -i shots/390-4-result.png \
   -filter_complex "[0]$P[a];[1]$P[b];[2]$P[c];[3]$P[d];[a][b][c][d]hstack=4" phone.png
 cp shots/1280-1-results.png desktop-search.png; cp shots/1280-2-editor.png desktop-editor.png
-# clip.gif: a GIF cut to whole lines (1:06:05.56-1:06:08.54, "All right. I'll give you a story.
-# A wonderful story!"), not the editor's default cut, which ends mid-sentence; made smaller
+# clip.gif: a GIF cut to whole lines (1:06:05.56-1:06:08.70, "All right. I'll give you a story.
+# A wonderful story!" and the pause after it, up to the next line); made smaller
 ffmpeg -i demo-data/clips/<name>.gif -filter_complex \
   "fps=10,scale=360:-1:flags=lanczos,split[a][b];[a]palettegen=max_colors=64[p];[b][p]paletteuse=dither=bayer:bayer_scale=4" clip.gif
 ```
