@@ -23,6 +23,7 @@ KEYS = {
     ("jellyfin", "api_key"): "SAYTHELINE_JELLYFIN_KEY",
     ("jellyfin", "db"): "SAYTHELINE_JELLYFIN_DB",
     ("jellyfin", "path_map"): "SAYTHELINE_PATH_MAP",
+    ("jellyfin", "subtitle_cache"): "SAYTHELINE_JELLYFIN_SUBS",
     ("server", "host"): "SAYTHELINE_HOST",
     ("server", "port"): "SAYTHELINE_PORT",
     ("server", "public_url"): "SAYTHELINE_PUBLIC_URL",

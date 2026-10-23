@@ -10,6 +10,11 @@ api_key = ""                           # SAYTHELINE_JELLYFIN_KEY
 # Or read Jellyfin's database file directly (read-only), instead of url + api_key:
 # db = "/var/lib/jellyfin/data/jellyfin.db"    # SAYTHELINE_JELLYFIN_DB
 
+# Jellyfin keeps the embedded subtitles it has already pulled out of a file (for playback, or its
+# "Extract Subtitles" task) in data/subtitles. Reading those saves reading the whole video file.
+# Found next to `db` by itself; set it when Jellyfin's data folder is elsewhere.
+# subtitle_cache = "/var/lib/jellyfin/data/subtitles"   # SAYTHELINE_JELLYFIN_SUBS
+
 # When Jellyfin sees the files under other paths than this machine does (Jellyfin in Docker,
 # or on another computer with the media mounted here), map Jellyfin's prefix to the local one.
 # Longest prefix wins.                 # SAYTHELINE_PATH_MAP="/media=/srv/media,/tv=/mnt/tv"

@@ -27,6 +27,30 @@ def source():
     raise RuntimeError("Jellyfin is not configured: set [jellyfin] url + api_key (or db) in saytheline.toml")
 
 
+def subtitle_cache():
+    """Jellyfin's folder of already-extracted embedded subtitles, or None."""
+    d = os.environ.get("SAYTHELINE_JELLYFIN_SUBS")
+    if not d and os.environ.get("SAYTHELINE_JELLYFIN_DB"):
+        d = os.path.join(os.path.dirname(os.environ["SAYTHELINE_JELLYFIN_DB"]), "subtitles")
+    return d if d and os.path.isdir(d) else None
+
+
+def cached_subtitle(cache, jf_id, stream_index, codec, video_path):
+    """The file Jellyfin extracted for this stream (subtitles/<id[:2]>/<id with dashes>/<index>.<ext>),
+    when it is at least as new as the video: an upgraded file can number its streams differently."""
+    if not cache:
+        return None
+    h = norm_id(jf_id)
+    guid = f"{h[:8]}-{h[8:12]}-{h[12:16]}-{h[16:20]}-{h[20:]}"
+    p = os.path.join(cache, h[:2], guid, f"{stream_index}.{'ass' if codec in ('ass', 'ssa') else 'srt'}")
+    try:
+        if os.path.getsize(p) > 0 and os.path.getmtime(p) >= os.path.getmtime(video_path):
+            return p
+    except OSError:
+        pass
+    return None
+
+
 def norm_id(i):
     return str(i).replace("-", "").lower()
 

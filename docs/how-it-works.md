@@ -21,6 +21,12 @@ Design notes: what each part does and why it is built that way. For setup, see t
 - **Order:** subtitle files first (fast), then embedded tracks (ffmpeg reads the whole file), each
   newest added first, and the nightly unit does movies before TV. A run cut short by its time cap
   has then done what was just added.
+- **Jellyfin's copies first:** Jellyfin keeps the embedded tracks it has pulled out for playback
+  (`data/subtitles/<id[:2]>/<item id>/<stream>.srt|.ass`). The indexer reads those instead of the
+  video when the copy is newer than the file (an upgraded file can number its streams differently).
+- **Self-overlapping tracks:** a track where over a quarter of the lines start before the previous
+  one ends holds more than this episode (one release muxed every earlier episode into each file);
+  another track is used when one reads as dialogue (`subs.overlap`).
 - Bitmap subtitles (PGS / VobSub) can't be searched; those items need text subtitles (Bazarr) or
   speech-to-text.
 

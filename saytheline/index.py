@@ -15,7 +15,8 @@ def _drop_cues(c, item_id):
 def index(index_path, series=None, movies=False, external_only=False, log=print):
     c = db.open_index(index_path)
     pmap = db.path_map()
-    stats = dict(items=0, indexed=0, unchanged=0, no_subs=0, errors=0, cues=0)
+    jf_subs = jellyfin.subtitle_cache()
+    stats = dict(items=0, indexed=0, unchanged=0, no_subs=0, errors=0, cues=0, from_jellyfin=0)
     # Subtitle files first (cheap), then embedded tracks (ffmpeg reads the whole file), each newest
     # first: a pass cut short by its time cap has then done the most for what was just added.
     work = []
@@ -46,7 +47,12 @@ def index(index_path, series=None, movies=False, external_only=False, log=print)
         cues, err, fallback = None, None, None
         for src, kind, emb in cands:
             try:
-                text = subs.extract_embedded(path, *emb) if emb else subs.read_text(src)
+                cached = emb and jellyfin.cached_subtitle(jf_subs, it["jf_id"], emb[0], emb[1], path)
+                if cached:                  # Jellyfin already read the file for it: no second read
+                    text = subs.read_text(cached)
+                    stats["from_jellyfin"] += 1
+                else:
+                    text = subs.extract_embedded(path, *emb) if emb else subs.read_text(src)
                 got = subs.tidy(subs.parse(text, kind))
             except Exception as e:  # one bad file must not stop a library pass
                 err = e

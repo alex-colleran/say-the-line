@@ -511,3 +511,22 @@ class IndexOrder(unittest.TestCase):
                     mock.patch.object(index.db, "path_map", return_value=[]):
                 index.index(os.path.join(d, "cues.db"), movies=True, log=seen.append)
         self.assertEqual([s.split(":")[0].strip() for s in seen], ["new-file", "old-file", "new-track"])
+
+
+class JellyfinSubtitleCache(unittest.TestCase):
+    def test_uses_a_cached_track_only_when_newer_than_the_video(self):
+        with tempfile.TemporaryDirectory() as d:
+            jf = "a811bbbbb08fb74e2045c18d4bf8c446"
+            folder = os.path.join(d, "a8", "a811bbbb-b08f-b74e-2045-c18d4bf8c446")
+            os.makedirs(folder)
+            video, srt = os.path.join(d, "ep.mkv"), os.path.join(folder, "3.srt")
+            for p in (video, srt):
+                with open(p, "w") as f:
+                    f.write("x")
+            os.utime(video, (1000, 1000))
+            os.utime(srt, (2000, 2000))
+            self.assertEqual(jellyfin.cached_subtitle(d, jf, 3, "subrip", video), srt)
+            self.assertIsNone(jellyfin.cached_subtitle(d, jf, 4, "subrip", video), "other stream")
+            self.assertIsNone(jellyfin.cached_subtitle(d, jf, 3, "ass", video), "ASS is cached as .ass")
+            os.utime(video, (3000, 3000))           # the file was replaced after Jellyfin extracted
+            self.assertIsNone(jellyfin.cached_subtitle(d, jf, 3, "subrip", video))
