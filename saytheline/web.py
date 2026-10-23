@@ -404,7 +404,8 @@ def run_transcribe(job_id, req):
             job["state"] = "listening"
             t = time.time()
             if req.get("source") == "subs":     # keep the subtitle text, take word times from speech
-                subs = item_cues(row["id"], a, b, int(req.get("offset_ms") or 0))
+                reach = snapper.SUB_REACH_MS        # the lines either side too: subtitles can run early or late
+                subs = item_cues(row["id"], a - reach, b + reach, int(req.get("offset_ms") or 0))
                 cues = snapper.subtitle_words(row["path"], a, b, subs)
             else:
                 cues = snapper.transcribe_cues(row["path"], a, b)

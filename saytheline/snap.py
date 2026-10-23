@@ -239,13 +239,32 @@ def align_words(sub_cues, words):
         for k in range(i, j):
             times[k] = (round(lo + step * (k - i)), round(lo + step * (k - i + 1)))
         i = j
+    matched = {k for b in m.get_matching_blocks() for k in range(b.a, b.a + b.size)}
     out = []
     for c in sub_cues:
-        ws = [dict(w=w, s=t[0], e=t[1]) for (w, cc), t in zip(disp, times) if cc is c]
-        out.append(dict(idx=c.get("idx", 0), start_ms=c["start_ms"], end_ms=c["end_ms"], text=c["text"], words=ws))
+        mine = [k for k, (_, cc) in enumerate(disp) if cc is c]
+        ws = [dict(w=disp[k][0], s=times[k][0], e=times[k][1]) for k in mine]
+        # a line's time is when it is said, not when its subtitle shows
+        a, b = (ws[0]["s"], ws[-1]["e"]) if ws else (c["start_ms"], c["end_ms"])
+        out.append(dict(idx=c.get("idx", 0), start_ms=a, end_ms=b, text=c["text"], words=ws,
+                        heard=sum(k in matched for k in mine)))
     return out
 
 
+SUB_REACH_MS = 5000     # subtitles this far early or late still caption the speech inside a cut
+
+
 def subtitle_words(src, in_ms, out_ms, sub_cues, margin_ms=1500):
+    """Word times for the subtitle lines said inside [in_ms, out_ms]. `sub_cues` should reach
+    SUB_REACH_MS beyond the cut: when subtitles run early or late, the speech inside the cut belongs
+    to lines whose subtitles sit outside it. Those are kept only when their words were heard
+    inside the cut; lines whose subtitles are inside it are kept as before. Only the cut (plus a
+    margin) is listened to: a longer window crosses Whisper's 30 s chunks, which can drop words."""
     words = transcribe(src, max(0, in_ms - margin_ms), out_ms + margin_ms)
-    return align_words(sub_cues, words)
+    out = []
+    for c, sub in zip(align_words(sub_cues, words), sub_cues):
+        inside_sub = sub["end_ms"] > in_ms and sub["start_ms"] < out_ms
+        said_inside = any(w["e"] > in_ms and w["s"] < out_ms for w in c["words"])
+        if said_inside and (inside_sub or c["heard"]):
+            out.append(c)
+    return out
