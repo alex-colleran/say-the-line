@@ -1148,17 +1148,28 @@ function drawTimeline() {
     + `<div class="ph" id="ph" style="left:${clampPct(pct(absNow()))}%"></div>`
     + `<div class="h" data-h="in" style="left:${clampPct(pct(ed.inMs))}%"></div><div class="h" data-h="out" style="left:${clampPct(pct(ed.outMs))}%"></div>`;
 }
+// A line counts as in the clip when most of it is: one clipped at an edge still offers + (grow to it).
+function lineIn(c) { return Math.min(c.end_ms, ed.outMs) - Math.max(c.start_ms, ed.inMs) > (c.end_ms - c.start_ms) / 2; }
+// The list is rebuilt only when the lines or the cut change. Playback just moves the "now" mark:
+// rebuilding it four times a second swapped the buttons out from under a tap, which then did nothing.
+let linesDrawn = { cues: null, key: "" };
 function drawLines() {
-  const now = absNow();
+  const key = [Math.round(ed.inMs), Math.round(ed.outMs), ed.hit && ed.hit.idx].join();
+  if (linesDrawn.cues === ed.cues && linesDrawn.key === key) return markNowLine();
+  linesDrawn = { cues: ed.cues, key };
   $("#lines").innerHTML = ed.cues.length ? ed.cues.map((c, i) => {
-    const inside = c.end_ms > ed.inMs && c.start_ms < ed.outMs;
-    const playing = now >= c.start_ms && now < c.end_ms;
-    return `<div class="ln ${inside ? "in" : ""} ${playing ? "now" : ""}" data-i="${i}">
+    const inside = lineIn(c);
+    return `<div class="ln ${inside ? "in" : ""}" data-i="${i}">
       <span class="tm">${fmt(c.start_ms)}</span><span class="txt">${c.idx === ed.hit.idx ? hl(c.text) : esc(c.text)}</span>
       <button data-act="only" title="Clip just this line">Only</button>
       ${inside ? `<button class="minus" data-act="minus" title="Trim this line off the clip" aria-label="Trim this line off">${ic("minus")}</button>`
                : `<button data-act="plus" title="Grow the clip to include this line" aria-label="Grow the clip to this line">${ic("plus")}</button>`}</div>`;
   }).join("") : `<div class="ln"><span></span><span class="hint">No subtitle lines in this part of the video.</span></div>`;
+  markNowLine();
+}
+function markNowLine() {
+  const now = absNow();
+  $$("#lines .ln[data-i]").forEach(el => { const c = ed.cues[+el.dataset.i]; el.classList.toggle("now", !!c && now >= c.start_ms && now < c.end_ms); });
 }
 function drawReadout() {
   $("#readout").innerHTML = `<b>${fmtp(ed.inMs)}</b> → <b>${fmtp(ed.outMs)}</b> · ${((ed.outMs - ed.inMs) / 1000).toFixed(1)} s`;
@@ -1167,7 +1178,7 @@ function drawReadout() {
 $("#lines").addEventListener("click", e => {
   const ln = e.target.closest(".ln"); if (!ln || ln.dataset.i === undefined) return;
   const c = ed.cues[+ln.dataset.i];
-  const act = e.target.dataset.act;
+  const btn = e.target.closest("button[data-act]"), act = btn && btn.dataset.act;   // a tap may land on the icon
   // the padding these add is trimmed to the camera cuts in it, like a newly opened clip's
   const cuts = shotCuts();
   if (act === "only") {
@@ -1176,6 +1187,7 @@ $("#lines").addEventListener("click", e => {
   }
   if (act === "plus") {           // only the end that grew is trimmed, never into what was already in
     let a = Math.min(ed.inMs, c.start_ms - PAD_IN), b = Math.max(ed.outMs, c.end_ms + PAD_OUT);
+    [a, b] = fitLines(a, b, Math.min(c.start_ms, ed.inMs), Math.max(c.end_ms, ed.outMs), ed.cues.filter(x => x !== c && !lineIn(x)));
     const [fa, fb] = fitShots(a, b, c.start_ms, c.end_ms, cuts);
     if (a < ed.inMs) a = Math.min(fa, ed.inMs);
     if (b > ed.outMs) b = Math.max(fb, ed.outMs);
@@ -1183,7 +1195,7 @@ $("#lines").addEventListener("click", e => {
   }
   if (act === "minus") {
     // trim from whichever end the line is nearer; never empties the clip
-    const inside = ed.cues.filter(x => x.end_ms > ed.inMs && x.start_ms < ed.outMs);
+    const inside = ed.cues.filter(lineIn);
     if (inside.length <= 1) return flash("That's the only line left in the clip");
     const first = inside[0], last = inside[inside.length - 1];
     const fromStart = c === first || (c !== last && (c.start_ms - ed.inMs) < (ed.outMs - c.end_ms));
@@ -1262,7 +1274,7 @@ $("#playSel").onclick = togglePlay;
 $("#vid").addEventListener("click", togglePlay);
 ["play", "pause", "ended", "emptied"].forEach(ev => $("#vid").addEventListener(ev, paintPlay));
 $("#loopBtn").onclick = () => { opts.loop = !opts.loop; saveOpts(); paintLoop(); };
-$("#vid").addEventListener("timeupdate", () => { if (!$("#sheet").hidden) drawLines(); });
+$("#vid").addEventListener("timeupdate", () => { if (!$("#sheet").hidden) markNowLine(); });
 // timeupdate is only ~4 Hz, slower than fast dialogue: redraw captions every frame while playing
 function frameLoop() {
   const v = $("#vid");
