@@ -489,6 +489,7 @@
     <div class="sheet-head"><div class="t" id="scTitle"></div><button class="x" id="scClose" aria-label="Close"><svg class="i" aria-hidden="true"><use href="#i-x"/></svg></button></div>
     <div style="position:relative"><video id="scVid" playsinline controls hidden style="width:100%;max-height:40vh;background:#000;display:block"></video>
       <div class="loadbar" id="scLoad" hidden><i></i></div></div>
+    <div id="scResult"></div>
     <div class="grp">
       <div class="opt"><span>Order</span><div class="chips" data-sc="order"></div></div>
       <div class="opt"><span>Repeats</span><div class="chips" data-sc="dedupe"></div><span class="hint" id="scHidden"></span></div>
@@ -498,7 +499,8 @@
     <details class="grp" id="scSettings" open>
       <summary>Settings</summary>
       <div class="opt"><span>Timing</span><div class="chips" data-sc="check"></div></div>
-      <div class="hint">Checking listens to each clip (~5–15 s each) to fix subtitles that run early or late, and finds the exact words.</div>
+      <div class="hint">Checking listens to each clip (~5–15 s each) to fix subtitles that run early or late, and finds the exact words.
+        Render does it by itself for any clip not checked yet. <b>Check first</b> only if you want to see which lines aren't heard and untick them before rendering.</div>
       <div class="opt"><span>Cut</span><div class="chips" data-sc="cut"></div></div>
       <div class="opt"><span>Padding</span><div class="chips" data-sc="padding"></div></div>
       <div class="opt"><span>Shots</span><div class="chips" data-sc="shots"></div></div>
@@ -514,11 +516,10 @@
       <div class="hint">Caption font, size and colours follow the editor's Captions settings.</div>
     </details>
     <div class="sclist" id="scList"></div>
-    <div id="scResult"></div>
   </div>
   <div class="footer"><div class="footer-in">
     <div class="sum" id="scSum"></div>
-    <button class="b" id="scCheck"><svg class="i" aria-hidden="true"><use href="#i-headphones"/></svg>Check</button>
+    <button class="b" id="scCheck"><svg class="i" aria-hidden="true"><use href="#i-headphones"/></svg>Check first</button>
     <button class="b primary" id="scRender">Render</button>
     <button class="b" id="scStop" hidden><svg class="i" aria-hidden="true"><use href="#i-stop"/></svg>Stop</button>
   </div></div>
@@ -562,10 +563,18 @@ function fmtp(ms) { return fmt(ms) + "." + String(Math.floor((Math.max(0, ms) % 
 function bytes(n) { return n > 1e6 ? (n / 1e6).toFixed(1) + " MB" : Math.round(n / 1e3) + " KB"; }
 async function postJob(url, body, onState) {
   let job = await (await fetch(url, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) })).json();
-  while (job.state && !["done", "error", "cancelled"].includes(job.state)) {
+  for (let misses = 0; job.state && !["done", "error", "cancelled"].includes(job.state); ) {
     onState && onState(job);
     await sleep(job.state === "queued" ? 800 : 500);
-    job = await (await fetch("/api/job/" + job.id)).json();
+    let r;
+    try { r = await fetch("/api/job/" + job.id); }
+    catch (e) {                              // the app is restarting or the network dropped: keep trying a while
+      if (++misses > 40) throw new Error("Lost contact with Say the Line. Check it is running, then try again.");
+      continue;
+    }
+    misses = 0;
+    if (r.status === 404) throw new Error("Say the Line restarted and this job was lost. Tap it again to start over.");
+    job = await r.json();
   }
   if (job.state === "cancelled") throw Object.assign(new Error("Stopped"), { job });
   if (job.state !== "done") throw new Error(job.error || "failed");
@@ -1880,7 +1889,8 @@ const SC_CHOICES = {
   transition: [["cut", "Hard cut"], ["fade", "Quick fade"]],
   loudnorm: [[true, "Even out"], [false, "As is"]],
   label: [[true, "Show · episode"], [false, "None"]],
-  captions: [["off", "Off"], ["classic", "Subtitles"], ["tiktok", "TikTok"], ["popin", "Pop-in"], ["bigword", "Big word"]],
+  captions: [["off", "Off"], ["classic", "Subtitles"], ["tiktok", "TikTok"], ["popin", "Pop-in"], ["bigword", "Big word"],
+             ["poster", "Poster"], ["kinetic", "Kinetic"]],
   aspect: [["16:9", "16:9"], ["9:16", "9:16"], ["1:1", "1:1"], ["4:3", "4:3"]],
   fit: [["crop", "Fill (crop)"], ["pad", "Whole picture (bars)"]],
   res: [[1080, "1080"], [720, "720"], [480, "480"]],
@@ -1938,7 +1948,8 @@ function scDuration(list) {
     return t + len + pi + po;
   }, 0);
 }
-function scNeedsCheck() { return sc.o.check || sc.o.cut === "phrase" || ["tiktok", "popin", "bigword"].includes(sc.o.captions); }
+// = web.run_supercut's need_check: Render listens first by itself whenever this is true
+function scNeedsCheck() { return sc.o.check || sc.o.cut === "phrase" || WORD_LOOKS.includes(sc.o.captions); }
 function drawSc() {
   $$("[data-sc]").forEach(box => {
     const key = box.dataset.sc; box.innerHTML = "";
@@ -2074,7 +2085,10 @@ async function scRunCheck() {
     sc.job = job.id; sc.kind = "check"; drawSc();
     while (!["done", "error", "cancelled"].includes(job.state)) {
       await sleep(1200);
-      job = await (await fetch("/api/job/" + job.id)).json();
+      const r = await fetch("/api/job/" + job.id).catch(() => null);
+      if (!r) continue;                          // the app is restarting: keep trying
+      if (r.status === 404) throw new Error("Say the Line restarted and the check was lost. The clips checked so far are kept; tap Check first again for the rest.");
+      job = await r.json();
       Object.assign(sc.checks, job.results || {}); sc.current = job.current;
       $("#scSum").textContent = job.state === "queued" ? "Waiting for the renderer…" : `Listening ${Math.min((job.done || 0) + 1, job.total || 1)} of ${job.total || hits.length}…`;
       drawSc();
@@ -2099,7 +2113,7 @@ $("#scRender").onclick = async () => {
     check: sc.o.check, cut: sc.o.cut, padding: sc.o.padding, shots: sc.o.shots, unheard: sc.o.unheard, transition: sc.o.transition, loudnorm: sc.o.loudnorm,
     label: sc.o.label, aspect: sc.o.aspect, res: sc.o.res, fit: sc.o.fit,
     subs: { on: look !== "off", style: look === "classic" ? "classic" : look, font: look === "classic" ? opts.fontClassic : opts.fontWord,
-            size: opts.size, colour: opts.colour, box: opts.box, position: look === "bigword" ? "middle" : opts.position, hl: opts.hl, caps: opts.caps } };
+            size: opts.size, colour: opts.colour, box: opts.box, position: ["bigword", "poster", "kinetic"].includes(look) ? "middle" : opts.position, hl: opts.hl, caps: opts.caps } };
   try {
     const job = await postJob("/api/supercut", body, j => {
       if (sc.job !== j.id) { sc.job = j.id; sc.kind = "render"; drawSc(); }
@@ -2121,7 +2135,7 @@ $("#scRender").onclick = async () => {
       $("#scTags").hidden = !e; if (e) tagEditor($("#scTags"), e, paint); };
     $("#scSave").onclick = async () => { const e = savedClip(job.file); if (e) await libDelete(e.id); else await libSave({ ...entry, tags: ["supercut"] }); paint(); };
     paint();
-    $("#scResult").scrollIntoView({ behavior: "smooth", block: "nearest" });
+    $("#scResult").scrollIntoView({ behavior: "smooth", block: "start" });
   } catch (e) {
     if (e.job) Object.assign(sc.checks, e.job.checks || {});
     $("#scResult").innerHTML = e.message === "Stopped" ? `<div class="hint">Stopped. Nothing was rendered; the checks so far are kept.</div>`

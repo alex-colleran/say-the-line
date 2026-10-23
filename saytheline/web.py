@@ -977,6 +977,11 @@ class Handler(BaseHTTPRequestHandler):
                 return self.send(200, {"offset_ms": OFFSETS.get(int(q["item"]), 0)})
             if u.path == "/api/tags":
                 return self.send(200, LIB.tags())
+            if u.path == "/api/busy":             # jobs still running: check before restarting the server
+                with JOBS_LOCK:
+                    run = [dict(id=k, kind=j["kind"], state=j["state"]) for k, j in JOBS.items()
+                           if j["state"] not in ("done", "error", "cancelled")]
+                return self.send(200, run)
             if u.path == "/api/titles":           # every show and movie, for the title filter's "no hits" note
                 rows = db().execute("SELECT DISTINCT series AS name FROM items WHERE kind = 'episode' "
                                     "UNION SELECT title || CASE WHEN year THEN ' (' || year || ')' ELSE '' END "
