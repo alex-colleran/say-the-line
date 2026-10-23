@@ -256,7 +256,10 @@
   .sc-row.drag { border-color: var(--accent); box-shadow: 0 6px 18px rgba(0,0,0,.5); position: relative; z-index: 2; }
   .sc-row.drag .grip { cursor: grabbing; color: var(--accent); }
   .sc-row .st { position: relative; aspect-ratio: 16/9; overflow: hidden; background: var(--panel-2); }
+  .sc-row .st { padding: 0; border: 0; cursor: pointer; display: block; width: 100%; }
   .sc-row .st img { width: 100%; height: 100%; object-fit: cover; display: block; }
+  .sc-row .st video { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; background: #000; }
+  .sc-row.on { border-color: var(--accent); }
   .sc-row .sm { min-width: 0; display: flex; flex-direction: column; gap: 3px; font-size: 13.5px; }
   .sc-row .sm .t { font-weight: 600; font-size: 13px; }
   .sc-row .sm .t small { color: var(--dim); font-weight: 400; }
@@ -600,8 +603,6 @@
     <div class="sheet-head"><div class="t" id="scTitle"></div>
       <button class="hbtn2" id="scHeart" aria-label="Save as a draft"><svg class="i" aria-hidden="true"><use href="#i-heart"/></svg></button><button class="x" id="scClose" aria-label="Close"><svg class="i" aria-hidden="true"><use href="#i-x"/></svg></button></div>
     <div class="tagrow" id="scDraftTags" hidden></div>
-    <div style="position:relative"><video id="scVid" playsinline controls hidden style="width:100%;max-height:40vh;background:#000;display:block"></video>
-      <div class="loadbar" id="scLoad" hidden><i></i></div></div>
     <div id="scResult"></div>
     <div class="grp">
       <div class="opt"><span>Matches</span><div class="chips" data-sc="matches"></div></div>
@@ -1327,7 +1328,6 @@ function loadbar(video, bar) {
   return show;
 }
 const showVidLoad = loadbar($("#vid"), $("#vload"));
-loadbar($("#scVid"), $("#scLoad"));
 
 async function loadWindow() {
   const seq = ++ed.loadSeq, v = $("#vid");
@@ -2262,29 +2262,43 @@ function drawSc() {
   const listEl = $("#scList"); listEl.innerHTML = "";
   list.forEach(h => {
     const k = scKey(h), on = sc.sel.has(k), c = sc.checks[k];
-    const row = document.createElement("div"); row.className = "sc-row" + (on ? "" : " off");
+    const row = document.createElement("div"); row.className = "sc-row" + (on ? "" : " off") + (k === sc.now ? " on" : "");
     const head = h.kind === "episode" ? `${esc(h.series)} · S${String(h.season ?? 0).padStart(2, "0")}E${String(h.episode ?? 0).padStart(2, "0")}` : `${esc(h.title)} (${h.year || ""})`;
     row.dataset.key = k;
     row.innerHTML = `<button class="grip" type="button" title="Drag to reorder" aria-label="Move (drag, or arrow keys)">${ic("grip")}</button>
       <input type="checkbox" ${on ? "checked" : ""} aria-label="Include">
-      <div class="st"><img loading="lazy" src="${h.thumb}" alt=""></div>
+      <button class="st" type="button" aria-label="Preview this clip"><img loading="lazy" src="${h.thumb}" alt=""></button>
       <div class="sm"><div class="t">${head} <small>${fmt(h.start_ms)}</small></div><div>${hl(h.text)}</div><div>${scStatus(h)}</div></div>
       <button class="b" title="Preview this clip" aria-label="Preview this clip">${ic("play")}</button>`;
     row.querySelector("img").onerror = e => e.target.remove();
     row.querySelector("input").onchange = e => { if (e.target.checked) sc.sel.add(k); else sc.sel.delete(k); drawSc(); };
     scDrag(row);
-    row.querySelector("button.b").onclick = () => {
+    const st = row.querySelector(".st");
+    if (k === sc.now) st.appendChild(scVidEl());          // moved within one task, so it keeps playing
+    const play = () => {
+      if (k === sc.now && !scVidEl().paused) return scStopPlay();
       const [pi, po] = SC_PAD[sc.o.padding];
       let a, b;
       if (c && c.found) { a = (sc.o.cut === "phrase" && c.phrase_s != null ? c.phrase_s : c.line_s) - pi; b = (sc.o.cut === "phrase" && c.phrase_e != null ? c.phrase_e : c.line_e) + po; }
       else { a = h.start_ms - pi; b = h.end_ms + po; }
       a = Math.max(0, Math.round(a / 100) * 100); b = Math.round(b / 100) * 100;
-      const v = $("#scVid"); v.hidden = false; v.src = `/preview/${h.item_id}/${a}-${b}.mp4`; v.play().catch(() => {});
-      v.scrollIntoView({ behavior: "smooth", block: "nearest" });
+      scStopPlay(); sc.now = k; row.classList.add("on");
+      const v = scVidEl(); st.appendChild(v); v.src = `/preview/${h.item_id}/${a}-${b}.mp4`; v.play().catch(() => {});
     };
+    st.onclick = play; row.querySelector("button.b").onclick = play;
     listEl.appendChild(row);
   });
   touchDraft("sc");
+}
+// a clip previews in its own thumbnail (one <video>, moved between rows); it ends back on the thumbnail
+function scVidEl() {
+  if (!sc.vid) { sc.vid = document.createElement("video"); sc.vid.playsInline = true; sc.vid.onended = scStopPlay; }
+  return sc.vid;
+}
+function scStopPlay() {
+  const v = sc.vid;
+  if (v) { const row = v.closest(".sc-row"); if (row) row.classList.remove("on"); v.pause(); v.remove(); v.removeAttribute("src"); v.load(); }
+  sc.now = null;
 }
 // Reorder by dragging a row's handle (pointer events, so it works with touch too) or with the arrow keys
 // on it. The new order becomes "Your order"; render sends the clips in it.
@@ -2341,7 +2355,7 @@ async function openSupercut() {
   const scope = total > 300 ? ` · best 300 of ${total.toLocaleString()} (narrow with the title filter)`
     : total === null && state.res && state.res.more ? " · best 300 matches" : "";
   $("#scTitle").innerHTML = `Supercut<small>“${esc(state.q)}”${filterOn() ? " · " + esc(filterLabel()) : ""}${scope}</small>`;
-  $("#scResult").innerHTML = ""; $("#scVid").hidden = true;
+  $("#scResult").innerHTML = ""; scStopPlay();
   $("#scSheet").hidden = false; document.body.style.overflow = "hidden"; history.pushState({ sheet: 3 }, "");
   await scFetch();
 }
@@ -2733,7 +2747,7 @@ async function openDraft(id) {
                         seed: st.seed || 1, busy: false, job: null, draftId: d.id });
     Object.assign(sc.o, st.o || {}); DRAFT.sc.last = d.state;
     $("#scTitle").innerHTML = `Supercut<small>${esc(st.sub || "“" + sc.q + "”")}</small>`;
-    $("#scResult").innerHTML = ""; $("#scVid").hidden = true;
+    $("#scResult").innerHTML = ""; scStopPlay();
     $("#scSheet").hidden = false; document.body.style.overflow = "hidden"; history.pushState({ sheet: 3 }, "");
     drawSc();
   }
@@ -3071,7 +3085,7 @@ window.addEventListener("popstate", () => {
   // closing the sheet stops a check (its results would be lost with the sheet); a render carries on
   // and lands in Library > All rendered
   if (!$("#scSheet").hidden && sc.busy && sc.job && sc.kind === "check") fetch(`/api/job/${sc.job}/cancel`, { method: "POST" }).catch(() => {});
-  if (!$("#scSheet").hidden) { draftFlush("sc"); const v = $("#scVid"); v.pause(); v.removeAttribute("src"); $("#scSheet").hidden = true;
+  if (!$("#scSheet").hidden) { draftFlush("sc"); scStopPlay(); $("#scSheet").hidden = true;
     document.body.style.overflow = ""; return; }
   if (!$("#libSheet").hidden) { $("#libSheet").hidden = true; refreshCardHearts(); return; }
   if (!$("#sheet").hidden) { closeEditor(); refreshCardHearts();
