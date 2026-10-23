@@ -1745,50 +1745,101 @@ function schedulePoster() {
 }
 /* kinetic: the server lays out each card (kinetic.layout); every word's motion is a pure function
    of time, the same one the render samples each frame */
-const KIN = { enter: { rise: 260, slam: 320, slide: 420 }, exit: 300, stagger: 22, push: 0.05 };   // = kinetic.py
+const KIN = { exit: 300, stagger: 22, push: 0.05, barDelay: 60, bar: 220 };   // = kinetic.py
 const kEaseOutCubic = x => 1 - (1 - x) ** 3;
 const kEaseOutBack = (x, s = 1.9) => 1 + (s + 1) * (x - 1) ** 3 + s * (x - 1) ** 2;
+function kEaseOutBounce(x) {
+  const n = 7.5625, d = 2.75;
+  if (x < 1 / d) return n * x * x;
+  if (x < 2 / d) { x -= 1.5 / d; return n * x * x + 0.75; }
+  if (x < 2.5 / d) { x -= 2.25 / d; return n * x * x + 0.9375; }
+  x -= 2.625 / d; return n * x * x + 0.984375;
+}
 const kClamp = x => x < 0 ? 0 : x > 1 ? 1 : x;
+// = kinetic._held: the push-in and the exit, shared by words and bars
+function kineticHeld(card, cx, cy, kw, t) {
+  const k = 1 + KIN.push * kClamp((t - card.start_ms) / Math.max(1, card.end_ms - card.start_ms));
+  let gx = card.cx + (cx - card.cx) * k, gy = card.cy + (cy - card.cy) * k, scale = k, rot = 0, alpha = 1;
+  const q = (t - card.end_ms - KIN.stagger * kw) / KIN.exit;
+  if (q > 0) {
+    const sign = kw % 2 ? 1 : -1;
+    if (card.exit === "scatter") {
+      let dx = gx - card.cx, dy = gy - card.cy, n = Math.hypot(dx, dy) || 1;
+      if (n < 1) { dx = sign; dy = -0.3; }
+      const d = q ** 1.6 * card.spread;
+      gx += dx / n * d; gy += dy / n * d; rot = sign * 30 * q; scale *= 1 + 0.3 * q;
+    } else if (card.exit === "push") gy -= q * q * card.push;
+    else { gy += q * q * card.fall; rot = sign * (8 + 5 * (kw % 3)) * q; }
+    alpha = 1 - kClamp((q - 0.2) / 0.8);
+  }
+  return { gx, gy, scale, rot, alpha, leaving: q > 0, k };
+}
 // = kinetic.word_state
 function kineticState(card, x, t) {
-  const exitAt = card.end_ms + KIN.stagger * x.k;
-  if (t < x.s || t >= exitAt + KIN.exit) return null;
-  const k = 1 + KIN.push * kClamp((t - card.start_ms) / Math.max(1, card.end_ms - card.start_ms));
+  if (t < x.s || t >= card.end_ms + KIN.stagger * x.k + KIN.exit) return null;
+  const H = kineticHeld(card, x.cx, x.cy, x.k, t), k = H.k;
   const grow = (px, c) => c + (px - c) * k;
-  let cx = grow(x.cx, card.cx), cy = grow(x.cy, card.cy), scale = k, rot = x.rot, alpha = 1, clip = null, dy = 0;
   const mask = [grow(x.clip[0], card.cx), grow(x.clip[1], card.cy), grow(x.clip[2], card.cx), grow(x.clip[3], card.cy)];
-  const p = (t - x.s) / KIN.enter[x.enter];
-  if (p < 1) {
-    if (x.enter === "rise") { dy = (1 - kEaseOutCubic(p)) * (mask[3] - cy + x.size * k * x.lh / 2); clip = mask; }
-    else if (x.enter === "slam") { scale *= 1.5 - 0.5 * kEaseOutBack(p); alpha = kClamp(p * 4); }
+  let cx = H.gx, cy = H.gy, scale = H.scale, alpha = H.alpha, rot = x.rot + H.rot, clip = null, dx = 0, dy = 0;
+  const halfH = x.size * k * x.lh / 2, left = cx - x.adv * x.sx * k / 2;
+  const p = (t - x.s) / x.dur;
+  if (p < 1 && !H.leaving) {
+    const e = x.enter;
+    if (e === "rise") { dy = (1 - kEaseOutCubic(p)) * (mask[3] - cy + halfH); clip = mask; }
+    else if (e === "slam") {
+      scale *= 1.5 - 0.5 * kEaseOutBack(p); alpha *= kClamp(p * 4);
+      if (x.tier === 4 && p > 0.35 && x.shake) dx = x.size * 0.05 * Math.sin((t - x.s) / 18) * (1 - p);
+    } else if (e === "drop") { dy = -(1 - kEaseOutBounce(p)) * x.size * 1.6; alpha *= kClamp(p * 5); }
+    else if (e === "wipe") clip = [left - 4, cy - halfH - 4, left + x.adv * x.sx * k * kEaseOutCubic(p) + 1, cy + halfH + 4];
+    else if (e === "type") {
+      const n = Math.min(x.letters.length, Math.floor(p * x.letters.length) + 1);
+      clip = [left - 4, cy - halfH - 4, left + x.letters[n - 1] * x.sx * k + 1, cy + halfH + 4];
+    } else if (e === "fade") { alpha *= kEaseOutCubic(p); dy = (1 - kEaseOutCubic(p)) * x.size * 0.25; }
     else { dy = (1 - kEaseOutCubic(p)) * (mask[3] - mask[1]) * (x.rot > 0 ? 1 : -1); clip = mask; }
   }
-  const q = (t - exitAt) / KIN.exit;
-  if (q > 0) {
-    dy += q * q * card.fall;
-    rot += (x.k % 2 ? 1 : -1) * (8 + 5 * (x.k % 3)) * q;
-    alpha *= 1 - kClamp((q - 0.2) / 0.8);
-    clip = null;
+  return { cx: cx + dx, cy: cy + dy, scale, sx: x.sx, rot, alpha, clip };
+}
+// = kinetic.bar_state
+function kineticBarState(card, bar, t) {
+  const start = bar.s + KIN.barDelay;
+  if (t < start || t >= card.end_ms + KIN.stagger * bar.k + KIN.exit) return null;
+  const H = kineticHeld(card, bar.cx, bar.cy, bar.k, t), p = (t - start) / KIN.bar;
+  let clip = null;
+  if (p < 1 && !H.leaving) {
+    const left = H.gx - bar.bw * H.scale / 2;
+    clip = [left - 2, H.gy - bar.bh * H.scale / 2 - 2, left + bar.bw * H.scale * kEaseOutCubic(p) + 1, H.gy + bar.bh * H.scale / 2 + 2];
   }
-  return { cx, cy: cy + dy, scale, rot, alpha, clip };
+  return { cx: H.gx, cy: H.gy, scale: H.scale, sx: 1, rot: H.rot, alpha: H.alpha, clip };
 }
 function drawKinetic(cap, r, now) {
   const P = ed.poster;
   if (!P || P.key !== JSON.stringify(posterRequest())) { cap.hidden = true; return; }
   const sc = r.W / P.w, base = COLOURS[opts.colour] || "#FFFFFF", hlc = HL[opts.hl];
+  // an element positioned by its centre and moved like libass (\an5 \pos \fscx \fscy \frz), in the
+  // mask it's revealed through (= ASS \clip) when it has one
+  const place = (s, inner, style) => {
+    const [ox, oy] = s.clip ? [s.clip[0], s.clip[1]] : [0, 0];
+    const el = `<div style="position:absolute;left:${(s.cx - ox) * sc}px;top:${(s.cy - oy) * sc}px;opacity:${s.alpha};`
+      + `transform:translate(-50%,-50%) rotate(${-s.rot}deg) scale(${s.scale * s.sx},${s.scale});${style}">${inner}</div>`;
+    if (!s.clip) return el;
+    const [x1, y1, x2, y2] = s.clip;
+    return `<div style="position:absolute;overflow:hidden;left:${x1 * sc}px;top:${y1 * sc}px;width:${(x2 - x1) * sc}px;height:${(y2 - y1) * sc}px">${el}</div>`;
+  };
   let html = "";
-  for (const card of P.posters) for (const x of card.words) {
-    const s = kineticState(card, x, now);
-    if (!s || s.alpha <= 0.01) continue;
-    const col = x.tier === 4 ? hlc : x.tier <= 1 ? "#D9D9D9" : base, sz = x.size * sc;
-    const span = (ox, oy) => `<span style="position:absolute;left:${(s.cx - ox) * sc}px;top:${(s.cy - oy) * sc}px;`
-      + `transform:translate(-50%,-50%) scale(${s.scale}) rotate(${-s.rot}deg);font-family:'${x.font}',system-ui,sans-serif;`
-      + `font-size:${sz}px;line-height:${x.lh};white-space:nowrap;color:${col};opacity:${s.alpha};`
-      + `-webkit-text-stroke:${sz * 0.15}px #000;paint-order:stroke fill">${esc(x.w)}</span>`;
-    if (s.clip) {                                // the mask a word rises out of (= ASS \clip)
-      const [x1, y1, x2, y2] = s.clip;
-      html += `<div style="position:absolute;overflow:hidden;left:${x1 * sc}px;top:${y1 * sc}px;width:${(x2 - x1) * sc}px;height:${(y2 - y1) * sc}px">${span(x1, y1)}</div>`;
-    } else html += span(0, 0);
+  for (const card of P.posters) {
+    for (const bar of card.bars || []) {                 // highlight bars under the words
+      const s = kineticBarState(card, bar, now);
+      if (s && s.alpha > 0.01) html += place(s, "", `width:${bar.bw * sc}px;height:${bar.bh * sc}px;background:${hlc}`);
+    }
+    for (const x of card.words) {
+      const s = kineticState(card, x, now);
+      if (!s || s.alpha <= 0.01) continue;
+      const sz = x.size * sc;
+      const look = x.onbar ? "color:#1A1A1A;text-shadow:none"
+        : x.whisper ? `color:transparent;-webkit-text-stroke:${Math.max(1, sz * 0.045)}px ${base};text-shadow:none`
+        : `color:${x.tier === 4 ? hlc : x.tier <= 1 ? "#D9D9D9" : base};-webkit-text-stroke:${sz * 0.15}px #000;paint-order:stroke fill`;
+      html += place(s, esc(x.w), `font-family:'${x.font}',system-ui,sans-serif;font-size:${sz}px;line-height:${x.lh};white-space:nowrap;${look}`);
+    }
   }
   cap.className = "cap tt";
   cap.innerHTML = html;
@@ -1809,7 +1860,9 @@ function drawPoster(cap, r, now) {
   cap.innerHTML = p.lines.map(l => `<div style="position:absolute;left:0;right:0;top:${l.y * sc}px;line-height:${l.height * sc}px;white-space:nowrap">`
     + l.words.map(w => { const i = j++; const sz = w.size * sc;
         const col = w.tier === 4 ? hlc : w.tier <= 1 ? "#D9D9D9" : base;
-        return `<span class="${pop && i === k ? "pop" : ""}" style="margin:0 .12em;visibility:${i <= k ? "visible" : "hidden"};font-family:'${w.font}',system-ui,sans-serif;font-size:${sz}px;color:${col};-webkit-text-stroke:${sz * 0.15}px #000;paint-order:stroke fill">${esc(w.w)}</span>`; }).join("")
+        const look = w.whisper ? `color:transparent;-webkit-text-stroke:${Math.max(1, sz * 0.045)}px ${base};text-shadow:none`   // = media.poster_ass
+          : `color:${col};-webkit-text-stroke:${sz * 0.15}px #000;paint-order:stroke fill`;
+        return `<span class="${pop && i === k ? "pop" : ""}" style="margin:0 .12em;visibility:${i <= k ? "visible" : "hidden"};font-family:'${w.font}',system-ui,sans-serif;font-size:${sz}px;${look}">${esc(w.w)}</span>`; }).join("")
     + `</div>`).join("");
   Object.assign(cap.style, { left: r.left + "px", top: r.top + "px", width: r.W + "px", height: r.H + "px",
     fontWeight: 900, textShadow: "0 2px 3px rgba(0,0,0,.5)" });

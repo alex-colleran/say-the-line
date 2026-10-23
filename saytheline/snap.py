@@ -218,9 +218,12 @@ def align_words(sub_cues, words):
     heard = [norm(w["w"]) for w in words]
     m = difflib.SequenceMatcher(None, [norm(w) for w, _ in disp], heard, autojunk=False)
     times = [None] * len(disp)
+    loud = {}
     for b in m.get_matching_blocks():
         for k in range(b.size):
             times[b.a + k] = (words[b.b + k]["s"], words[b.b + k]["e"])
+            if words[b.b + k].get("loud") is not None:
+                loud[b.a + k] = words[b.b + k]["loud"]
     # Subtitles run early or late by a steady amount across a scene: the typical gap between a
     # line's subtitle and its first heard word. A matched word far outside its own line's window
     # shifted by that gap is Whisper mistiming it (it pins the first words of a long window to the
@@ -267,7 +270,8 @@ def align_words(sub_cues, words):
     out = []
     for c in sub_cues:
         mine = [k for k, (_, cc) in enumerate(disp) if cc is c]
-        ws = [dict(w=disp[k][0], s=times[k][0], e=times[k][1]) for k in mine]
+        ws = [dict(w=disp[k][0], s=times[k][0], e=times[k][1], **({"loud": loud[k]} if k in matched and k in loud else {}))
+              for k in mine]
         # a line's time is when it is said, not when its subtitle shows
         a, b = (ws[0]["s"], ws[-1]["e"]) if ws else (c["start_ms"], c["end_ms"])
         out.append(dict(idx=c.get("idx", 0), start_ms=a, end_ms=b, text=c["text"], words=ws,

@@ -14,6 +14,10 @@ Whisper tends to start a word where the previous one ended, so after a pause the
 "starts" in the silence, and a caption pops up before anyone speaks. Each start is therefore
 refined against the audio itself: moved LATER to where the voice energy actually rises (never
 earlier), unless the word is mid-flow with no dip to find.
+
+Each word also gets "loud": how much louder (+) or quieter (-) than the clip's typical word it is,
+in dB, from the loudest part of the word. The laid-out caption looks size shouts up and whispers
+down with it.
 """
 import json
 import sys
@@ -62,6 +66,23 @@ def refine_starts(words, db):
     return words
 
 
+def loudness(words, db):
+    """words[i]["loud"]: the word's level (its loudest 10 ms frames) relative to the median word."""
+    peaks = []
+    for w in words:
+        a, b = int(w["s"] / FRAME_MS), max(int(w["s"] / FRAME_MS) + 1, int(w["e"] / FRAME_MS))
+        seg = db[a:min(b, len(db))]
+        peaks.append(float(np.percentile(seg, 80)) if len(seg) else None)
+    known = [p for p in peaks if p is not None]
+    if len(known) < 3:
+        return words
+    mid = float(np.median(known))
+    for w, p in zip(words, peaks):
+        if p is not None:
+            w["loud"] = round(p - mid, 1)
+    return words
+
+
 def transcribe(pcm, beam):
     segs, _ = model.transcribe(pcm, beam_size=beam, language="en", word_timestamps=True,
                                condition_on_previous_text=False)
@@ -73,4 +94,5 @@ model = WhisperModel("small.en", device="cpu", compute_type="int8", cpu_threads=
 # No VAD: the window is short and VAD can clip the first word, which is the one we need.
 pcm, rate = read_wav(sys.argv[1])
 words = transcribe(pcm, 5 if "--careful" in sys.argv[2:] else 1)
-json.dump(refine_starts(words, energy_db(pcm, rate)), sys.stdout)
+db = energy_db(pcm, rate)
+json.dump(loudness(refine_starts(words, db), db), sys.stdout)

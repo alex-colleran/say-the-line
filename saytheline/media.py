@@ -386,6 +386,8 @@ def poster_ass(posters, in_ms, out_ms, w, h, st, path):
                         tag += "\\alpha&H00&" + _pop(100, 0 if st.get("still") else ev_b - ev_a)
                     else:
                         tag += "\\alpha&H00&\\fscx100\\fscy100"
+                    if x.get("whisper") and j <= k:       # a whisper: outline only (= drawPoster)
+                        tag += f"\\1a&HFF&\\3c&H{base}&\\bord{max(1, round(x['size'] * 0.045))}\\shad0"
                     parts.append("{" + tag + "}" + x["w"])
                 lines.append(f"Dialogue: 0,{_ass_time(a)},{_ass_time(b)},P,,0,0,0,,"
                              f"{{\\an8\\pos({w // 2},{ln['y']})}}" + " ".join(parts))

@@ -459,7 +459,9 @@ def caption_cues(req):
     out = []
     for c in req.get("caption_cues") or []:
         a, b, t = int(c["start_ms"]), int(c["end_ms"]), str(c["text"])[:300]
-        words = [dict(w=str(w["w"])[:60], s=int(w["s"]), e=int(w["e"])) for w in (c.get("words") or [])[:80]]
+        words = [dict(w=str(w["w"])[:60], s=int(w["s"]), e=int(w["e"]),
+                      **({"loud": float(w["loud"])} if isinstance(w.get("loud"), (int, float)) else {}))
+                 for w in (c.get("words") or [])[:80]]
         idx = c.get("idx")
         if idx is not None and str(idx) in edits:
             new = edits[str(idx)]

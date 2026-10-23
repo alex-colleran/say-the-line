@@ -97,14 +97,23 @@ Design notes: what each part does and why it is built that way. For setup, see t
   largest, the clause's core nouns and main verb next, then other content words; function words
   are smallest and lighter). `poster.py` lays out one poster per clause with real font metrics:
   one big word per line, and the whole poster scaled to fill the frame.
+- **Loudness:** word timing also measures each word (its loudest 10 ms frames) against the clip's
+  typical word (`stt_worker.loudness`, `"loud"` in dB). Poster and Kinetic use it: +6 dB is a shout
+  (the biggest tier; at most two per poster, so a line said loudly throughout isn't all big), +3 dB
+  over the rest of its own poster at least a big word, and -11 dB with a quiet neighbour a whisper
+  (a size smaller, drawn in outline only). Drafts timed before this have no loudness; Redo adds it.
 - **Kinetic** (`kinetic.py`): Poster's tiers and sizes, set as justified stacks (each line scaled
-  to the widest), and on every other card that can take it a lockup: the card's first word (on the
-  left, reading up) or last word (on the right, reading down) turned 90 degrees and sized to run the
-  stack's height, so the card still reads in spoken order. Words arrive as they are said: most rise
-  from behind their line's baseline (an ASS `\clip` mask), tier-4 words slam in oversized and
-  settle, the vertical word slides along its column. A held card grows 5 %; the next card's arrival
-  drops the old words one by one. `word_state(card, word, t)` is the whole animation; the render
-  writes one ASS event per word per frame (30 fps) from it, the preview runs the same function in JS.
+  to the widest, and a line too short for that stretched sideways, up to 1.5x), and on every other
+  card that can take it a lockup: the card's first word (on the left, reading up) or last word (on
+  the right, reading down) turned 90 degrees and sized to run the stack's height, so the card still
+  reads in spoken order (not a word of thin letters, which reads as stripes). Each word arrives by
+  what it is: slam (tier 4; a shout also shakes), drop (big words, bouncing), wipe (8+ letters),
+  type (after a pause, letter by letter), fade (a whisper), rise (the rest, out of a mask under
+  their line), slide (the vertical word). A shouted key word, and the key word on every other card,
+  sits on a highlight bar that wipes in behind it, with dark type. A held card grows 5 %; it leaves
+  by how its sentence ends: `!` scatters, `?` lifts away, anything else falls. `word_state` and
+  `bar_state` are the whole animation; the render writes one ASS event per word or bar per frame
+  (30 fps) from them, and the preview runs the same functions in JS.
 - **Font sizes:** libass (like VSFilter) sizes a font by its ascent + descent, CSS and Pillow by its
   em, so every ASS writer converts with `media.ass_size` (Inter: x1.21). Without it renders came out
   about 18 % smaller than the editor showed.

@@ -52,7 +52,7 @@ sed -n '/<script>/,/<\/script>/p' saytheline/static/index.html | sed '1d;$d' > /
 - **Preview = render.** Shot trimming exists twice too: `shots.fit` / `whole_shot` and JS
   `fitShots` / `shotTargets`. Caption logic exists twice: Python (`media.word_ass`, `chunk_words`,
   `normalize_words`, `_pop`) and JS (`drawWords`, `chunkWords`, `normalizeWords`, `popAttr`). Kinetic's
-  motion is `kinetic.word_state` and JS `kineticState`. Change both together; the comments mark the
+  motion is `kinetic.word_state` / `bar_state` / `_held` and JS `kineticState` / `kineticBarState` / `kineticHeld`. Change both together; the comments mark the
   pairs (`= media.xyz`). Every ASS font size goes through `media.ass_size` (libass sizes fonts by
   ascent + descent, the preview by the em).
 - **No private data in the repo**: no hostnames, IPs, personal paths, API keys or library contents.

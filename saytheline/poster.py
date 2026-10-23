@@ -21,6 +21,12 @@ MAX_WORDS, MAX_CHARS, GAP_MS = 9, 48, 650             # one poster = one short s
 MAX_FILL = 1.6                                        # how far a short poster may be scaled up
 HOLD_MS = 400
 LEADING = 1.02                                        # tight, poster-like line spacing
+# how a word is said, from its "loud" (dB against the clip's typical word): shouts become the
+# biggest tier; a word louder than the rest of its own poster at least a big one (against the
+# poster, so a line said loudly throughout isn't all big); whispers are flagged, a size smaller
+SHOUT_DB, LOUDER_DB, WHISPER_DB = 6.0, 3.0, -11.0
+WHISPER_SCALE = 0.85
+MAX_SHOUTS = 2              # per poster: a whole line said loudly keeps only its loudest words big
 # a full stop after these doesn't end the sentence ("Mr. Smith" stays on one poster)
 ABBREV = {"mr", "mrs", "ms", "dr", "st", "jr", "sr", "prof", "vs", "mt", "lt", "sgt", "capt", "col", "gen", "rev"}
 
@@ -91,11 +97,24 @@ def _lines(ws, max_w):
     return lines
 
 
+def _said(x):
+    """The tier and flags for how loudly the word was said (no "loud": as the text alone says)."""
+    loud = x.get("loud")
+    x = dict(x, tier0=x["tier"])
+    if loud is None:
+        return x
+    if loud >= SHOUT_DB:
+        return dict(x, tier=4, shout=True)
+    if loud <= WHISPER_DB:
+        return dict(x, tier=min(x["tier"], 2), whisper=True)
+    return x
+
+
 def _set(g, unit, heavy, scale, max_w):
     ws = []
     for x in g:
         fam = LIGHT_FONT if x["tier"] <= 1 else heavy
-        size = max(10, round(unit * TIER_SCALE[x["tier"]] * scale))
+        size = max(10, round(unit * TIER_SCALE[x["tier"]] * scale * (WHISPER_SCALE if x.get("whisper") else 1)))
         ws.append(dict(x, font=fam, size=size, width=measure(x["w"], fam, size)))
     lines = _lines(ws, max_w)
     widths = [sum(y["width"] for y in ln) + sum(measure(" ", y["font"], y["size"]) for y in ln[1:]) for ln in lines]
@@ -112,6 +131,12 @@ def layout(words, w, h, st):
         words = [dict(x, w=x["w"].upper()) for x in words]
     t = tiers([x["w"] for x in words])
     words = [dict(x, tier=tt) for x, tt in zip(words, t)]
+    words = [_said(x) for x in words]
+    # a whisper is a quiet stretch, not one soft word: it needs a quiet neighbour
+    for i, x in enumerate(words):
+        if x.get("whisper") and not any((words[j].get("loud") is not None and words[j]["loud"] <= WHISPER_DB + 3)
+                                        for j in (i - 1, i + 1) if 0 <= j < len(words)):
+            words[i] = dict(x, whisper=False, tier=x["tier0"])
     heavy = st.get("font") or "Inter Black"
     sizes = {"s": 0.075, "m": 0.095, "l": 0.115, "xl": 0.140}
     unit = min(w, h) * sizes.get(st.get("size"), 0.095)
@@ -120,6 +145,13 @@ def layout(words, w, h, st):
     out = []
     groups = group(words)
     for gi, g in enumerate(groups):
+        loudest = {id(x) for x in sorted((x for x in g if x.get("shout")), key=lambda x: -x["loud"])[:MAX_SHOUTS]}
+        g = [x if not x.get("shout") or id(x) in loudest else dict(x, shout=False, tier=x["tier0"]) for x in g]
+        levels = sorted(x["loud"] for x in g if x.get("loud") is not None)
+        if len(levels) >= 3:
+            mid = levels[len(levels) // 2]
+            g = [dict(x, tier=max(x["tier"], 3)) if x.get("loud") is not None and x["loud"] - mid >= LOUDER_DB
+                 and not x.get("shout") else x for x in g]
         # every poster needs a focal word: if nothing is tier 3+, promote its last content word
         if not any(x["tier"] >= 3 for x in g):
             cand = [i for i, x in enumerate(g) if x["tier"] == 2] or list(range(len(g)))
@@ -139,7 +171,8 @@ def layout(words, w, h, st):
         for ln, lh in zip(lines, heights):
             rows.append(dict(y=round(y), height=round(lh),
                              words=[dict(w=x["w"], s=x["s"], e=x["e"], tier=x["tier"], size=x["size"],
-                                         font=x["font"]) for x in ln]))
+                                         font=x["font"], **{k: True for k in ("shout", "whisper") if x.get(k)})
+                                    for x in ln]))
             y += lh
         end = g[-1]["e"] + HOLD_MS
         if gi + 1 < len(groups):

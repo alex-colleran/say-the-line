@@ -86,6 +86,11 @@ class Words(unittest.TestCase):
         flat = [w["s"] for c in out for w in c["words"]]
         self.assertEqual(flat, sorted(flat))
 
+    def test_matched_words_keep_their_loudness(self):
+        cues = [dict(idx=1, start_ms=0, end_ms=1000, text="Get out!")]
+        heard = [dict(w="Get", s=0, e=200, loud=2.0), dict(w="out", s=200, e=500, loud=9.5)]
+        self.assertEqual([w.get("loud") for w in snap.align_words(cues, heard)[0]["words"]], [2.0, 9.5])
+
     def test_bigword_is_one_word(self):
         ws = [dict(w=w, s=i * 100, e=i * 100 + 90) for i, w in enumerate("one two three four".split())]
         chunks = media.chunk_words(ws, *media.CHUNK_RULES["bigword"])
@@ -381,6 +386,27 @@ class Kinetic(unittest.TestCase):
         for c in self.cards("Never mind that. All right. I'll give you a story. A wonderful story! Only this time it'll be true."):
             for x in c["words"]:
                 self.assertTrue(0 < x["cx"] < 1280 and 0 < x["cy"] < 720, x)
+
+    def loud_cards(self, said):
+        from unittest import mock
+        from saytheline import kinetic, poster
+        words = [dict(w=w, s=i * 300, e=i * 300 + 250, loud=l) for i, (w, l) in enumerate(said)]
+        with mock.patch.object(poster, "tiers", lambda ws: [2] * len(ws)):
+            return kinetic.layout(words, 1280, 720, dict(size="m", font="Inter Black", position="middle"))
+
+    def test_loudness_and_texture(self):
+        ws = self.loud_cards([("you", 0), ("never", 8), ("listen", 0), ("to", -1), ("me!", 1)])[0]["words"]
+        never = next(x for x in ws if x["w"] == "never")
+        self.assertEqual((never["tier"], never["enter"]), (4, "slam"), "a shout lands big")
+        self.assertTrue(never["onbar"], "a shouted key word sits on the bar")
+        quiet = self.loud_cards([("keep", 0), ("it", -14), ("down", -13), ("please.", 0)])[0]["words"]
+        self.assertEqual([x["w"] for x in quiet if x["whisper"]], ["it", "down"])
+        alone = self.loud_cards([("keep", 0), ("it", -14), ("going", 0), ("now.", 0)])[0]["words"]
+        self.assertFalse(any(x["whisper"] for x in alone), "one soft word isn't a whisper")
+
+    def test_exit_follows_the_punctuation(self):
+        for end, exit in (("now!", "scatter"), ("now?", "push"), ("now.", "fall")):
+            self.assertEqual(self.cards(f"You'll never find me {end}")[0]["exit"], exit)
 
     def test_motion(self):
         from saytheline import kinetic
