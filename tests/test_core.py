@@ -275,6 +275,19 @@ class CaptionEdits(unittest.TestCase):
         self.assertEqual(len(speech), 3, "a transcript isn't subtitle lines")
 
 
+class CaptionShift(unittest.TestCase):
+    def test_shift_moves_lines_and_words(self):
+        from saytheline import web
+        cues = [dict(start_ms=1000, end_ms=2000, text="Hi there", words=[dict(w="Hi", s=1000, e=1400), dict(w="there", s=1400, e=2000)]),
+                dict(start_ms=2500, end_ms=3000, text="Bye")]
+        out = web.shift_cues(cues, 300)
+        self.assertEqual([(c["start_ms"], c["end_ms"]) for c in out], [(1300, 2300), (2800, 3300)])
+        self.assertEqual([(w["s"], w["e"]) for w in out[0]["words"]], [(1300, 1700), (1700, 2300)])
+        self.assertNotIn("words", out[1])
+        self.assertIs(web.shift_cues(cues, 0), cues)
+        self.assertEqual(web.caption_shift({"caption_shift_ms": 9000}), 5000)
+
+
 class AudioTracks(unittest.TestCase):
     def tracks(self, *tags):
         from unittest import mock

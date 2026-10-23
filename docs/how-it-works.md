@@ -97,6 +97,9 @@ Design notes: what each part does and why it is built that way. For setup, see t
   largest, the clause's core nouns and main verb next, then other content words; function words
   are smallest and lighter). `poster.py` lays out one poster per clause with real font metrics:
   one big word per line, and the whole poster scaled to fill the frame.
+- **Timing:** Earlier / Later (Captions tab) moves every caption in the clip, words too, by up to
+  5 s (`caption_shift_ms`; `web.shift_cues` = JS `shiftCues`). It is separate from the subtitle
+  offset snap learns, which moves the cut: this only moves the text.
 - **Word timing:**
   - From speech: Whisper's word times.
   - From subtitles: the subtitle words are aligned to Whisper's (`snap.align_words`), and

@@ -185,6 +185,8 @@
   .opt.disabled { opacity: .4; pointer-events: none; }
   .nudge { display: grid; grid-template-columns: 40px repeat(2, 1fr) auto repeat(2, 1fr); gap: 6px; align-items: center; }
   .nudge > span { color: var(--dim); font-size: 13px; }
+  .nudge.capshift { grid-template-columns: repeat(2, 1fr) minmax(92px, auto) repeat(2, 1fr); flex: 1; }
+  #capShiftNow[aria-pressed=true] { color: var(--accent); border-color: var(--accent); }
   .nudge .b { padding: 0 6px; font-variant-numeric: tabular-nums; gap: 2px; }
   .nudge .b .i { width: 16px; height: 16px; }
   .swatch { width: 36px; height: 36px; padding: 0; border: 1px solid var(--edge); cursor: pointer; }
@@ -420,6 +422,11 @@
         <div class="dependent" style="display:flex;flex-direction:column;gap:10px">
           <div class="opt"><span>Text from</span><div class="chips" data-opt="captionSrc"></div></div>
           <div class="opt"><span>Look</span><div class="chips" data-opt="look"></div></div>
+          <div class="opt"><span>Timing</span><div class="nudge capshift">
+            <button class="b" data-capshift="-500" aria-label="Captions half a second earlier">−0.5</button><button class="b" data-capshift="-100" aria-label="Captions a tenth of a second earlier">−0.1</button>
+            <button class="b" id="capShiftNow" title="Tap to reset">On time</button>
+            <button class="b" data-capshift="100" aria-label="Captions a tenth of a second later">+0.1</button><button class="b" data-capshift="500" aria-label="Captions half a second later">+0.5</button></div></div>
+          <div class="hint">Moves all the captions in this clip earlier (−) or later (+), for subtitles that run early or late. Tap the middle to reset.</div>
         </div>
       </div>
       <div class="grp" id="subBox" hidden>
@@ -902,7 +909,7 @@ function applyRules() {
   $("#audioGrp").classList.toggle("off", opts.format === "gif");
   $("#audioHint").hidden = opts.audio === "original" || opts.format === "gif";
 }
-function refreshAll() { buildOptions(); applyRules(); drawStt(); drawSubText(); drawOverlay(); drawSummary(); schedulePoster(); autosave(); }
+function refreshAll() { buildOptions(); applyRules(); drawCapShift(); drawStt(); drawSubText(); drawOverlay(); drawSummary(); schedulePoster(); autosave(); }
 function drawSummary() {
   if (!ed.hit) return;
   const cap = !capsOn() ? "no captions" : `${CHOICES.look.find(l => l[0] === opts.look)[1]} captions from ${speechMode() ? "speech" : "subtitles"}`;
@@ -919,6 +926,7 @@ const ed = {};
 function resetEd(h) {
   Object.assign(ed, { hit: h, winA: 0, winB: 0, inMs: 0, outMs: 0, cues: [], stopAt: null,
     offset: 0,            // subtitle correction found by snap (+ = subtitles early)
+    capShift: 0,          // the captions' Earlier / Later for this clip, ms (+ = later)
     stt: null,            // transcript / word timing: {item, from, to, source, offset, cues, secs}
     poster: null, chunkKey: null, loadSeq: (ed.loadSeq || 0) + 1, snapUndo: null,
     knownOffset: 0,       // offset learnt earlier for this episode (data/offsets.json)
@@ -942,7 +950,7 @@ const DRAFT_OPTS = ["subsOn", "captionSrc", "look", "fontClassic", "fontWord", "
 function edState() {
   const o = {}; DRAFT_OPTS.forEach(k => o[k] = opts[k]);
   return { v: 1, in_ms: Math.round(ed.inMs), out_ms: Math.round(ed.outMs), offset_ms: ed.offset, opts: o,
-    stt: ed.stt && ed.stt.item === ed.hit.item_id ? ed.stt : null, sub_text: ed.subText, file: ed.lastFile };
+    stt: ed.stt && ed.stt.item === ed.hit.item_id ? ed.stt : null, sub_text: ed.subText, cap_shift: ed.capShift, file: ed.lastFile };
 }
 function applyState(st) {
   ed.inMs = st.in_ms; ed.outMs = st.out_ms; ed.offset = st.offset_ms || 0;
@@ -950,6 +958,7 @@ function applyState(st) {
   ed.stt = st.stt && st.stt.item === ed.hit.item_id ? st.stt : null;
   ed.lastFile = st.file || null;
   ed.subText = st.sub_text || {};
+  ed.capShift = st.cap_shift || 0;
   if (needWords() && !sttCovers()) captionDefaults();       // never reopen to a look with no text
   saveOpts();
 }
@@ -1030,7 +1039,7 @@ function drawDraftNote(d) {
   $("#startFresh").onclick = () => {
     $("#vid").pause();
     captionDefaults(); saveOpts();
-    ed.stt = null; ed.poster = null; ed.lastFile = null; ed.subText = {}; ed.speech = null;
+    ed.stt = null; ed.poster = null; ed.lastFile = null; ed.subText = {}; ed.speech = null; ed.capShift = 0;
     defaultCut();
     ed.winA = Math.max(0, ed.inMs - WIN); ed.winB = ed.outMs + WIN;
     n.hidden = true; offsetNote();
@@ -1448,7 +1457,23 @@ function sttCovers() {
   const s = ed.stt;
   return !!s && s.item === ed.hit.item_id && s.source === wordSource() && s.offset === ed.offset && s.from <= ed.inMs && s.to >= ed.outMs;
 }
-function captionCues() { return needWords() ? (sttCovers() ? ed.stt.cues : []) : subCues(); }
+function captionCues() { return shiftCues(needWords() ? (sttCovers() ? ed.stt.cues : []) : subCues(), ed.capShift); }
+// = web.shift_cues: captions moved `ms` later, their word times with them
+function shiftCues(cues, ms) {
+  if (!ms) return cues;
+  return cues.map(c => ({ ...c, start_ms: c.start_ms + ms, end_ms: c.end_ms + ms,
+    ...(c.words ? { words: c.words.map(w => ({ ...w, s: w.s + ms, e: w.e + ms })) } : {}) }));
+}
+function drawCapShift() {
+  const v = ed.capShift, b = $("#capShiftNow");
+  b.textContent = !v ? "On time" : `${Math.abs(v / 1000).toFixed(1)} s ${v < 0 ? "earlier" : "later"}`;
+  b.setAttribute("aria-pressed", String(!!v));
+}
+$$("[data-capshift]").forEach(b => b.onclick = () => {
+  ed.capShift = Math.max(-5000, Math.min(5000, ed.capShift + +b.dataset.capshift));
+  drawCapShift(); ed.chunkKey = null; drawOverlay(); schedulePoster(); autosave();
+});
+$("#capShiftNow").onclick = () => { ed.capShift = 0; drawCapShift(); ed.chunkKey = null; drawOverlay(); schedulePoster(); autosave(); };
 // plain subtitles with this clip's edits (= web.subtitle_cues)
 function subCues() {
   return ed.cues.map(c => c.idx in ed.subText ? { ...c, text: ed.subText[c.idx] ?? "" } : c).filter(c => c.text.trim());
@@ -1654,6 +1679,7 @@ function posterRequest() {
   return { item: ed.hit.item_id, in_ms: Math.round(ed.inMs), out_ms: Math.round(ed.outMs),
     aspect: opts.aspect, fit: opts.fit, res: opts.res,
     caption_cues: sttCovers() ? ed.stt.cues.map(c => ({ start_ms: c.start_ms, end_ms: c.end_ms, text: c.text, words: c.words || [] })) : [],
+    caption_shift_ms: ed.capShift || undefined,
     subs: { font: curFont(), size: opts.size, caps: opts.caps, position: opts.position, hl: opts.hl } };
 }
 function schedulePoster() {
@@ -1694,7 +1720,7 @@ function renderBody() {
   return { item: ed.hit.item_id, in_ms: Math.round(ed.inMs), out_ms: Math.round(ed.outMs),
     moment: { idx: ed.hit.idx, start_ms: ed.hit.start_ms, end_ms: ed.hit.end_ms, text: ed.hit.text },   // for re-opening it later
     format: opts.format, aspect: opts.aspect, fit: opts.fit, res: opts.res, audio: opts.format === "gif" ? "original" : opts.audio,
-    caption_source: speechMode() ? "speech" : "subs", offset_ms: ed.offset,
+    caption_source: speechMode() ? "speech" : "subs", offset_ms: ed.offset, caption_shift_ms: ed.capShift || undefined,
     sub_text: needWords() ? undefined : ed.subText,
     caption_cues: needWords() ? ed.stt.cues.map(c => ({ start_ms: c.start_ms, end_ms: c.end_ms, text: c.text, words: c.words || [] })) : undefined,
     subs: { on: capsOn(), font: curFont(), size: opts.size, colour: opts.colour, box: opts.box, position: opts.position,
@@ -2045,7 +2071,8 @@ function recipeState(c) {
   if (st.font) o[WORD_LOOKS.includes(look) ? "fontWord" : "fontClassic"] = st.font;
   const stt = r.caption_cues ? { item: r.item, from: r.in_ms, to: r.out_ms, source: o.captionSrc, offset: r.offset_ms || 0,
     cues: r.caption_cues, secs: 0 } : null;
-  return { v: 1, in_ms: r.in_ms, out_ms: r.out_ms, offset_ms: r.offset_ms || 0, opts: o, stt, sub_text: r.sub_text || {}, file: c.file };
+  return { v: 1, in_ms: r.in_ms, out_ms: r.out_ms, offset_ms: r.offset_ms || 0, opts: o, stt, sub_text: r.sub_text || {},
+    cap_shift: r.caption_shift_ms || 0, file: c.file };
 }
 async function openClipLink(cid) {
   try {

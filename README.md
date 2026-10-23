@@ -38,7 +38,8 @@ It runs on the machine that has your media, next to Jellyfin, and is used from a
   It also finds subtitles that run seconds early or late, and remembers that per episode.
 - **Captions**: burned in with libass. Classic subtitles, or word-synced looks: **TikTok**,
   **Pop-in**, **Big word**, and **Poster** (automatic expressive typography sized by part of
-  speech). Text from the subtitles or from speech-to-text, editable before rendering.
+  speech). Text from the subtitles or from speech-to-text, editable before rendering, and
+  movable earlier or later for subtitles that run early or late.
 - **Output**: MP4, WebM, GIF or a **still** (JPEG); original / 16:9 / 4:3 / 1:1 / 9:16 with
   crop or bars; 480–1080 or source size.
 - **Audio** (optional): *Dialogue only* or *No dialogue* via demucs stem separation.

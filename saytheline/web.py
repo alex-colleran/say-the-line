@@ -289,11 +289,7 @@ def run_render(job_id, req):
         in_ms, out_ms = int(req["in_ms"]), int(req["out_ms"])
         if not row or out_ms <= in_ms or out_ms - in_ms > 180_000:
             raise ValueError("clip must be between 0 and 180 seconds")
-        if req.get("caption_source") == "speech" or (req.get("subs") or {}).get("style") in media.LOOKS:
-            cues = caption_cues(req)
-        else:
-            cues = subtitle_cues(row["id"], in_ms, out_ms, req)
-        cues = [c for c in cues if c["end_ms"] > in_ms and c["start_ms"] < out_ms]
+        cues = clip_captions(row, in_ms, out_ms, req)
         fmt = req.get("format") if req.get("format") in ("mp4", "webm", "gif") else "mp4"
         os.makedirs(CLIPS, exist_ok=True)
         name = version_name(clip_name(row, in_ms, " ".join(c["text"] for c in cues) or "clip", fmt, req.get("aspect"),
@@ -321,11 +317,7 @@ def run_still(job_id, req):
         at, in_ms, out_ms = int(req["at_ms"]), int(req["in_ms"]), int(req["out_ms"])
         if not row or out_ms <= in_ms or out_ms - in_ms > 180_000:
             raise ValueError("clip must be between 0 and 180 seconds")
-        if req.get("caption_source") == "speech" or (req.get("subs") or {}).get("style") in media.LOOKS:
-            cues = caption_cues(req)
-        else:
-            cues = subtitle_cues(row["id"], in_ms, out_ms, req)
-        cues = [c for c in cues if c["end_ms"] > in_ms and c["start_ms"] < out_ms]
+        cues = clip_captions(row, in_ms, out_ms, req)
         said = " ".join(c["text"] for c in cues if c["start_ms"] <= at < c["end_ms"]) or "still"
         os.makedirs(CLIPS, exist_ok=True)
         name = version_name(clip_name(row, at, said, "jpg", req.get("aspect")).replace(".jpg", " (still).jpg"), req)
@@ -421,6 +413,31 @@ def run_transcribe(job_id, req):
         job.update(state="error", error=str(e)[:500])
 
 
+def caption_shift(req):
+    """The editor's caption Earlier / Later for this clip, in ms (+ = later), at most 5 s."""
+    return max(-5000, min(5000, int(req.get("caption_shift_ms") or 0)))
+
+
+def shift_cues(cues, ms):
+    """Captions moved `ms` later (= JS shiftCues), their word times with them."""
+    if not ms:
+        return cues
+    return [dict(c, start_ms=c["start_ms"] + ms, end_ms=c["end_ms"] + ms,
+                 **({"words": [dict(w, s=w["s"] + ms, e=w["e"] + ms) for w in c["words"]]} if c.get("words") else {}))
+            for c in cues]
+
+
+def clip_captions(row, in_ms, out_ms, req):
+    """The captions a clip burns in: the client's (a transcript, or word-timed subtitles) or the
+    subtitle track with this clip's edits, moved by its caption shift, cut to the clip."""
+    shift = caption_shift(req)
+    if req.get("caption_source") == "speech" or (req.get("subs") or {}).get("style") in media.LOOKS:
+        cues = caption_cues(req)
+    else:                       # lines just outside the cut can be shifted into it
+        cues = subtitle_cues(row["id"], in_ms - shift, out_ms - shift, req)
+    return [c for c in shift_cues(cues, shift) if c["end_ms"] > in_ms and c["start_ms"] < out_ms]
+
+
 def subtitle_cues(item_id, in_ms, out_ms, req):
     """The cut's subtitle lines with the editor's per-clip edits, `sub_text` {idx: text, or null =
     hidden}: a neighbouring line that spills into the cut, or a line worded differently on screen."""
@@ -473,7 +490,7 @@ def run_poster(job_id, req):
         row = item_row(int(req["item"]))
         in_ms, out_ms = int(req["in_ms"]), int(req["out_ms"])
         w, h = media.output_size(row["path"], req)
-        words = media.caption_words(caption_cues(req), in_ms, out_ms)
+        words = media.caption_words(shift_cues(caption_cues(req), caption_shift(req)), in_ms, out_ms)
         job["state"] = "laying out"
         job.update(state="done", w=w, h=h, posters=poster.layout(words, w, h, req.get("subs") or {}))
     except Exception as e:
