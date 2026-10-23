@@ -63,6 +63,19 @@ def extract_embedded(video_path, stream_index, codec):
     return r.stdout.decode("utf-8", errors="replace")
 
 
+MAX_OVERLAP = 0.25     # share of lines starting before the previous one ends
+
+
+def overlap(cues):
+    """Share of cues that start before the previous one ends. Near 0 for real subtitles; one
+    release (The Boondocks, YOGI) muxed each episode's lines together with every earlier episode's,
+    which shows up as half the lines overlapping. Signs over dialogue in anime overlap a little."""
+    cs = sorted(cues)
+    if len(cs) < 2:
+        return 0.0
+    return sum(1 for (a0, b0, _), (a1, _, _) in zip(cs, cs[1:]) if a1 < b0 - 100) / (len(cs) - 1)
+
+
 def read_text(path):
     with open(path, "rb") as f:
         raw = f.read()

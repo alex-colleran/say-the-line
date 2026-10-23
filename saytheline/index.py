@@ -43,7 +43,7 @@ def index(index_path, series=None, movies=False, external_only=False, log=print)
         cands = [(ext, os.path.splitext(ext)[1][1:].lower(), None)] if ext else []
         cands += [] if external_only else [(f"embedded:{x}", "ass" if cdc in ("ass", "ssa") else "srt", (x, cdc))
                   for x, cdc in it["embedded"]] if os.path.exists(path) else []
-        cues, err = None, None
+        cues, err, fallback = None, None, None
         for src, kind, emb in cands:
             try:
                 text = subs.extract_embedded(path, *emb) if emb else subs.read_text(src)
@@ -52,8 +52,14 @@ def index(index_path, series=None, movies=False, external_only=False, log=print)
                 err = e
                 continue
             if subs.is_dialogue(got, it["runtime_s"]):
-                cues, source = got, src
-                break
+                # a track that overlaps itself heavily holds more than this episode: keep looking,
+                # and use it only when nothing else reads as dialogue
+                if subs.overlap(got) <= subs.MAX_OVERLAP:
+                    cues, source = got, src
+                    break
+                fallback = fallback or (got, src)
+        if cues is None and fallback:
+            cues, source = fallback
         if cues is None:
             if err:
                 stats["errors"] += 1

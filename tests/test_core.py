@@ -45,6 +45,12 @@ class Subtitles(unittest.TestCase):
     def test_pilcrow_is_music(self):
         self.assertEqual(subs.clean("¶ la la ¶"), "♪ la la ♪")
 
+    def test_overlap(self):
+        own = [(i * 3000, i * 3000 + 2500, "line") for i in range(10)]
+        merged = sorted(own + [(i * 3000 + 1000, i * 3000 + 2000, "other episode") for i in range(10)])
+        self.assertEqual(subs.overlap(own), 0.0)
+        self.assertGreater(subs.overlap(merged), subs.MAX_OVERLAP)
+
     def test_encodings(self):
         text = "1\r\n00:00:01,000 --> 00:00:02,000\r\nCaf\u00e9? S\u00ed, se\u00f1or.\r\n"
         with tempfile.TemporaryDirectory() as d:

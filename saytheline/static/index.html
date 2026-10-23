@@ -268,12 +268,22 @@
   .badge.bad { color: var(--bad); border-color: #6a2f2f; }
   .badge.run { color: var(--run); border-color: #2c4a72; }
   .sclist { display: flex; flex-direction: column; gap: 8px; }
+  /* Say Anything: one row per piece of the sentence */
+  #saText { width: 100%; min-height: 64px; font: inherit; font-size: 17px; padding: 10px; background: var(--panel);
+    color: var(--fg); border: 1px solid var(--line); resize: vertical; box-sizing: border-box; }
+  .sa-row { display: grid; grid-template-columns: 96px 1fr; gap: 10px; padding: 8px; background: var(--panel); border: 1px solid var(--line); }
+  .sa-row.missing { border-color: #6a2f2f; }
+  .sa-row .st img { width: 96px; aspect-ratio: 16/9; object-fit: cover; display: block; background: #000; }
+  .sa-row .w { font-size: 18px; font-weight: 700; }
+  .sa-row .src { color: var(--dim); font-size: 13px; }
+  .sa-row .acts { grid-column: 1 / -1; display: flex; gap: 6px; flex-wrap: wrap; align-items: center; }
+  .sa-row .acts .n { color: var(--dim); font-size: 12px; min-width: 52px; text-align: center; }
   details.grp summary { cursor: pointer; color: var(--dim); font-size: 13px; min-height: 28px; display: flex; align-items: center; gap: 6px; }
   @media (max-width: 480px) {
     .sc-row { grid-template-columns: 28px 24px 72px 1fr auto; gap: 8px; }
     .sc-row .grip { width: 28px; }
     .li { grid-template-columns: 96px 1fr; }
-    .grid { grid-template-columns: 1fr; } .brand { display: none; }
+    .grid { grid-template-columns: 1fr; } .brand { display: none; } .hbtn .lbl { display: none; }   /* icons only: the search box keeps the row */
     .nudge { grid-template-columns: 34px repeat(2, 1fr) auto repeat(2, 1fr); gap: 5px; }
     .nudge .b { padding-left: 2px; padding-right: 2px; font-size: 13px; }    /* five buttons a row at 360 px */
     .opt > span:first-child { width: 68px; }
@@ -317,6 +327,7 @@
 <symbol id="i-minus" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12l14 0"/></g></symbol>
 <symbol id="i-plus" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5l0 14"/> <path d="M5 12l14 0"/></g></symbol>
 <symbol id="i-grip" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 5m-1 0a1 1 0 1 0 2 0a1 1 0 1 0 -2 0"/> <path d="M9 12m-1 0a1 1 0 1 0 2 0a1 1 0 1 0 -2 0"/> <path d="M9 19m-1 0a1 1 0 1 0 2 0a1 1 0 1 0 -2 0"/> <path d="M15 5m-1 0a1 1 0 1 0 2 0a1 1 0 1 0 -2 0"/> <path d="M15 12m-1 0a1 1 0 1 0 2 0a1 1 0 1 0 -2 0"/> <path d="M15 19m-1 0a1 1 0 1 0 2 0a1 1 0 1 0 -2 0"/></g></symbol>
+<symbol id="i-message" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 9h8"/> <path d="M8 13h6"/> <path d="M18 4a3 3 0 0 1 3 3v8a3 3 0 0 1 -3 3h-5l-5 3v-3h-2a3 3 0 0 1 -3 -3v-8a3 3 0 0 1 3 -3h12z"/></g></symbol>
 <symbol id="i-share" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 12m-3 0a3 3 0 1 0 6 0a3 3 0 1 0 -6 0"/> <path d="M18 6m-3 0a3 3 0 1 0 6 0a3 3 0 1 0 -6 0"/> <path d="M18 18m-3 0a3 3 0 1 0 6 0a3 3 0 1 0 -6 0"/> <path d="M8.7 10.7l6.6 -3.4"/> <path d="M8.7 13.3l6.6 3.4"/></g></symbol></svg>
 
 <header>
@@ -325,7 +336,8 @@
       <span class="brand">Say the Line</span>
       <div class="qbox"><svg class="i" aria-hidden="true"><use href="#i-search"/></svg><input id="q" type="search" list="recentQ" placeholder="Search a line of dialogue" aria-label="Search a line of dialogue" autocomplete="off" enterkeyhint="search" autofocus></div>
       <datalist id="recentQ"></datalist>
-      <button class="hbtn" id="libBtn" title="Saved moments, rendered clips and tags"><svg class="i" aria-hidden="true"><use href="#i-library"/></svg><span class="lbl">Library</span></button>
+      <button class="hbtn" id="saBtn" title="Say Anything: type a sentence, the library says it" aria-label="Say Anything"><svg class="i" aria-hidden="true"><use href="#i-message"/></svg><span class="lbl">Say Anything</span></button>
+      <button class="hbtn" id="libBtn" title="Saved moments, rendered clips and tags" aria-label="Library"><svg class="i" aria-hidden="true"><use href="#i-library"/></svg><span class="lbl">Library</span></button>
     </div>
     <div class="row">
       <div class="seg" role="group" aria-label="Match">
@@ -524,6 +536,34 @@
     <button class="b" id="scCheck"><svg class="i" aria-hidden="true"><use href="#i-headphones"/></svg>Check first</button>
     <button class="b primary" id="scRender">Render</button>
     <button class="b" id="scStop" hidden><svg class="i" aria-hidden="true"><use href="#i-stop"/></svg>Stop</button>
+  </div></div>
+</div>
+<div class="sheet" id="saSheet" hidden>
+  <div class="sheet-in">
+    <div class="sheet-head"><div class="t">Say Anything<small>type a sentence, the library says it</small></div><button class="x" id="saClose" aria-label="Close"><svg class="i" aria-hidden="true"><use href="#i-x"/></svg></button></div>
+    <textarea id="saText" placeholder="Type a sentence for the library to say" aria-label="Sentence" enterkeyhint="go"></textarea>
+    <div class="opt"><button class="b primary" id="saGo"><svg class="i" aria-hidden="true"><use href="#i-headphones"/></svg>Find the words</button>
+      <span class="hint" id="saHint">Finds each phrase in the subtitles, longest first, and listens to check it is really said (~5 s per take). TV / Movies above narrows where it looks.</span></div>
+    <div style="position:relative"><video id="saVid" playsinline controls hidden style="width:100%;max-height:40vh;background:#000;display:block"></video></div>
+    <div id="saResult"></div>
+    <div class="sclist" id="saList"></div>
+    <details class="grp" id="saSettings">
+      <summary>Settings</summary>
+      <div class="opt"><span>Cut</span><div class="chips" data-sa="padding"></div></div>
+      <div class="hint">How much air around each piece. Tight joins the words closely; it never reaches into the next word.</div>
+      <div class="opt"><span>Loudness</span><div class="chips" data-sa="loudnorm"></div></div>
+      <div class="opt"><span>Captions</span><div class="chips" data-sa="captions"></div></div>
+      <div class="opt"><span>Shape</span><div class="chips" data-sa="aspect"></div></div>
+      <div class="opt" id="saFitOpt"><span>Fit</span><div class="chips" data-sa="fit"></div></div>
+      <div class="opt"><span>Size</span><div class="chips" data-sa="res"></div></div>
+      <div class="hint">Caption font, size and colours follow the editor's Captions settings.</div>
+    </details>
+  </div>
+  <div class="footer"><div class="footer-in">
+    <div class="sum" id="saSum"></div>
+    <button class="b" id="saPlay"><svg class="i" aria-hidden="true"><use href="#i-play"/></svg>Play pieces</button>
+    <button class="b primary" id="saRender">Render</button>
+    <button class="b" id="saStop" hidden><svg class="i" aria-hidden="true"><use href="#i-stop"/></svg>Stop</button>
   </div></div>
 </div>
 <datalist id="tagList"></datalist>
@@ -2226,6 +2266,164 @@ $("#scStop").onclick = scStop;
 $("#scBtn").onclick = () => { rememberSearch(); openSupercut(); };
 $("#scClose").onclick = () => history.back();
 
+/* ================= Say Anything ================= */
+// = sayany.PAD / sayany.cut (take.cuts: measured on the server): a piece previews exactly as it will render
+const SA_PAD = { tight: [30, 70], normal: [70, 140], loose: [150, 260] };
+const SA_NUDGE = 40;
+const SA_CHOICES = {
+  padding: [["tight", "Tight"], ["normal", "Normal"], ["loose", "Loose"]],
+  loudnorm: [[true, "Even out"], [false, "As is"]],
+  captions: [["off", "Off"], ["classic", "Subtitles"], ["popin", "Pop-in"], ["bigword", "Big word"]],
+  aspect: SC_CHOICES.aspect, fit: SC_CHOICES.fit, res: SC_CHOICES.res,
+};
+const sa = { sentence: "", pieces: [], busy: false, job: null, playing: false,
+  o: { padding: "normal", loudnorm: true, captions: "classic", aspect: "16:9", fit: "crop", res: 720 } };
+try { Object.assign(sa.o, JSON.parse(localStorage.getItem("saytheline.sa") || "{}")); $("#saText").value = localStorage.getItem("saytheline.saText") || ""; } catch (e) {}
+function saveSa() { try { localStorage.setItem("saytheline.sa", JSON.stringify(sa.o)); localStorage.setItem("saytheline.saText", $("#saText").value); } catch (e) {} }
+function saCut(p) {
+  const t = p.take, [pb0, pa0] = SA_PAD[sa.o.padding] || SA_PAD.normal;
+  if (t.cuts && t.cuts[sa.o.padding]) { const [a, b] = t.cuts[sa.o.padding]; return [Math.max(0, a + (p.nudge_in || 0)), b + (p.nudge_out || 0)]; }
+  const pb = t.before < 1000 ? Math.min(pb0, Math.max(0, Math.floor(t.before / 2))) : pb0;
+  const pa = t.after < 1000 ? Math.min(pa0, Math.max(0, Math.floor(t.after / 2))) : pa0;
+  return [Math.max(0, Math.max(0, t.s - pb) + (p.nudge_in || 0)), t.e + pa + (p.nudge_out || 0)];
+}
+function saPreview(p) { const [a, b] = saCut(p); return `/preview/${p.take.item_id}/${a}-${b}.mp4`; }
+function drawSa() {
+  $$("[data-sa]").forEach(box => {
+    const key = box.dataset.sa; box.innerHTML = "";
+    SA_CHOICES[key].forEach(([v, label]) => {
+      const c = document.createElement("button"); c.type = "button"; c.className = "chip"; c.textContent = label;
+      c.setAttribute("aria-pressed", String(sa.o[key] === v));
+      c.onclick = () => { if (sa.busy) return; sa.o[key] = v; saveSa(); drawSa(); };
+      box.appendChild(c);
+    });
+  });
+  $("#saFitOpt").hidden = sa.o.aspect === "16:9";
+  const found = sa.pieces.filter(p => p.take), missing = sa.pieces.length - found.length;
+  const stale = sa.pieces.length && $("#saText").value.trim() !== sa.sentence;
+  const dur = found.reduce((n, p) => { const [a, b] = saCut(p); return n + b - a; }, 0) / 1000;
+  if (!sa.busy) $("#saSum").textContent = !sa.pieces.length ? "Type a sentence, then Find the words"
+    : (stale ? "The sentence changed: tap Find the words again · " : "")
+      + `${found.length} piece${found.length === 1 ? "" : "s"} · ${dur.toFixed(1)} s` + (missing ? ` · ${missing} word${missing === 1 ? "" : "s"} not found` : "");
+  $("#saGo").disabled = sa.busy;
+  $("#saRender").disabled = sa.busy || !found.length; $("#saRender").hidden = sa.busy;
+  $("#saPlay").disabled = sa.busy || !found.length; $("#saPlay").hidden = sa.busy;
+  $("#saStop").hidden = !(sa.busy && sa.job);
+  const list = $("#saList"); list.innerHTML = "";
+  sa.pieces.forEach((p, i) => {
+    const row = document.createElement("div"); row.className = "sa-row" + (p.take ? "" : " missing");
+    if (!p.take) {
+      row.innerHTML = `<div></div><div><div class="w">${esc(p.text)}</div><div class="src">Not heard anywhere in the library. Try another word for it.</div></div>`;
+      return list.appendChild(row);
+    }
+    const [a, b] = saCut(p), t = p.take;
+    row.innerHTML = `<div class="st"><img loading="lazy" src="${t.thumb}" alt=""></div>
+      <div><div class="w">${esc(p.text)}</div><div class="src">${esc(t.label)} · ${fmt(t.s)}</div><div class="src">“${esc(t.line)}”</div></div>
+      <div class="acts"><button class="b" data-a="play" aria-label="Play this piece">${ic("play")}</button>
+        <button class="b" data-a="take" ${p.alts.length ? "" : "disabled"} title="Listen to another line with these words">Other take</button>
+        <span class="hint">Start</span><button class="b" data-a="in" data-d="-1" aria-label="Start earlier">◀</button><button class="b" data-a="in" data-d="1" aria-label="Start later">▶</button>
+        <span class="hint">End</span><button class="b" data-a="out" data-d="-1" aria-label="End earlier">◀</button><button class="b" data-a="out" data-d="1" aria-label="End later">▶</button>
+        <span class="n">${((b - a) / 1000).toFixed(2)} s</span></div>`;
+    row.querySelector("img").onerror = e => e.target.remove();
+    row.querySelectorAll("button[data-a]").forEach(btn => btn.onclick = () => {
+      if (sa.busy) return;
+      const act = btn.dataset.a, d = Number(btn.dataset.d || 0) * SA_NUDGE;
+      if (act === "play") return saPlay([p]);
+      if (act === "take") return saOtherTake(i);
+      if (act === "in") p.nudge_in = (p.nudge_in || 0) + d; else p.nudge_out = (p.nudge_out || 0) + d;
+      drawSa(); saPlay([p]);
+    });
+    list.appendChild(row);
+  });
+}
+// play pieces back to back from their previews (each is cut on the server, a second or so the first time)
+function saPlay(pieces) {
+  const v = $("#saVid"), list = pieces.filter(p => p.take);
+  if (!list.length) return;
+  let k = 0;
+  v.hidden = false; sa.playing = true;
+  v.onended = () => { if (++k < list.length) { v.src = saPreview(list[k]); v.play().catch(() => {}); } else { sa.playing = false; v.onended = null; } };
+  v.src = saPreview(list[0]); v.play().catch(() => {});
+  v.scrollIntoView({ behavior: "smooth", block: "nearest" });
+}
+$("#saPlay").onclick = () => saPlay(sa.pieces);
+async function saFind() {
+  const text = $("#saText").value.trim();
+  if (!text || sa.busy) return;
+  saveSa(); sa.busy = true; sa.sentence = text; $("#saResult").innerHTML = ""; drawSa();
+  $("#saSum").textContent = "Finding the words…";
+  try {
+    const job = await postJob("/api/sayany/plan", { sentence: text, kind: state.kind }, j => {
+      if (sa.job !== j.id) { sa.job = j.id; drawSa(); }
+      $("#saSum").textContent = j.state === "queued" ? "Waiting for the renderer…"
+        : `Listening for “${j.current || "…"}” · ${j.listened || 0} take${j.listened === 1 ? "" : "s"} heard so far`;
+    });
+    sa.pieces = job.pieces; sa.sentence = job.sentence;
+  } catch (e) {
+    $("#saResult").innerHTML = e.message === "Stopped" ? `<div class="hint">Stopped.</div>` : `<div class="err">${esc(e.message)}</div>`;
+  } finally { sa.busy = false; sa.job = null; drawSa(); }
+}
+$("#saGo").onclick = saFind;
+$("#saText").addEventListener("keydown", e => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); e.target.blur(); saFind(); } });
+$("#saText").addEventListener("input", () => { saveSa(); if (sa.pieces.length && !sa.busy) drawSa(); });
+async function saOtherTake(i) {
+  const p = sa.pieces[i];
+  let note = "";
+  sa.busy = true; drawSa(); $("#saSum").textContent = `Listening for another “${p.text}”…`;
+  try {
+    const job = await postJob("/api/sayany/take", { piece: { text: p.text, want: p.want, alts: p.alts } }, j => {
+      if (sa.job !== j.id) { sa.job = j.id; $("#saStop").hidden = false; }
+    });
+    if (job.piece) sa.pieces[i] = job.piece;
+    else { p.alts = []; note = `No other take of “${p.text}” was heard.`; }
+  } catch (e) { if (e.message !== "Stopped") $("#saResult").innerHTML = `<div class="err">${esc(e.message)}</div>`; }
+  finally { sa.busy = false; sa.job = null; drawSa(); }
+  if (note) $("#saSum").textContent = note; else if (sa.pieces[i].take) saPlay([sa.pieces[i]]);
+}
+$("#saRender").onclick = async () => {
+  const pieces = sa.pieces.filter(p => p.take);
+  if (!pieces.length || sa.busy) return;
+  sa.busy = true; drawSa(); $("#saResult").innerHTML = "";
+  const look = sa.o.captions;
+  const body = { sentence: sa.sentence, padding: sa.o.padding, loudnorm: sa.o.loudnorm, aspect: sa.o.aspect, res: sa.o.res, fit: sa.o.fit,
+    pieces: pieces.map(p => ({ text: p.text, take: p.take, nudge_in: p.nudge_in || 0, nudge_out: p.nudge_out || 0 })),
+    subs: { on: look !== "off", style: look, font: look === "classic" ? opts.fontClassic : opts.fontWord, size: opts.size, colour: opts.colour,
+            box: opts.box, position: look === "bigword" ? "middle" : opts.position, hl: opts.hl, caps: opts.caps } };
+  try {
+    const job = await postJob("/api/sayany/render", body, j => {
+      if (sa.job !== j.id) { sa.job = j.id; $("#saStop").hidden = false; }
+      $("#saSum").textContent = j.state === "rendering" ? `Rendering piece ${(j.done || 0) + 1} of ${j.total}…` : "Waiting for the renderer…";
+    });
+    const url = "/clips/" + encodeURIComponent(job.file);
+    $("#saVid").hidden = true; $("#saVid").pause();
+    $("#saResult").innerHTML = `<div class="result"><video src="${url}" controls playsinline autoplay></video>
+      <div class="hint">${esc(job.file)}<br>${job.segments} pieces · ${job.seconds} s · ${bytes(job.bytes)} · ${job.secs} s to render</div>
+      <div class="opt"><a class="b primary" href="${url}?dl=1" download>${ic("download")}Download</a><button class="b" id="saSave"></button></div>
+      <div class="tagrow" id="saTags" hidden></div></div>`;
+    const first = pieces[0].take, [a0, b0] = saCut(pieces[0]);
+    const entry = { kind: "clip", file: job.file, item_id: first.item_id, in_ms: a0, out_ms: b0,
+      label: `Say Anything · ${job.segments} pieces`, text: `“${sa.sentence}”`, start_ms: a0, end_ms: b0, media_kind: "episode" };
+    const paint = () => { const e = savedClip(job.file); $("#saSave").innerHTML = e ? ic("heart-f") + "Saved" : ic("heart") + "Save to library";
+      $("#saTags").hidden = !e; if (e) tagEditor($("#saTags"), e, paint); };
+    $("#saSave").onclick = async () => { const e = savedClip(job.file); if (e) await libDelete(e.id); else await libSave({ ...entry, tags: ["say anything"] }); paint(); };
+    paint();
+    $("#saResult").scrollIntoView({ behavior: "smooth", block: "start" });
+  } catch (e) {
+    $("#saResult").innerHTML = e.message === "Stopped" ? `<div class="hint">Stopped. Nothing was rendered.</div>` : `<div class="err">${esc(e.message)}</div>`;
+  } finally { sa.busy = false; sa.job = null; drawSa(); }
+};
+$("#saStop").onclick = async () => {
+  if (!sa.job) return;
+  try { await fetch(`/api/job/${sa.job}/cancel`, { method: "POST" }); } catch (e) {}
+  $("#saSum").textContent = "Stopping…";
+};
+function openSayAnything() {
+  $("#saSheet").hidden = false; document.body.style.overflow = "hidden"; history.pushState({ sheet: 4 }, "");
+  drawSa(); if (!sa.pieces.length) $("#saText").focus();
+}
+$("#saBtn").onclick = openSayAnything;
+$("#saClose").onclick = () => history.back();
+
 /* ?edit=<clip id>: open a rendered clip (made here, or by an agent over MCP) as it was made */
 function recipeState(c) {
   const r = c.request || {}, st = r.subs || {};
@@ -2317,6 +2515,8 @@ $("#libBtn").onclick = () => { $("#libSheet").hidden = false; history.pushState(
 $("#libClose").onclick = () => history.back();
 $("#edClose").onclick = () => history.back();
 window.addEventListener("popstate", () => {
+  if (!$("#saSheet").hidden) { const v = $("#saVid"); v.pause(); v.onended = null; $("#saSheet").hidden = true;
+    document.body.style.overflow = ""; return; }
   // closing the sheet stops a check (its results would be lost with the sheet); a render carries on
   // and lands in Library > All rendered
   if (!$("#scSheet").hidden && sc.busy && sc.job && sc.kind === "check") fetch(`/api/job/${sc.job}/cancel`, { method: "POST" }).catch(() => {});

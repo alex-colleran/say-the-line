@@ -21,6 +21,7 @@ from urllib.parse import parse_qs, quote, unquote, urlparse
 from . import config
 from . import library
 from . import media
+from . import sayany
 from . import search as srch
 from . import shots as shotcuts
 from . import snap as snapper
@@ -754,6 +755,145 @@ def run_supercut(job_id, req):
         job.update(state="error", error=str(e)[:500])
 
 
+# ---- Say Anything ----------------------------------------------------------------------------
+SA_MAX_WORDS = 40
+
+
+def sa_find(req):
+    """Exact-phrase subtitle hits for Say Anything, short lines first (cleaner takes)."""
+    kind = req.get("kind") or None
+
+    def find(q):
+        pq = sayany.phrase_query(q.split())
+        hits = srch.search(INDEX, pq, exact=True, limit=sayany.CANDIDATES, short=True, kind=kind)
+        seen = {(h["item_id"], h["start_ms"]) for h in hits}
+        if len(hits) < sayany.CANDIDATES:
+            hits += [h for h in srch.search(INDEX, pq, exact=True, limit=sayany.CANDIDATES, kind=kind)
+                     if (h["item_id"], h["start_ms"]) not in seen]
+        return [hit_json(h) for h in hits[:sayany.CANDIDATES]]
+    return find
+
+
+def sa_listen(job):
+    def listen(hit, text):
+        stop_if_cancelled(job)
+        row = item_row(int(hit["item_id"]))
+        if not row or media.foreign_audio(row["path"]):
+            return dict(found=False, status="no English audio")
+        with RENDER_SLOT:
+            try:
+                return sc_check_hit(row, hit, text, wide=False)
+            except Exception as e:  # one bad file must not stop the sentence
+                return dict(found=False, status="error: " + str(e)[:120])
+    return listen
+
+
+def sa_piece_json(p):
+    t = p["take"]
+    take = None
+    if t:
+        h = t["hit"]
+        row = item_row(int(h["item_id"]))
+        if row and "cuts" not in t:
+            try:
+                t["cuts"] = sayany.cuts(t, row["path"])
+            except (OSError, subprocess.SubprocessError):
+                pass                      # the padding alone still cuts it
+        take = dict(item_id=h["item_id"], label=h["label"], start_ms=h["start_ms"], end_ms=h["end_ms"],
+                    line=h["text"], thumb=h["thumb"], s=t["s"], e=t["e"], before=t["before"], after=t["after"],
+                    score=t["score"], words=t["words"], cuts=t.get("cuts"))
+    return dict(text=p["text"], want=p["want"], take=take, alts=p["alts"])
+
+
+def run_sa_plan(job_id, req):
+    """req: {"sentence", "kind"}. Finds and listens to a take for every piece of the sentence."""
+    job = JOBS[job_id]
+    try:
+        sentence = " ".join((req.get("sentence") or "").split()[:SA_MAX_WORDS])
+        if not sayany.words(sentence):
+            raise ValueError("type a sentence first")
+        job.update(state="listening", listened=0, current="")
+
+        def progress(text, n):
+            job.update(state="listening", listened=n, current=text)
+        pieces = sayany.plan(sentence, sa_find(req), sa_listen(job), progress=progress)
+        job.update(state="done", sentence=sentence, pieces=[sa_piece_json(p) for p in pieces])
+    except Cancelled:
+        job.update(state="cancelled")
+    except Exception as e:
+        job.update(state="error", error=str(e)[:500])
+
+
+def run_sa_take(job_id, req):
+    """req: {"piece": {text, want, alts}}. Listens down the piece's other candidates for a new take."""
+    job = JOBS[job_id]
+    try:
+        piece = req.get("piece") or {}
+        alts, want, text = list(piece.get("alts") or []), piece.get("want") or [], piece.get("text") or ""
+        listen = sa_listen(job)
+        while alts:
+            h = alts.pop(0)
+            job.update(state="listening", left=len(alts))
+            t = sayany.take_from(listen(h, text), want)
+            if t:
+                job.update(state="done", piece=sa_piece_json(dict(text=text, want=want, take=dict(t, hit=h), alts=alts)))
+                return
+        job.update(state="done", piece=None)
+    except Cancelled:
+        job.update(state="cancelled")
+    except Exception as e:
+        job.update(state="error", error=str(e)[:500])
+
+
+def run_sa_render(job_id, req):
+    """req: {"sentence", "pieces": [{text, take: {item_id, s, e, before, after, words}, nudge_in, nudge_out}],
+    "padding", "aspect", "res", "fit", "loudnorm", "subs"}"""
+    job = JOBS[job_id]
+    try:
+        st = req.get("subs") or {}
+        segs, said = [], []
+        for p in req.get("pieces") or []:
+            t = p.get("take")
+            if not t:
+                continue
+            row = item_row(int(t["item_id"]))
+            if not row:
+                continue
+            a, b = sayany.cut(t, req.get("padding"))
+            a, b = max(0, a + int(p.get("nudge_in") or 0)), b + int(p.get("nudge_out") or 0)
+            if b - a < 80:
+                continue
+            ws = [dict(w, s=max(w["s"], a), e=min(w["e"], b)) for w in sayany.caption_words(p, t)]
+            said.append(p["text"])
+            cues = []
+            if st.get("on"):
+                # word looks: this piece's words as they are said; subtitles: the sentence so far
+                cues = ([dict(start_ms=a, end_ms=b, text=" ".join(w["w"] for w in ws), words=ws)]
+                        if st.get("style") in media.LOOKS else [dict(start_ms=a, end_ms=b, text=sayany.so_far(said))])
+            segs.append(dict(src=row["path"], in_ms=a, out_ms=b, cues=cues, label=None))
+        if not segs:
+            raise ValueError("no piece of the sentence has a take")
+        os.makedirs(CLIPS, exist_ok=True)
+        name = f"Say Anything - {media.safe_name(req.get('sentence') or 'sentence', 50)} ({time.strftime('%m%d-%H%M')}).mp4"
+        out = os.path.join(CLIPS, name)
+
+        def progress(i, n):
+            stop_if_cancelled(job)
+            job.update(state="rendering", done=i, total=n)
+        t0 = time.time()
+        opts = dict(req, transition="cut")
+        with RENDER_SLOT:
+            info = media.supercut(segs, opts, out + ".tmp.mp4", progress)
+            os.replace(out + ".tmp.mp4", out)
+        with open(out + ".json", "w") as f:
+            json.dump({"sayanything": req, "result": info}, f, indent=1)
+        job.update(state="done", file=name, url="/clips/" + name, secs=round(time.time() - t0, 1), **info)
+    except Cancelled:
+        job.update(state="cancelled")
+    except Exception as e:
+        job.update(state="error", error=str(e)[:500])
+
+
 def hit_json(h):
     it = h["item"]
     return dict(
@@ -838,10 +978,11 @@ class Handler(BaseHTTPRequestHandler):
                 row = LIB.update(int(m.group(1)), req)
                 return self.send(200 if row else 404, row or {"error": "not found"})
             runners = {"/api/render": run_render, "/api/snap": run_snap, "/api/supercut": run_supercut,
-                       "/api/supercut/check": run_sc_check,
+                       "/api/supercut/check": run_sc_check, "/api/sayany/plan": run_sa_plan,
+                       "/api/sayany/take": run_sa_take, "/api/sayany/render": run_sa_render,
                        "/api/transcribe": run_transcribe, "/api/poster": run_poster, "/api/still": run_still}
             if u.path in runners:
-                job_id = new_job(u.path.rsplit("/", 1)[-1])
+                job_id = new_job(("sa-" if u.path.startswith("/api/sayany/") else "") + u.path.rsplit("/", 1)[-1])
                 threading.Thread(target=runners[u.path], args=(job_id, req), daemon=True).start()
                 return self.send(202, JOBS[job_id])
             return self.send(404, {"error": "not found"})
