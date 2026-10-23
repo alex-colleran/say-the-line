@@ -66,12 +66,19 @@ def extract_embedded(video_path, stream_index, codec):
 def read_text(path):
     with open(path, "rb") as f:
         raw = f.read()
-    for enc in ("utf-8-sig", "utf-16"):
-        try:
-            return raw.decode(enc)
-        except UnicodeDecodeError:
-            pass
-    return raw.decode("cp1252", errors="replace")
+    # UTF-16 only with a byte-order mark or the NUL bytes it is full of: decoding as UTF-16
+    # "succeeds" on most even-length Latin-1 files and yields gibberish (72 movies read as no subs)
+    if raw[:2] in (b"\xff\xfe", b"\xfe\xff"):
+        return raw.decode("utf-16", errors="replace")
+    head = raw[:200]
+    if head[1::2].count(0) > len(head) // 4:
+        return raw.decode("utf-16-le", errors="replace")
+    if head[0::2].count(0) > len(head) // 4:
+        return raw.decode("utf-16-be", errors="replace")
+    try:
+        return raw.decode("utf-8-sig")
+    except UnicodeDecodeError:
+        return raw.decode("cp1252", errors="replace")
 
 
 TAG = re.compile(r"<[^>]+>|\{[^}]*\}")

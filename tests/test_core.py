@@ -45,6 +45,15 @@ class Subtitles(unittest.TestCase):
     def test_pilcrow_is_music(self):
         self.assertEqual(subs.clean("¶ la la ¶"), "♪ la la ♪")
 
+    def test_encodings(self):
+        text = "1\r\n00:00:01,000 --> 00:00:02,000\r\nCaf\u00e9? S\u00ed, se\u00f1or.\r\n"
+        with tempfile.TemporaryDirectory() as d:
+            for enc in ("cp1252", "utf-8", "utf-8-sig", "utf-16", "utf-16-le", "utf-16-be"):
+                p = os.path.join(d, enc + ".srt")
+                with open(p, "wb") as f:
+                    f.write(text.encode(enc))
+                self.assertEqual(subs.read_text(p), text, enc)   # Latin-1 must not read as UTF-16
+
 
 class Words(unittest.TestCase):
     def test_bunched_words_get_screen_time(self):
