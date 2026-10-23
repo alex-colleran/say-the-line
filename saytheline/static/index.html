@@ -325,7 +325,14 @@
   .sa-row.missing { border-color: #6a2f2f; }
   .sa-top { position: relative; display: grid; grid-template-columns: 112px 1fr 40px; gap: 10px; align-items: center; }
   .sa-top .st { position: relative; }
-  .sa-top .st img { width: 112px; aspect-ratio: 16/9; object-fit: cover; display: block; background: #000; }
+  .sa-top .st { width: 112px; aspect-ratio: 16/9; background: #000; padding: 0; border: 0; cursor: pointer; display: block; }
+  .sa-top .st img { width: 100%; height: 100%; object-fit: cover; display: block; }
+  .sa-top .st video { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; background: #000; }
+  .sa-top .st .pp { position: absolute; right: 4px; bottom: 4px; width: 22px; height: 22px; display: grid; place-items: center;
+    background: rgba(11, 12, 15, .75); border-radius: 50%; pointer-events: none; }
+  .sa-top .st .pp .i { width: 14px; height: 14px; }
+  .sa-top .st.on .pp { display: none; }
+  .sa-row.on { border-color: var(--accent); }
   .sa-row .w { font-size: 18px; font-weight: 700; }
   .sa-row .src { color: var(--dim); font-size: 13px; overflow-wrap: anywhere; }
   .sa-row .take-n { color: var(--dim); font-size: 12px; margin-top: 2px; }
@@ -638,7 +645,6 @@
     <div class="infotext" id="saHowTo" hidden>Each phrase is looked up in the subtitles, longest first, then listened to so the words are really said (about 5 s per take).
       A word nobody says in your library is marked and left out. TV / Movies at the top narrows where it looks.
       On each piece, ‹ › swap in another line with the same words.</div>
-    <div style="position:relative"><video id="saVid" playsinline controls hidden style="width:100%;max-height:40vh;background:#000;display:block"></video></div>
     <div id="saResult"></div>
     <div class="sclist" id="saList"></div>
     <details class="grp" id="saSettings">
@@ -2432,7 +2438,9 @@ const SA_CHOICES = {
   captions: [["off", "Off"], ["classic", "Subtitles"], ["popin", "Pop-in"], ["bigword", "Big word"]],
   aspect: SC_CHOICES.aspect, fit: SC_CHOICES.fit, res: SC_CHOICES.res,
 };
-const sa = { sentence: "", pieces: [], busy: false, job: null, playing: false,
+// busy: finding or rendering (the whole sheet waits). taking: pieces listening for another take (only
+// that card waits; the others still play and trim). The piece playing shows in its own thumbnail.
+const sa = { sentence: "", pieces: [], busy: false, job: null, taking: new Map(), now: null, queue: [], cards: new Map(),
   o: { padding: "normal", loudnorm: true, captions: "classic", aspect: "16:9", fit: "crop", res: 720 } };
 try { Object.assign(sa.o, JSON.parse(localStorage.getItem("saytheline.sa") || "{}")); $("#saText").value = localStorage.getItem("saytheline.saText") || ""; } catch (e) {}
 function saveSa() { try { localStorage.setItem("saytheline.sa", JSON.stringify(sa.o)); localStorage.setItem("saytheline.saText", $("#saText").value); } catch (e) {} }
@@ -2461,14 +2469,14 @@ function drawSa() {
   if (!sa.busy) $("#saSum").textContent = !sa.pieces.length ? "Type a sentence, then Find the words"
     : (stale ? "The sentence changed: tap Find the words again · " : "")
       + `${found.length} piece${found.length === 1 ? "" : "s"} · ${dur.toFixed(1)} s` + (missing ? ` · ${missing} word${missing === 1 ? "" : "s"} not found` : "");
-  $("#saGo").disabled = sa.busy;
-  $("#saRender").disabled = sa.busy || !found.length; $("#saRender").hidden = sa.busy;
+  $("#saGo").disabled = sa.busy || sa.taking.size > 0;
+  $("#saRender").disabled = sa.busy || sa.taking.size > 0 || !found.length; $("#saRender").hidden = sa.busy;
   $("#saPlay").disabled = sa.busy || !found.length; $("#saPlay").hidden = sa.busy;
   $("#saStop").hidden = !(sa.busy && sa.job);
-  const list = $("#saList"); list.innerHTML = "";
+  const list = $("#saList"); list.innerHTML = ""; sa.cards.clear();
   const secs = ms => (ms >= 0 ? "+" : "−") + (Math.abs(ms) / 1000).toFixed(2) + " s";
   sa.pieces.forEach((p, i) => {
-    const row = document.createElement("div"); row.className = "sa-row" + (p.take ? "" : " missing");
+    const row = document.createElement("div"); row.className = "sa-row" + (p.take ? "" : " missing") + (p === sa.now ? " on" : "");
     if (!p.take) {
       const why = { unheard: "It's in the subtitles, but no take was heard clearly.",
                     rushed: "It's in the subtitles; the sentence is long, so only one take was tried." }[p.why]
@@ -2476,8 +2484,8 @@ function drawSa() {
       const tryMore = (p.alts || []).length ? " Tap › to listen to another line." : " It's left out: try another word for it.";
       row.innerHTML = `<div class="sa-top" style="grid-template-columns:1fr 40px"><div><div class="w">${esc(p.text)}</div>
           <div class="src">${why}${tryMore}</div></div>
-        ${(p.alts || []).length ? `<button class="sa-nav next${sa.taking === i ? " busy" : ""}" type="button" ${sa.busy ? "disabled" : ""}
-          aria-label="Listen for this word" title="Listen for this word (~5 s)">${ic("chev-right")}</button>` : ""}</div>`;
+        ${(p.alts || []).length ? `<button class="sa-nav next${sa.taking.has(p) ? " busy" : ""}" type="button" ${sa.busy ? "disabled" : ""}
+          aria-label="${sa.taking.has(p) ? "Stop listening" : "Listen for this word"}" title="${sa.taking.has(p) ? "Listening… tap to stop" : "Listen for this word (~5 s)"}">${ic("chev-right")}</button>` : ""}</div>`;
       const nx = row.querySelector(".sa-nav"); if (nx) nx.onclick = () => { if (!sa.busy) saTake(i, 1); };
       return list.appendChild(row);
     }
@@ -2488,11 +2496,12 @@ function drawSa() {
     const nin = t.nudge_in || 0, nout = t.nudge_out || 0, tipId = "saTrimTip" + i;
     row.innerHTML = `<div class="sa-top">
         <button class="sa-nav prev" type="button" data-a="prev" ${p.ti ? "" : "disabled"} aria-label="Previous take" title="Previous take">${ic("chev-left")}</button>
-        <div class="st"><img loading="lazy" src="${t.thumb}" alt=""></div>
+        <button class="st" type="button" data-a="play" aria-label="Play this piece"><img loading="lazy" src="${t.thumb}" alt=""><span class="pp">${ic("play")}</span></button>
         <div><div class="w">${esc(p.text)}</div><div class="src">${esc(t.label)} · ${fmt(t.s)}</div><div class="src">“${esc(t.line)}”</div>
-          <div class="take-n">Take ${p.ti + 1}${p.alts.length ? "" : ` of ${p.takes.length}`}</div></div>
-        <button class="sa-nav next${sa.taking === i ? " busy" : ""}" type="button" data-a="next" ${more && !sa.busy ? "" : "disabled"}
-          aria-label="Next take" title="${p.ti < p.takes.length - 1 ? "Next take" : "Listen for another take (~5 s)"}">${ic("chev-right")}</button>
+          <div class="take-n">Take ${p.ti + 1}${p.alts.length ? "" : ` of ${p.takes.length}`}${sa.taking.has(p) ? " · listening for another…" : ""}</div></div>
+        <button class="sa-nav next${sa.taking.has(p) ? " busy" : ""}" type="button" data-a="next" ${more && !sa.busy ? "" : "disabled"}
+          aria-label="${sa.taking.has(p) ? "Stop listening" : "Next take"}" title="${sa.taking.has(p) ? "Listening… tap to stop"
+            : p.ti < p.takes.length - 1 ? "Next take" : "Listen for another take (~5 s)"}">${ic("chev-right")}</button>
       </div>
       <div class="sa-trim">
         <div class="head"><button class="b" data-a="play" aria-label="Play this piece">${ic("play")}</button>
@@ -2510,10 +2519,12 @@ function drawSa() {
       </div>`;
     row.querySelector("img").onerror = e => e.target.remove();
     if (openInfo.has(tipId)) { row.querySelector("#" + tipId).hidden = false; row.querySelector(`[aria-controls="${tipId}"]`).setAttribute("aria-expanded", "true"); }
+    const st = row.querySelector(".st"); sa.cards.set(p, st);
+    if (p === sa.now) { st.classList.add("on"); st.appendChild(saVid()); }   // moved within one task, so it keeps playing
     row.querySelectorAll("button[data-a]").forEach(btn => btn.onclick = () => {
       if (sa.busy) return;
       const act = btn.dataset.a, d = Number(btn.dataset.d || 0) * SA_NUDGE;
-      if (act === "play") return saPlay([p]);
+      if (act === "play") return btn === st && p === sa.now && !saVid().paused ? saStopPlay() : saPlay([p]);
       if (act === "prev" || act === "next") return saTake(i, act === "next" ? 1 : -1);
       if (act === "reset") { t.nudge_in = 0; t.nudge_out = 0; }
       else if (act === "in") t.nudge_in = nin + d; else t.nudge_out = nout + d;
@@ -2522,15 +2533,38 @@ function drawSa() {
     list.appendChild(row);
   });
 }
-// play pieces back to back from their previews (each is cut on the server, a second or so the first time)
+// play pieces back to back from their previews (each is cut on the server, a second or so the first time),
+// each in its own card's thumbnail. One <video>, moved between cards, so a phone that allowed sound once keeps it.
+function saVid() {
+  if (!sa.vid) {
+    sa.vid = document.createElement("video"); sa.vid.playsInline = true; sa.vid.preload = "auto";
+    sa.vid.onended = () => sa.queue.length ? saPlayOne(sa.queue.shift(), true) : saStopPlay();
+  }
+  return sa.vid;
+}
+function saPlayOne(p, follow) {
+  const v = saVid(), prev = sa.now;
+  sa.now = p;
+  if (prev && prev !== p) { const o = sa.cards.get(prev); if (o) { o.classList.remove("on"); o.closest(".sa-row").classList.remove("on"); } }
+  const st = sa.cards.get(p);
+  if (st) {
+    st.classList.add("on"); st.closest(".sa-row").classList.add("on"); st.appendChild(v);
+    // playing the whole sentence follows along; a card's own play never moves the page
+    if (follow) { const r = st.getBoundingClientRect(); if (r.top < 0 || r.bottom > innerHeight) st.scrollIntoView({ behavior: "smooth", block: "center" }); }
+  }
+  v.src = saPreview(p); v.play().catch(() => {});
+}
 function saPlay(pieces) {
-  const v = $("#saVid"), list = pieces.filter(p => p.take);
+  const list = pieces.filter(p => p.take);
   if (!list.length) return;
-  let k = 0;
-  v.hidden = false; sa.playing = true;
-  v.onended = () => { if (++k < list.length) { v.src = saPreview(list[k]); v.play().catch(() => {}); } else { sa.playing = false; v.onended = null; } };
-  v.src = saPreview(list[0]); v.play().catch(() => {});
-  v.scrollIntoView({ behavior: "smooth", block: "nearest" });
+  sa.queue = list.slice(1); saPlayOne(list[0], list.length > 1);
+}
+function saStopPlay() {
+  const v = sa.vid; sa.queue = [];
+  if (v) { v.pause(); v.remove(); v.removeAttribute("src"); v.load(); }
+  const st = sa.now && sa.cards.get(sa.now);
+  if (st) { st.classList.remove("on"); st.closest(".sa-row").classList.remove("on"); }
+  sa.now = null;
 }
 $("#saPlay").onclick = () => saPlay(sa.pieces);
 async function saFind() {
@@ -2559,18 +2593,20 @@ async function saTake(i, dir) {
   if (p.take && (dir < 0 || p.ti < p.takes.length - 1)) {
     p.ti = Math.max(0, p.ti + dir); p.take = p.takes[p.ti]; drawSa(); return saPlay([p]);
   }
+  if (sa.taking.has(p)) { const id = sa.taking.get(p); if (id) fetch(`/api/job/${id}/cancel`, { method: "POST" }).catch(() => {}); return; }
   if (!p.alts.length) return;
-  let note = "";
-  sa.busy = true; sa.taking = i; drawSa(); $("#saSum").textContent = `Listening for another “${p.text}”…`;
+  let note = "", got = false;
+  sa.taking.set(p, null); drawSa();
   try {
     const job = await postJob("/api/sayany/take", { piece: { text: p.text, want: p.want, alts: p.alts } }, j => {
-      if (sa.job !== j.id) { sa.job = j.id; $("#saStop").hidden = false; }
+      sa.taking.set(p, j.id);
     });
-    if (job.piece) { p.takes.push(job.piece.take); p.ti = p.takes.length - 1; p.take = job.piece.take; p.alts = job.piece.alts; }
+    if (job.piece) { p.takes.push(job.piece.take); p.ti = p.takes.length - 1; p.take = job.piece.take; p.alts = job.piece.alts; got = true; }
     else { p.alts = []; note = p.take ? `That was the last take of “${p.text}” in your library.` : `“${p.text}” wasn't heard clearly anywhere.`; }
   } catch (e) { if (e.message !== "Stopped") $("#saResult").innerHTML = `<div class="err">${esc(e.message)}</div>`; }
-  finally { sa.busy = false; sa.taking = null; sa.job = null; drawSa(); }
-  if (note) $("#saSum").textContent = note; else saPlay([p]);
+  finally { sa.taking.delete(p); if (p === sa.now && got) saStopPlay(); drawSa(); }
+  if (note) $("#saSum").textContent = note;
+  else if (got && (!sa.now || saVid().paused)) saPlay([p]);   // don't cut off a piece that's playing
 }
 $("#saRender").onclick = async () => {
   const pieces = sa.pieces.filter(p => p.take);
@@ -2587,7 +2623,7 @@ $("#saRender").onclick = async () => {
       $("#saSum").textContent = j.state === "rendering" ? `Rendering piece ${(j.done || 0) + 1} of ${j.total}…` : "Waiting for the renderer…";
     });
     const url = "/clips/" + encodeURIComponent(job.file);
-    $("#saVid").hidden = true; $("#saVid").pause();
+    saStopPlay();
     $("#saResult").innerHTML = `<div class="result"><video src="${url}" controls playsinline autoplay></video>
       <div class="hint">${esc(job.file)}<br>${job.segments} pieces · ${job.seconds} s · ${bytes(job.bytes)} · ${job.secs} s to render</div>
       <div class="opt"><a class="b primary" href="${url}?dl=1" download>${ic("download")}Download</a><button class="b" id="saSave"></button></div>
@@ -2923,7 +2959,7 @@ $("#libBtn").onclick = () => { $("#libSheet").hidden = false; history.pushState(
 $("#libClose").onclick = () => history.back();
 $("#edClose").onclick = () => history.back();
 window.addEventListener("popstate", () => {
-  if (!$("#saSheet").hidden) { const v = $("#saVid"); v.pause(); v.onended = null; $("#saSheet").hidden = true;
+  if (!$("#saSheet").hidden) { saStopPlay(); $("#saSheet").hidden = true;
     document.body.style.overflow = ""; return; }
   // closing the sheet stops a check (its results would be lost with the sheet); a render carries on
   // and lands in Library > All rendered
