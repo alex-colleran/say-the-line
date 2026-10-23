@@ -246,9 +246,12 @@
   .statusbar { display: flex; gap: 8px; align-items: center; margin: 2px 0 12px; flex-wrap: wrap; }
   .statusbar .status { flex: 1 1 auto; min-width: 0; }
   .statusbar .b { min-height: 38px; }
-  .sc-row { display: grid; grid-template-columns: 26px 96px 1fr auto; gap: 10px; align-items: center;
+  .sc-row { display: grid; grid-template-columns: 32px 26px 96px 1fr auto; gap: 10px; align-items: center;
     background: var(--panel); border: 1px solid var(--line); padding: 8px; }
   .sc-row.off { opacity: .5; }
+  .sc-row .grip { width: 32px; min-height: 44px; padding: 0; border: 0; background: none; color: var(--dim); cursor: grab; touch-action: none; }
+  .sc-row.drag { border-color: var(--accent); box-shadow: 0 6px 18px rgba(0,0,0,.5); position: relative; z-index: 2; }
+  .sc-row.drag .grip { cursor: grabbing; color: var(--accent); }
   .sc-row .st { position: relative; aspect-ratio: 16/9; overflow: hidden; background: var(--panel-2); }
   .sc-row .st img { width: 100%; height: 100%; object-fit: cover; display: block; }
   .sc-row .sm { min-width: 0; display: flex; flex-direction: column; gap: 3px; font-size: 13.5px; }
@@ -264,7 +267,8 @@
   .sclist { display: flex; flex-direction: column; gap: 8px; }
   details.grp summary { cursor: pointer; color: var(--dim); font-size: 13px; min-height: 28px; display: flex; align-items: center; gap: 6px; }
   @media (max-width: 480px) {
-    .sc-row { grid-template-columns: 24px 72px 1fr auto; }
+    .sc-row { grid-template-columns: 28px 24px 72px 1fr auto; gap: 8px; }
+    .sc-row .grip { width: 28px; }
     .li { grid-template-columns: 96px 1fr; }
     .grid { grid-template-columns: 1fr; } .brand { display: none; }
     .nudge { grid-template-columns: 34px repeat(2, 1fr) auto repeat(2, 1fr); gap: 5px; }
@@ -309,6 +313,7 @@
 <symbol id="i-hourglass" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6.5 7h11"/> <path d="M6.5 17h11"/> <path d="M6 20v-2a6 6 0 1 1 12 0v2a1 1 0 0 1 -1 1h-10a1 1 0 0 1 -1 -1z"/> <path d="M6 4v2a6 6 0 1 0 12 0v-2a1 1 0 0 0 -1 -1h-10a1 1 0 0 0 -1 1z"/></g></symbol>
 <symbol id="i-minus" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12l14 0"/></g></symbol>
 <symbol id="i-plus" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5l0 14"/> <path d="M5 12l14 0"/></g></symbol>
+<symbol id="i-grip" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 5m-1 0a1 1 0 1 0 2 0a1 1 0 1 0 -2 0"/> <path d="M9 12m-1 0a1 1 0 1 0 2 0a1 1 0 1 0 -2 0"/> <path d="M9 19m-1 0a1 1 0 1 0 2 0a1 1 0 1 0 -2 0"/> <path d="M15 5m-1 0a1 1 0 1 0 2 0a1 1 0 1 0 -2 0"/> <path d="M15 12m-1 0a1 1 0 1 0 2 0a1 1 0 1 0 -2 0"/> <path d="M15 19m-1 0a1 1 0 1 0 2 0a1 1 0 1 0 -2 0"/></g></symbol>
 <symbol id="i-share" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 12m-3 0a3 3 0 1 0 6 0a3 3 0 1 0 -6 0"/> <path d="M18 6m-3 0a3 3 0 1 0 6 0a3 3 0 1 0 -6 0"/> <path d="M18 18m-3 0a3 3 0 1 0 6 0a3 3 0 1 0 -6 0"/> <path d="M8.7 10.7l6.6 -3.4"/> <path d="M8.7 13.3l6.6 3.4"/></g></symbol></svg>
 
 <header>
@@ -1748,7 +1753,7 @@ function showResult(job, info) {
 
 /* ================= supercut ================= */
 const SC_CHOICES = {
-  order: [["match", "Best match"], ["air", "Air date"], ["show", "Show & episode"], ["shuffle", "Shuffle"]],
+  order: [["match", "Best match"], ["air", "Air date"], ["show", "Show & episode"], ["shuffle", "Shuffle"], ["custom", "Your order"]],
   dedupe: [[true, "Hide repeats"], [false, "Show all"]],
   check: [[true, "Check against speech"], [false, "Trust subtitles"]],
   cut: [["line", "Whole line"], ["phrase", "Just the phrase"]],
@@ -1764,10 +1769,12 @@ const SC_CHOICES = {
   res: [[1080, "1080"], [720, "720"], [480, "480"]],
 };
 const SC_PAD = { tight: [150, 250], normal: [450, 550], loose: [900, 1000] };
-const sc = { q: "", hits: [], sel: new Set(), checks: {}, busy: false, seed: 1,
+const sc = { q: "", hits: [], sel: new Set(), checks: {}, busy: false, seed: 1, custom: null,   // custom: keys in the dragged order
   o: { order: "match", dedupe: true, check: true, cut: "line", padding: "normal", unheard: "skip", transition: "cut",
        loudnorm: true, label: true, captions: "off", aspect: "16:9", fit: "crop", res: 720, shots: true } };
 try { Object.assign(sc.o, JSON.parse(localStorage.getItem("saytheline.sc") || "{}")); } catch (e) {}
+// a dragged order belongs to one search, so it is never remembered as the default
+function saveSc() { try { localStorage.setItem("saytheline.sc", JSON.stringify({ ...sc.o, order: sc.o.order === "custom" ? "match" : sc.o.order })); } catch (e) {} }
 const scKey = h => h.item_id + ":" + h.start_ms;
 function scNorm(t) { return (t || "").toLowerCase().replace(/[^a-z0-9 ]/g, "").replace(/\s+/g, " ").trim(); }
 // the same line from the same episode (two copies of a file, a "previously on" recap, two hits a second apart)
@@ -1786,6 +1793,10 @@ function scVisible() {
   }
   if (sc.o.order === "air") list.sort((a, b) => (a.year || 0) - (b.year || 0) || (a.season || 0) - (b.season || 0) || (a.episode || 0) - (b.episode || 0) || a.start_ms - b.start_ms);
   else if (sc.o.order === "show") list.sort((a, b) => (a.series || a.title || "").localeCompare(b.series || b.title || "") || (a.season || 0) - (b.season || 0) || (a.episode || 0) - (b.episode || 0) || a.start_ms - b.start_ms);
+  else if (sc.o.order === "custom" && sc.custom) {        // dragged order; hits it doesn't know go last
+    const at = new Map(sc.custom.map((k, i) => [k, i]));
+    list = list.map((h, i) => [at.has(scKey(h)) ? at.get(scKey(h)) : sc.custom.length + i, h]).sort((a, b) => a[0] - b[0]).map(p => p[1]);
+  }
   else if (sc.o.order === "shuffle") {
     let x = sc.seed; const rnd = () => (x = (x * 16807) % 2147483647) / 2147483647;
     list = list.map(h => [rnd(), h]).sort((a, b) => a[0] - b[0]).map(p => p[1]);
@@ -1796,6 +1807,7 @@ function scStatus(h) {
   const c = sc.checks[scKey(h)];
   if (sc.busy && sc.current === scKey(h)) return `<span class="badge run">listening…</span>`;
   if (!c) return "";
+  if (c.foreign) return `<span class="badge" title="Speech checks are English only, so this one keeps its subtitle timing">${esc(c.foreign)} audio · subtitle timing</span>`;
   if (!c.found) return `<span class="badge bad" title="${esc(c.status)}">${ic("alert")}not heard</span>`;
   const off = c.offset_ms || 0;
   const drift = Math.abs(off) < 400 ? "on time" : `subs ${Math.abs(off / 1000).toFixed(1)} s ${off < 0 ? "late" : "early"} · fixed`;
@@ -1814,10 +1826,11 @@ function drawSc() {
   $$("[data-sc]").forEach(box => {
     const key = box.dataset.sc; box.innerHTML = "";
     SC_CHOICES[key].forEach(([v, label]) => {
+      if (key === "order" && v === "custom" && !sc.custom) return;
       const c = document.createElement("button"); c.type = "button"; c.className = "chip"; c.textContent = label;
       c.setAttribute("aria-pressed", String(sc.o[key] === v));
       c.onclick = () => { if (sc.busy) return; sc.o[key] = v; if (key === "order" && v === "shuffle") sc.seed = 1 + Math.floor(Math.random() * 1e6);
-        try { localStorage.setItem("saytheline.sc", JSON.stringify(sc.o)); } catch (e) {} drawSc(); };
+        saveSc(); drawSc(); };
       box.appendChild(c);
     });
   });
@@ -1828,7 +1841,7 @@ function drawSc() {
   [...sc.sel].forEach(k => { if (!vis.has(k)) sc.sel.delete(k); });
   const chosen = list.filter(h => sc.sel.has(scKey(h)));
   const unchecked = chosen.filter(h => !sc.checks[scKey(h)]).length;
-  const bad = chosen.filter(h => sc.checks[scKey(h)] && !sc.checks[scKey(h)].found).length;
+  const bad = chosen.filter(h => sc.checks[scKey(h)] && !sc.checks[scKey(h)].found && !sc.checks[scKey(h)].foreign).length;
   $("#scDropBad").hidden = !bad;
   const dur = scDuration(list) / 1000;
   const estCheck = scNeedsCheck() ? unchecked * 9 : 0, estRender = chosen.length * 1.6 + 3;
@@ -1849,13 +1862,16 @@ function drawSc() {
     const k = scKey(h), on = sc.sel.has(k), c = sc.checks[k];
     const row = document.createElement("div"); row.className = "sc-row" + (on ? "" : " off");
     const head = h.kind === "episode" ? `${esc(h.series)} · S${String(h.season ?? 0).padStart(2, "0")}E${String(h.episode ?? 0).padStart(2, "0")}` : `${esc(h.title)} (${h.year || ""})`;
-    row.innerHTML = `<input type="checkbox" ${on ? "checked" : ""} aria-label="Include">
+    row.dataset.key = k;
+    row.innerHTML = `<button class="grip" type="button" title="Drag to reorder" aria-label="Move (drag, or arrow keys)">${ic("grip")}</button>
+      <input type="checkbox" ${on ? "checked" : ""} aria-label="Include">
       <div class="st"><img loading="lazy" src="${h.thumb}" alt=""></div>
       <div class="sm"><div class="t">${head} <small>${fmt(h.start_ms)}</small></div><div>${hl(h.text)}</div><div>${scStatus(h)}</div></div>
       <button class="b" title="Preview this clip" aria-label="Preview this clip">${ic("play")}</button>`;
     row.querySelector("img").onerror = e => e.target.remove();
     row.querySelector("input").onchange = e => { if (e.target.checked) sc.sel.add(k); else sc.sel.delete(k); drawSc(); };
-    row.querySelector("button").onclick = () => {
+    scDrag(row);
+    row.querySelector("button.b").onclick = () => {
       const [pi, po] = SC_PAD[sc.o.padding];
       let a, b;
       if (c && c.found) { a = (sc.o.cut === "phrase" && c.phrase_s != null ? c.phrase_s : c.line_s) - pi; b = (sc.o.cut === "phrase" && c.phrase_e != null ? c.phrase_e : c.line_e) + po; }
@@ -1867,8 +1883,54 @@ function drawSc() {
     listEl.appendChild(row);
   });
 }
+// Reorder by dragging a row's handle (pointer events, so it works with touch too) or with the arrow keys
+// on it. The new order becomes "Your order"; render sends the clips in it.
+function scSetOrder(keys) { sc.custom = keys; sc.o.order = "custom"; drawSc(); }
+function scDrag(row) {
+  const grip = row.querySelector(".grip"), listEl = $("#scList");
+  grip.onkeydown = e => {
+    if (sc.busy || !["ArrowUp", "ArrowDown"].includes(e.key)) return;
+    e.preventDefault();
+    const keys = [...listEl.children].map(r => r.dataset.key), i = keys.indexOf(row.dataset.key), j = i + (e.key === "ArrowUp" ? -1 : 1);
+    if (j < 0 || j >= keys.length) return;
+    [keys[i], keys[j]] = [keys[j], keys[i]];
+    scSetOrder(keys);
+    const moved = listEl.querySelector(`[data-key="${CSS.escape(row.dataset.key)}"] .grip`); if (moved) moved.focus();
+  };
+  grip.onpointerdown = e => {
+    if (sc.busy || e.button > 0) return;
+    e.preventDefault();                      // moving the row drops pointer capture, so listen on the window
+    row.classList.add("drag");
+    const sheet = $("#scSheet"), start = [...listEl.children].map(r => r.dataset.key).join();
+    let lastY = e.clientY, scroll = 0;
+    const tick = setInterval(() => { if (scroll) { sheet.scrollTop += scroll; place(lastY); } }, 30);
+    const place = y => {                     // the row goes before the first row whose middle is below the pointer
+      const others = [...listEl.children].filter(r => r !== row);
+      const next = others.find(r => { const b = r.getBoundingClientRect(); return y < b.top + b.height / 2; });
+      if (next ? row.nextElementSibling !== next : listEl.lastElementChild !== row) listEl.insertBefore(row, next || null);
+    };
+    const move = ev => {
+      if (ev.pointerId !== e.pointerId) return;
+      ev.preventDefault();
+      lastY = ev.clientY; place(lastY);
+      const h = window.innerHeight;          // near an edge: scroll the sheet
+      scroll = lastY < 90 ? -14 : lastY > h - 110 ? 14 : 0;
+    };
+    const end = ev => {
+      if (ev.pointerId !== e.pointerId) return;
+      clearInterval(tick);
+      window.removeEventListener("pointermove", move); window.removeEventListener("pointerup", end); window.removeEventListener("pointercancel", end);
+      row.classList.remove("drag");
+      const keys = [...listEl.children].map(r => r.dataset.key);
+      if (keys.join() !== start) scSetOrder(keys);
+    };
+    window.addEventListener("pointermove", move, { passive: false });
+    window.addEventListener("pointerup", end); window.addEventListener("pointercancel", end);
+  };
+}
 async function openSupercut() {
-  sc.q = state.q; sc.checks = {}; sc.sel = new Set(); sc.busy = false; sc.job = null;
+  sc.q = state.q; sc.checks = {}; sc.sel = new Set(); sc.busy = false; sc.job = null; sc.custom = null;
+  if (sc.o.order === "custom") sc.o.order = "match";
   // only the best 300 hits are loaded: say so when there are more, so a huge search isn't mistaken for all of it
   const total = state.facets && state.facets.key === facetKey() && !state.facets.rows.some(x => x.n === null)
     ? state.facets.rows.filter(x => ticked(x.key)).reduce((a, x) => a + x.n, 0) : null;
@@ -1910,7 +1972,7 @@ function flashSc(msg) { $("#scSum").textContent = msg; }
 $("#scCheck").onclick = scRunCheck;
 $("#scAll").onclick = () => { scVisible().list.forEach(h => sc.sel.add(scKey(h))); drawSc(); };
 $("#scNone").onclick = () => { sc.sel.clear(); drawSc(); };
-$("#scDropBad").onclick = () => { Object.entries(sc.checks).forEach(([k, c]) => { if (!c.found) sc.sel.delete(k); }); drawSc(); };
+$("#scDropBad").onclick = () => { Object.entries(sc.checks).forEach(([k, c]) => { if (!c.found && !c.foreign) sc.sel.delete(k); }); drawSc(); };
 $("#scRender").onclick = async () => {
   const chosen = scChosen();
   if (!chosen.length) return;

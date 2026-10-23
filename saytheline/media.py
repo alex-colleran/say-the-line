@@ -1,4 +1,5 @@
 """Every ffmpeg recipe in one place: preview windows and final renders."""
+import functools
 import json
 import os
 import re
@@ -44,6 +45,39 @@ def probe(path):
                 duration=float((d.get("format") or {}).get("duration") or 0))
 
 
+UNTAGGED = ("", "und", "unk", "mis", "zxx")
+
+
+def _english(tag):
+    return tag.split("-")[0] in ("en", "eng")
+
+
+@functools.lru_cache(maxsize=4096)
+def audio_tracks(path):
+    """Language tags of the file's audio tracks, in order ("" = untagged)."""
+    try:
+        r = subprocess.run(["ffprobe", "-v", "error", "-select_streams", "a", "-show_entries",
+                            "stream_tags=language", "-of", "json", path], capture_output=True, text=True, timeout=30)
+        return tuple(((s.get("tags") or {}).get("language") or "").lower()
+                     for s in json.loads(r.stdout or "{}").get("streams") or [])
+    except (OSError, ValueError, subprocess.TimeoutExpired):
+        return ()
+
+
+def audio_track(path):
+    """The audio track to use (its number among the audio tracks): the first English one, else the
+    first. Some releases put a dub ahead of the original (Portuguese, then English)."""
+    return next((i for i, t in enumerate(audio_tracks(path)) if _english(t)), 0)
+
+
+def foreign_audio(path):
+    """The track used is tagged as a language other than English, so speech-to-text (English only)
+    can't check it: the subtitle timing stands. Untagged tracks are assumed to be English."""
+    tags = audio_tracks(path)
+    tag = tags[audio_track(path)] if tags else ""
+    return None if tag in UNTAGGED or _english(tag) else tag
+
+
 def font_path(family="Inter"):
     p = os.path.join(FONT_DIR, FONT_FILES.get(family, ""))
     if FONT_FILES.get(family) and os.path.isfile(p):
@@ -70,7 +104,7 @@ def preview(src, start_ms, end_ms, out):
     dur = (end_ms - start_ms) / 1000
     common_in = ["ffmpeg", "-v", "error", "-nostdin", "-y", "-ss", f"{start_ms / 1000:.3f}"]
     common_out = ["-t", f"{dur:.3f}", "-enc_time_base:v", "1:90000", "-video_track_timescale", "90000",
-                  "-map", "0:v:0", "-map", "0:a:0?", "-c:a", "aac", "-b:a", "128k",
+                  "-map", "0:v:0", "-map", f"0:a:{audio_track(src)}?", "-c:a", "aac", "-b:a", "128k",
                   "-ac", "2", "-movflags", "+faststart", "-sn", "-dn", "-map_chapters", "-1", out]
     gpu = common_in + ["-vaapi_device", VAAPI or "", "-i", src,
                        "-vf", "scale=-2:480,format=nv12,hwupload", "-c:v", "h264_vaapi", "-qp", "26"] + common_out
@@ -408,7 +442,7 @@ def render(src, in_ms, out_ms, opts, cues, out, label=None, uniform=False):
                      "[a]palettegen=stats_mode=diff[p];[b][p]paletteuse=dither=bayer:bayer_scale=4[g]")
             cmd += ["-filter_complex", graph, "-map", "[g]", out]
         else:
-            cmd += ["-map", "0:v:0", "-map", "1:a:0" if silent else "0:a:0?", "-vf", ",".join(chain),
+            cmd += ["-map", "0:v:0", "-map", "1:a:0" if silent else f"0:a:{audio_track(src)}?", "-vf", ",".join(chain),
                     "-sn", "-dn", "-map_chapters", "-1"]
             if uniform:
                 # Sources differ wildly in level (a quiet drama next to a loud sitcom) and every hard

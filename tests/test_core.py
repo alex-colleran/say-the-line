@@ -275,5 +275,23 @@ class CaptionEdits(unittest.TestCase):
         self.assertEqual(len(speech), 3, "a transcript isn't subtitle lines")
 
 
+class AudioTracks(unittest.TestCase):
+    def tracks(self, *tags):
+        from unittest import mock
+        return mock.patch.object(media, "audio_tracks", lambda path: tags)
+
+    def test_english_track_wins_over_a_dub_ahead_of_it(self):
+        with self.tracks("por", "eng"):
+            self.assertEqual(media.audio_track("x"), 1)
+            self.assertIsNone(media.foreign_audio("x"))
+
+    def test_foreign_only_when_tagged(self):
+        with self.tracks("jpn"):
+            self.assertEqual((media.audio_track("x"), media.foreign_audio("x")), (0, "jpn"))
+        for tags in [("und",), ("",), (), ("eng", "kor")]:
+            with self.tracks(*tags):
+                self.assertIsNone(media.foreign_audio("x"), tags)
+
+
 if __name__ == "__main__":
     unittest.main()

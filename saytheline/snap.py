@@ -12,6 +12,7 @@ import subprocess
 import tempfile
 
 from . import config
+from . import media
 
 STT_PY = config.stt_python()          # the Python with faster-whisper / spaCy
 WORKER = os.path.join(os.path.dirname(os.path.abspath(__file__)), "stt_worker.py")
@@ -32,7 +33,8 @@ def transcribe(src, a_ms, b_ms, careful=False):
     with tempfile.TemporaryDirectory(prefix="saytheline-snap-") as tmp:
         wav = os.path.join(tmp, "a.wav")
         subprocess.run(["ffmpeg", "-v", "error", "-nostdin", "-y", "-ss", f"{a_ms / 1000:.3f}",
-                        "-t", f"{(b_ms - a_ms) / 1000:.3f}", "-i", src, "-vn", "-ac", "1", "-ar", "16000", wav],
+                        "-t", f"{(b_ms - a_ms) / 1000:.3f}", "-i", src, "-map", f"0:a:{media.audio_track(src)}",
+                        "-vn", "-ac", "1", "-ar", "16000", wav],
                        check=True, capture_output=True, timeout=60)
         r = subprocess.run([*config.nice(), STT_PY, "-I", WORKER, wav, *(["--careful"] if careful else [])],
                            capture_output=True, text=True, timeout=300)

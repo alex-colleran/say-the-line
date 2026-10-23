@@ -68,6 +68,9 @@ sed -n '/<script>/,/<\/script>/p' saytheline/static/index.html | sed '1d;$d' > /
 - Drop chapter/data streams from previews (`-map_chapters -1 -dn`).
 - Anime releases mislabel subtitle languages: the indexer tries every text track and keeps the
   first that reads as English dialogue (`subs.is_dialogue`).
+- Some releases put a dub ahead of the original audio (Portuguese, then English). Previews, renders
+  and speech-to-text all use `media.audio_track(path)` (the first English track, else the first);
+  never map `0:a:0` directly.
 - Subtitle files can be tens of seconds off: snap tries ±5 s then ±45 s, picks the occurrence whose
   neighbouring lines also match, and remembers the offset per item (`data/offsets.json`).
 - Whisper starts a word where the previous one ended; `stt_worker.refine_starts` moves starts later

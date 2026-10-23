@@ -139,6 +139,11 @@ Design notes: what each part does and why it is built that way. For setup, see t
     offset.
   - Lines that are never heard (songs, a TV in the background, a wrong release) are flagged and
     skipped by default.
+  - Foreign-language audio with English subtitles can't be checked (speech-to-text is English
+    only). When the audio track is tagged as another language (`media.foreign_audio`), the hit is
+    not listened to: it keeps its subtitle timing and is never skipped, and word looks spread each
+    line's words evenly across it. Untagged tracks are assumed to be English.
+- **Order:** best match, air date, show, shuffle, or drag clips by their handle into your own.
 - **Cut:** whole line, or just the searched phrase (from word timing), with each clip's padding
   trimmed to the camera cuts (Shots: on by default). Overlapping cuts in one item merge.
 - **Render:** each segment is rendered uniform (same size, 30 fps, 48 kHz stereo, a silent track

@@ -232,17 +232,19 @@ def prune_previews():
 
 
 def preview_file(item_id, start_ms, end_ms):
-    # ".t": frame-exact timestamps (media.preview); older previews are left for the pruning to drop
-    out = os.path.join(PREVIEWS, str(item_id), f"{start_ms}-{end_ms}.t.mp4")
+    # ".t": frame-exact timestamps (media.preview); ".a<n>": audio track n, when it isn't the first.
+    # Older previews are left for the pruning to drop.
+    row = item_row(item_id)
+    if not row or not os.path.exists(row["path"]):
+        return None
+    track = media.audio_track(row["path"])
+    out = os.path.join(PREVIEWS, str(item_id), f"{start_ms}-{end_ms}{f'.a{track}' if track else ''}.t.mp4")
     if os.path.exists(out):
         try:
             os.utime(out)                             # recently used: pruned last
         except OSError:
             pass
         return out
-    row = item_row(item_id)
-    if not row or not os.path.exists(row["path"]):
-        return None
     os.makedirs(os.path.dirname(out), exist_ok=True)
     with PREVIEW_SLOT:
         if not os.path.exists(out):
@@ -506,6 +508,14 @@ def sc_check_hit(row, hit, query, offset=None, wide=True):
     if not cues:
         return dict(found=False, status="no subtitle line")
     a, b = min(c["start_ms"] for c in cues), max(c["end_ms"] for c in cues)
+    if lang := media.foreign_audio(row["path"]):
+        # English subtitles over other speech: nothing to listen for, so the subtitles' own timing
+        # stands, and word looks get each line's words spread evenly across it
+        words = [dict(w=w, s=round(c["start_ms"] + i * (c["end_ms"] - c["start_ms"]) / len(c["text"].split())),
+                      e=round(c["start_ms"] + (i + 1) * (c["end_ms"] - c["start_ms"]) / len(c["text"].split())))
+                 for c in cues for i, w in enumerate(c["text"].split())]
+        return dict(found=False, foreign=lang, status=f"{lang} audio: subtitle timing", offset_ms=off,
+                    sub_in=a, sub_out=b, words=words)
     near = [c for c in item_cues(row["id"], a - 45000, b + 45000, off) if c["end_ms"] <= a or c["start_ms"] >= b]
     res = snapper.snap(row["path"], a, b, cues, wide=wide, context=near)
     if not res.get("found"):
@@ -617,11 +627,12 @@ def sc_segment(row, hit, facts, req):
             a, b = facts["line_s"], facts["line_e"]
         off, how = facts["offset_ms"], "checked"
     else:
-        if facts and not facts.get("found") and req.get("unheard") != "keep":
+        foreign = (facts or {}).get("foreign")
+        if facts and not facts.get("found") and not foreign and req.get("unheard") != "keep":
             return None                                   # a wrong clip is worse than a missing one
         off = (facts or {}).get("offset_ms", OFFSETS.get(row["id"], 0))
         a, b = int(hit["start_ms"]) + off, int(hit["end_ms"]) + off
-        how = "subtitle timing"
+        how = f"subtitle timing ({foreign} audio)" if foreign else "subtitle timing"
     in_ms, out_ms = max(0, a - pad_in), b + pad_out
     if req.get("shots", True):              # start on the line's own shot, end before the next
         cuts, margin = item_shots(row["id"], in_ms, out_ms)
