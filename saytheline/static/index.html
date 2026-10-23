@@ -270,14 +270,41 @@
   .sclist { display: flex; flex-direction: column; gap: 8px; }
   /* Say Anything: one row per piece of the sentence */
   #saText { width: 100%; min-height: 64px; font: inherit; font-size: 17px; padding: 10px; background: var(--panel);
-    color: var(--fg); border: 1px solid var(--line); resize: vertical; box-sizing: border-box; }
-  .sa-row { display: grid; grid-template-columns: 96px 1fr; gap: 10px; padding: 8px; background: var(--panel); border: 1px solid var(--line); }
+    color: var(--text); border: 1px solid var(--line); resize: vertical; box-sizing: border-box; }
+  /* one card per piece: ‹ thumbnail + source › on top (the chevrons swap takes), then the trim */
+  .sa-row { position: relative; display: flex; flex-direction: column; gap: 10px; padding: 10px 10px 12px;
+    background: var(--panel); border: 1px solid var(--line); }
   .sa-row.missing { border-color: #6a2f2f; }
-  .sa-row .st img { width: 96px; aspect-ratio: 16/9; object-fit: cover; display: block; background: #000; }
+  .sa-top { position: relative; display: grid; grid-template-columns: 112px 1fr 40px; gap: 10px; align-items: center; }
+  .sa-top .st { position: relative; }
+  .sa-top .st img { width: 112px; aspect-ratio: 16/9; object-fit: cover; display: block; background: #000; }
   .sa-row .w { font-size: 18px; font-weight: 700; }
-  .sa-row .src { color: var(--dim); font-size: 13px; }
-  .sa-row .acts { grid-column: 1 / -1; display: flex; gap: 6px; flex-wrap: wrap; align-items: center; }
-  .sa-row .acts .n { color: var(--dim); font-size: 12px; min-width: 52px; text-align: center; }
+  .sa-row .src { color: var(--dim); font-size: 13px; overflow-wrap: anywhere; }
+  .sa-row .take-n { color: var(--dim); font-size: 12px; margin-top: 2px; }
+  .sa-nav { width: 36px; height: 44px; display: grid; place-items: center; padding: 0; border: 1px solid var(--edge);
+    background: rgba(11, 12, 15, .82); color: var(--text); cursor: pointer; }
+  .sa-nav:disabled { opacity: .3; cursor: default; }
+  .sa-nav .i { width: 22px; height: 22px; }
+  .sa-nav.prev { position: absolute; left: -4px; top: 50%; transform: translateY(-50%); z-index: 1; }
+  .sa-nav.busy .i { animation: sa-pulse 1s ease-in-out infinite; }
+  @keyframes sa-pulse { 50% { opacity: .25; } }
+  /* the trim: a bar of the sound around the words, then a row each for where it starts and ends */
+  .sa-trim { display: flex; flex-direction: column; gap: 8px; }
+  .sa-trim .head { display: flex; align-items: center; gap: 10px; }
+  .sa-bar { position: relative; flex: 1; height: 22px; background: var(--panel-2); border: 1px solid var(--line); overflow: hidden; }
+  .sa-bar .words { position: absolute; top: 0; bottom: 0; background: rgba(255, 176, 0, .28); }
+  .sa-bar .cut { position: absolute; top: 2px; bottom: 2px; border: 2px solid var(--accent); }
+  .sa-trim .len { color: var(--dim); font-size: 12px; min-width: 44px; text-align: right; font-variant-numeric: tabular-nums; }
+  .sa-edge { display: grid; grid-template-columns: 44px auto auto 1fr; gap: 8px; align-items: center; }
+  .sa-edge > span:first-child { color: var(--dim); font-size: 13px; }
+  .sa-edge .off { color: var(--dim); font-size: 12px; font-variant-numeric: tabular-nums; }
+  .sa-edge .b { min-width: 84px; }
+  .sa-edge .reset { justify-self: end; }
+  /* ⓘ: tap for a short explanation shown in place (no hover tooltips: phones can't hover) */
+  .info { width: 30px; height: 30px; min-height: 30px; flex: none; border-radius: 50%; border: 1px solid var(--edge);
+    background: transparent; color: var(--dim); font: 600 14px/1 Georgia, serif; font-style: italic; cursor: pointer; padding: 0; }
+  .info[aria-expanded=true] { color: var(--accent); border-color: var(--accent); }
+  .infotext { color: var(--dim); font-size: 13px; line-height: 1.45; border-left: 2px solid var(--edge); padding: 2px 0 2px 10px; }
   details.grp summary { cursor: pointer; color: var(--dim); font-size: 13px; min-height: 28px; display: flex; align-items: center; gap: 6px; }
   @media (max-width: 480px) {
     .sc-row { grid-template-columns: 28px 24px 72px 1fr auto; gap: 8px; }
@@ -328,6 +355,8 @@
 <symbol id="i-plus" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5l0 14"/> <path d="M5 12l14 0"/></g></symbol>
 <symbol id="i-grip" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 5m-1 0a1 1 0 1 0 2 0a1 1 0 1 0 -2 0"/> <path d="M9 12m-1 0a1 1 0 1 0 2 0a1 1 0 1 0 -2 0"/> <path d="M9 19m-1 0a1 1 0 1 0 2 0a1 1 0 1 0 -2 0"/> <path d="M15 5m-1 0a1 1 0 1 0 2 0a1 1 0 1 0 -2 0"/> <path d="M15 12m-1 0a1 1 0 1 0 2 0a1 1 0 1 0 -2 0"/> <path d="M15 19m-1 0a1 1 0 1 0 2 0a1 1 0 1 0 -2 0"/></g></symbol>
 <symbol id="i-message" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 9h8"/> <path d="M8 13h6"/> <path d="M18 4a3 3 0 0 1 3 3v8a3 3 0 0 1 -3 3h-5l-5 3v-3h-2a3 3 0 0 1 -3 -3v-8a3 3 0 0 1 3 -3h12z"/></g></symbol>
+<symbol id="i-chev-left" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M15 6l-6 6l6 6"/></g></symbol>
+<symbol id="i-chev-right" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M9 6l6 6l-6 6"/></g></symbol>
 <symbol id="i-share" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 12m-3 0a3 3 0 1 0 6 0a3 3 0 1 0 -6 0"/> <path d="M18 6m-3 0a3 3 0 1 0 6 0a3 3 0 1 0 -6 0"/> <path d="M18 18m-3 0a3 3 0 1 0 6 0a3 3 0 1 0 -6 0"/> <path d="M8.7 10.7l6.6 -3.4"/> <path d="M8.7 13.3l6.6 3.4"/></g></symbol></svg>
 
 <header>
@@ -543,7 +572,10 @@
     <div class="sheet-head"><div class="t">Say Anything<small>type a sentence, the library says it</small></div><button class="x" id="saClose" aria-label="Close"><svg class="i" aria-hidden="true"><use href="#i-x"/></svg></button></div>
     <textarea id="saText" placeholder="Type a sentence for the library to say" aria-label="Sentence" enterkeyhint="go"></textarea>
     <div class="opt"><button class="b primary" id="saGo"><svg class="i" aria-hidden="true"><use href="#i-headphones"/></svg>Find the words</button>
-      <span class="hint" id="saHint">Finds each phrase in the subtitles, longest first, and listens to check it is really said (~5 s per take). TV / Movies above narrows where it looks.</span></div>
+      <button class="info" type="button" aria-expanded="false" aria-controls="saHowTo" aria-label="How Say Anything works">i</button></div>
+    <div class="infotext" id="saHowTo" hidden>Each phrase is looked up in the subtitles, longest first, then listened to so the words are really said (about 5 s per take).
+      A word nobody says in your library is marked and left out. TV / Movies at the top narrows where it looks.
+      On each piece, ‹ › swap in another line with the same words.</div>
     <div style="position:relative"><video id="saVid" playsinline controls hidden style="width:100%;max-height:40vh;background:#000;display:block"></video></div>
     <div id="saResult"></div>
     <div class="sclist" id="saList"></div>
@@ -2282,10 +2314,10 @@ try { Object.assign(sa.o, JSON.parse(localStorage.getItem("saytheline.sa") || "{
 function saveSa() { try { localStorage.setItem("saytheline.sa", JSON.stringify(sa.o)); localStorage.setItem("saytheline.saText", $("#saText").value); } catch (e) {} }
 function saCut(p) {
   const t = p.take, [pb0, pa0] = SA_PAD[sa.o.padding] || SA_PAD.normal;
-  if (t.cuts && t.cuts[sa.o.padding]) { const [a, b] = t.cuts[sa.o.padding]; return [Math.max(0, a + (p.nudge_in || 0)), b + (p.nudge_out || 0)]; }
+  if (t.cuts && t.cuts[sa.o.padding]) { const [a, b] = t.cuts[sa.o.padding]; return [Math.max(0, a + (t.nudge_in || 0)), b + (t.nudge_out || 0)]; }
   const pb = t.before < 1000 ? Math.min(pb0, Math.max(0, Math.floor(t.before / 2))) : pb0;
   const pa = t.after < 1000 ? Math.min(pa0, Math.max(0, Math.floor(t.after / 2))) : pa0;
-  return [Math.max(0, Math.max(0, t.s - pb) + (p.nudge_in || 0)), t.e + pa + (p.nudge_out || 0)];
+  return [Math.max(0, Math.max(0, t.s - pb) + (t.nudge_in || 0)), t.e + pa + (t.nudge_out || 0)];
 }
 function saPreview(p) { const [a, b] = saCut(p); return `/preview/${p.take.item_id}/${a}-${b}.mp4`; }
 function drawSa() {
@@ -2310,27 +2342,49 @@ function drawSa() {
   $("#saPlay").disabled = sa.busy || !found.length; $("#saPlay").hidden = sa.busy;
   $("#saStop").hidden = !(sa.busy && sa.job);
   const list = $("#saList"); list.innerHTML = "";
+  const secs = ms => (ms >= 0 ? "+" : "−") + (Math.abs(ms) / 1000).toFixed(2) + " s";
   sa.pieces.forEach((p, i) => {
     const row = document.createElement("div"); row.className = "sa-row" + (p.take ? "" : " missing");
     if (!p.take) {
-      row.innerHTML = `<div></div><div><div class="w">${esc(p.text)}</div><div class="src">Not heard anywhere in the library. Try another word for it.</div></div>`;
+      row.innerHTML = `<div><div class="w">${esc(p.text)}</div><div class="src">Nobody says this in your library, so it's left out. Try another word for it.</div></div>`;
       return list.appendChild(row);
     }
-    const [a, b] = saCut(p), t = p.take;
-    row.innerHTML = `<div class="st"><img loading="lazy" src="${t.thumb}" alt=""></div>
-      <div><div class="w">${esc(p.text)}</div><div class="src">${esc(t.label)} · ${fmt(t.s)}</div><div class="src">“${esc(t.line)}”</div></div>
-      <div class="acts"><button class="b" data-a="play" aria-label="Play this piece">${ic("play")}</button>
-        <button class="b" data-a="take" ${p.alts.length ? "" : "disabled"} title="Listen to another line with these words">Other take</button>
-        <span class="hint">Start</span><button class="b" data-a="in" data-d="-1" aria-label="Start earlier">◀</button><button class="b" data-a="in" data-d="1" aria-label="Start later">▶</button>
-        <span class="hint">End</span><button class="b" data-a="out" data-d="-1" aria-label="End earlier">◀</button><button class="b" data-a="out" data-d="1" aria-label="End later">▶</button>
-        <span class="n">${((b - a) / 1000).toFixed(2)} s</span></div>`;
+    p.takes = p.takes || [p.take]; p.ti = p.ti || 0;
+    const t = p.take, [a, b] = saCut(p), more = p.ti < p.takes.length - 1 || p.alts.length;
+    // the bar spans the cut and the words with a little room either side
+    const lo = Math.min(a, t.s) - 250, hi = Math.max(b, t.e) + 250, pct = x => ((x - lo) / (hi - lo) * 100).toFixed(1) + "%";
+    const nin = t.nudge_in || 0, nout = t.nudge_out || 0, tipId = "saTrimTip" + i;
+    row.innerHTML = `<div class="sa-top">
+        <button class="sa-nav prev" type="button" data-a="prev" ${p.ti ? "" : "disabled"} aria-label="Previous take" title="Previous take">${ic("chev-left")}</button>
+        <div class="st"><img loading="lazy" src="${t.thumb}" alt=""></div>
+        <div><div class="w">${esc(p.text)}</div><div class="src">${esc(t.label)} · ${fmt(t.s)}</div><div class="src">“${esc(t.line)}”</div>
+          <div class="take-n">Take ${p.ti + 1}${p.alts.length ? "" : ` of ${p.takes.length}`}</div></div>
+        <button class="sa-nav next${sa.taking === i ? " busy" : ""}" type="button" data-a="next" ${more && !sa.busy ? "" : "disabled"}
+          aria-label="Next take" title="${p.ti < p.takes.length - 1 ? "Next take" : "Listen for another take (~5 s)"}">${ic("chev-right")}</button>
+      </div>
+      <div class="sa-trim">
+        <div class="head"><button class="b" data-a="play" aria-label="Play this piece">${ic("play")}</button>
+          <div class="sa-bar" aria-hidden="true"><i class="words" style="left:${pct(t.s)};width:calc(${pct(t.e)} - ${pct(t.s)})"></i>
+            <i class="cut" style="left:${pct(a)};width:calc(${pct(b)} - ${pct(a)})"></i></div>
+          <span class="len">${((b - a) / 1000).toFixed(2)} s</span>
+          <button class="info" type="button" aria-expanded="false" aria-controls="${tipId}" aria-label="About trimming">i</button></div>
+        <div class="infotext" id="${tipId}" hidden>The bar is the sound around this piece: the outlined part plays, the shaded part is the words themselves.
+          Each tap moves an edge 0.04 s. Start earlier if the first sound is cut off; end later if the last word is clipped; move an edge in to drop a breath or a stray syllable.</div>
+        <div class="sa-edge"><span>Start</span><button class="b" data-a="in" data-d="-1">Earlier</button><button class="b" data-a="in" data-d="1">Later</button>
+          <span class="off">${nin ? secs(nin) : ""}</span></div>
+        <div class="sa-edge"><span>End</span><button class="b" data-a="out" data-d="-1">Earlier</button><button class="b" data-a="out" data-d="1">Later</button>
+          <span class="off">${nout ? secs(nout) : ""}</span></div>
+        ${nin || nout ? `<button class="b reset" data-a="reset" style="align-self:flex-start">Reset trim</button>` : ""}
+      </div>`;
     row.querySelector("img").onerror = e => e.target.remove();
+    if (openInfo.has(tipId)) { row.querySelector("#" + tipId).hidden = false; row.querySelector(`[aria-controls="${tipId}"]`).setAttribute("aria-expanded", "true"); }
     row.querySelectorAll("button[data-a]").forEach(btn => btn.onclick = () => {
       if (sa.busy) return;
       const act = btn.dataset.a, d = Number(btn.dataset.d || 0) * SA_NUDGE;
       if (act === "play") return saPlay([p]);
-      if (act === "take") return saOtherTake(i);
-      if (act === "in") p.nudge_in = (p.nudge_in || 0) + d; else p.nudge_out = (p.nudge_out || 0) + d;
+      if (act === "prev" || act === "next") return saTake(i, act === "next" ? 1 : -1);
+      if (act === "reset") { t.nudge_in = 0; t.nudge_out = 0; }
+      else if (act === "in") t.nudge_in = nin + d; else t.nudge_out = nout + d;
       drawSa(); saPlay([p]);
     });
     list.appendChild(row);
@@ -2366,19 +2420,25 @@ async function saFind() {
 $("#saGo").onclick = saFind;
 $("#saText").addEventListener("keydown", e => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); e.target.blur(); saFind(); } });
 $("#saText").addEventListener("input", () => { saveSa(); if (sa.pieces.length && !sa.busy) drawSa(); });
-async function saOtherTake(i) {
+// ‹ › on a piece: step through the takes heard so far; past the last one, listen for a new one
+async function saTake(i, dir) {
   const p = sa.pieces[i];
+  p.takes = p.takes || [p.take]; p.ti = p.ti || 0;
+  if (dir < 0 || p.ti < p.takes.length - 1) {
+    p.ti = Math.max(0, p.ti + dir); p.take = p.takes[p.ti]; drawSa(); return saPlay([p]);
+  }
+  if (!p.alts.length) return;
   let note = "";
-  sa.busy = true; drawSa(); $("#saSum").textContent = `Listening for another “${p.text}”…`;
+  sa.busy = true; sa.taking = i; drawSa(); $("#saSum").textContent = `Listening for another “${p.text}”…`;
   try {
     const job = await postJob("/api/sayany/take", { piece: { text: p.text, want: p.want, alts: p.alts } }, j => {
       if (sa.job !== j.id) { sa.job = j.id; $("#saStop").hidden = false; }
     });
-    if (job.piece) sa.pieces[i] = job.piece;
-    else { p.alts = []; note = `No other take of “${p.text}” was heard.`; }
+    if (job.piece) { p.takes.push(job.piece.take); p.ti = p.takes.length - 1; p.take = job.piece.take; p.alts = job.piece.alts; }
+    else { p.alts = []; note = `That was the last take of “${p.text}” in your library.`; }
   } catch (e) { if (e.message !== "Stopped") $("#saResult").innerHTML = `<div class="err">${esc(e.message)}</div>`; }
-  finally { sa.busy = false; sa.job = null; drawSa(); }
-  if (note) $("#saSum").textContent = note; else if (sa.pieces[i].take) saPlay([sa.pieces[i]]);
+  finally { sa.busy = false; sa.taking = null; sa.job = null; drawSa(); }
+  if (note) $("#saSum").textContent = note; else saPlay([p]);
 }
 $("#saRender").onclick = async () => {
   const pieces = sa.pieces.filter(p => p.take);
@@ -2386,7 +2446,7 @@ $("#saRender").onclick = async () => {
   sa.busy = true; drawSa(); $("#saResult").innerHTML = "";
   const look = sa.o.captions;
   const body = { sentence: sa.sentence, padding: sa.o.padding, loudnorm: sa.o.loudnorm, aspect: sa.o.aspect, res: sa.o.res, fit: sa.o.fit,
-    pieces: pieces.map(p => ({ text: p.text, take: p.take, nudge_in: p.nudge_in || 0, nudge_out: p.nudge_out || 0 })),
+    pieces: pieces.map(p => ({ text: p.text, take: p.take, nudge_in: p.take.nudge_in || 0, nudge_out: p.take.nudge_out || 0 })),
     subs: { on: look !== "off", style: look, font: look === "classic" ? opts.fontClassic : opts.fontWord, size: opts.size, colour: opts.colour,
             box: opts.box, position: look === "bigword" ? "middle" : opts.position, hl: opts.hl, caps: opts.caps } };
   try {
@@ -2422,6 +2482,17 @@ function openSayAnything() {
   drawSa(); if (!sa.pieces.length) $("#saText").focus();
 }
 $("#saBtn").onclick = openSayAnything;
+// ⓘ buttons: show or hide the short explanation they point at (aria-controls). Which ones are
+// open is remembered, so a card redrawn after a tap keeps its explanation showing.
+const openInfo = new Set();
+document.addEventListener("click", e => {
+  const b = e.target.closest("button.info");
+  if (!b) return;
+  const id = b.getAttribute("aria-controls"), box = document.getElementById(id);
+  if (!box) return;
+  box.hidden = !box.hidden; b.setAttribute("aria-expanded", String(!box.hidden));
+  if (box.hidden) openInfo.delete(id); else openInfo.add(id);
+});
 $("#saClose").onclick = () => history.back();
 
 /* ?edit=<clip id>: open a rendered clip (made here, or by an agent over MCP) as it was made */
