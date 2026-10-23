@@ -14,3 +14,7 @@ cp shots/1280-1-results.png desktop-search.png; cp shots/1280-2-editor.png deskt
 ffmpeg -i demo-data/clips/<name>.gif -filter_complex \
   "fps=10,scale=360:-1:flags=lanczos,split[a][b];[a]palettegen=max_colors=64[p];[b][p]paletteuse=dither=bayer:bayer_scale=4" clip.gif
 ```
+
+`social-preview.png` (1280×640) is the repo's GitHub social preview image (Settings → Social
+preview, which GitHub shows only on public repos): the Captions and result shots on the brand
+dark background, with the name and tagline.
