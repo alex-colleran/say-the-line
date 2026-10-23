@@ -42,13 +42,15 @@ def _rank(lang, forced, title):
 
 
 def list_items(src=None, series=None, movies=False):
-    """[{jf_id, kind, series, season, episode, title, year, path, runtime_s, embedded}] where
-    embedded = [(stream index, codec)] of text subtitle tracks, best first."""
+    """[{jf_id, kind, series, season, episode, title, year, path, runtime_s, added, embedded}] where
+    embedded = [(stream index, codec)] of text subtitle tracks, best first. Newest added first, so a
+    pass cut short by its time cap has done the media the owner just got."""
     src = src or source()
     items = _api_items(src[1], src[2], series, movies) if src[0] == "api" else _db_items(src[1], series, movies)
     for i in items:
         i["kind"] = "movie" if movies else "episode"
         i["embedded"] = [(x, c) for _, x, c in sorted(i.pop("streams"))]
+    items.sort(key=lambda i: i.get("added") or "", reverse=True)
     return items
 
 
@@ -61,7 +63,7 @@ def _api_get(url, key, path, params):
 
 def _api_items(url, key, series, movies):
     params = {"IncludeItemTypes": "Movie" if movies else "Episode", "Recursive": "true", "IsMissing": "false",
-              "Fields": "Path,MediaStreams", "EnableImages": "false", "EnableUserData": "false", "Limit": PAGE}
+              "Fields": "Path,MediaStreams,DateCreated", "EnableImages": "false", "EnableUserData": "false", "Limit": PAGE}
     if series:
         found = _api_get(url, key, "/Items", {"IncludeItemTypes": "Series", "Recursive": "true", "SearchTerm": series})
         ids = [s["Id"] for s in found.get("Items", []) if s.get("Name", "").lower() == series.lower()]
@@ -82,7 +84,8 @@ def _api_items(url, key, series, movies):
             ticks = it.get("RunTimeTicks")
             out.append(dict(jf_id=norm_id(it["Id"]), series=it.get("SeriesName"), season=it.get("ParentIndexNumber"),
                             episode=it.get("IndexNumber"), title=it.get("Name"), year=it.get("ProductionYear"),
-                            path=it["Path"], runtime_s=ticks // 10_000_000 if ticks else None, streams=streams))
+                            path=it["Path"], runtime_s=ticks // 10_000_000 if ticks else None,
+                            added=it.get("DateCreated"), streams=streams))
         start += PAGE
         if start >= page.get("TotalRecordCount", 0) or not page.get("Items"):
             return out
@@ -99,7 +102,8 @@ def _db_items(jf_db, series, movies):
     items = db.jellyfin_query(jf_db, f"""
         SELECT b.Id AS jf_id, b.SeriesName AS series, b.ParentIndexNumber AS season,
                b.IndexNumber AS episode, b.Name AS title, b.ProductionYear AS year,
-               b.Path AS path, b.RunTimeTicks / 10000000 AS runtime_s
+               b.Path AS path, b.RunTimeTicks / 10000000 AS runtime_s,
+               b.DateCreated AS added
         FROM BaseItems b WHERE {' AND '.join(where)}""")
     ids = ",".join(_sql_str(i["jf_id"]) for i in items) or "''"
     streams = {}

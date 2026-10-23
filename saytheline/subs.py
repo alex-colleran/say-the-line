@@ -64,7 +64,8 @@ def extract_embedded(video_path, stream_index, codec):
 
 
 def read_text(path):
-    raw = open(path, "rb").read()
+    with open(path, "rb") as f:
+        raw = f.read()
     for enc in ("utf-8-sig", "utf-16"):
         try:
             return raw.decode(enc)

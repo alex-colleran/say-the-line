@@ -470,3 +470,29 @@ class WordOnsets(unittest.TestCase):
         self.assertEqual(didnt["s"], 3000)          # 1.1 s into the word: past the old 0.6 s look
         self.assertEqual((i["s"], i["e"]), (2900, 3000))
         self.assertEqual(ws[("Say", 0)]["s"], 0)    # already loud: left alone
+
+
+class IndexOrder(unittest.TestCase):
+    def test_subtitle_files_then_embedded_each_newest_first(self):
+        from unittest import mock
+        from saytheline import index
+        srt = "1\n00:00:01,000 --> 00:00:02,000\nWalter, you're the only one I can trust.\n"
+        with tempfile.TemporaryDirectory() as d:
+            def item(name, added, embedded):
+                path = os.path.join(d, name + ".mkv")
+                open(path, "w").close()
+                if not embedded:
+                    with open(os.path.join(d, name + ".en.srt"), "w") as f:
+                        f.write(srt)
+                return dict(jf_id=name, kind="movie", series=None, season=None, episode=None, title=name,
+                            year=None, path=path, runtime_s=None, added=added,
+                            embedded=[(2, "subrip")] if embedded else [])
+            items = [item("old-file", "2020", False), item("new-track", "2026", True), item("new-file", "2026", False)]
+            items.sort(key=lambda i: i["added"], reverse=True)       # as jellyfin.list_items returns them
+            seen = []
+            with mock.patch.object(index.jellyfin, "list_items", return_value=items), \
+                    mock.patch.object(index.subs, "extract_embedded", return_value=srt), \
+                    mock.patch.object(index.subs, "is_dialogue", return_value=True), \
+                    mock.patch.object(index.db, "path_map", return_value=[]):
+                index.index(os.path.join(d, "cues.db"), movies=True, log=seen.append)
+        self.assertEqual([s.split(":")[0].strip() for s in seen], ["new-file", "old-file", "new-track"])

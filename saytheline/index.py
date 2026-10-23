@@ -16,10 +16,15 @@ def index(index_path, series=None, movies=False, external_only=False, log=print)
     c = db.open_index(index_path)
     pmap = db.path_map()
     stats = dict(items=0, indexed=0, unchanged=0, no_subs=0, errors=0, cues=0)
+    # Subtitle files first (cheap), then embedded tracks (ffmpeg reads the whole file), each newest
+    # first: a pass cut short by its time cap has then done the most for what was just added.
+    work = []
     for it in jellyfin.list_items(None, series, movies):
-        stats["items"] += 1
         path = db.to_host(it["path"], pmap)
-        ext = subs.find_external(path)
+        work.append((it, path, subs.find_external(path)))
+    work.sort(key=lambda x: not x[2])
+    for it, path, ext in work:
+        stats["items"] += 1
         if ext:
             source, mtime = ext, os.path.getmtime(ext)
         elif it["embedded"] and not external_only and os.path.exists(path):

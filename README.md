@@ -115,7 +115,7 @@ python -m saytheline search "we need to talk"          # search from the termina
 
 External subtitle files index fast: thousands of episodes in a couple of minutes. Embedded
 tracks mean reading through each video file, so a big library takes hours the first time. It is
-incremental, so later runs only pick up new or changed subtitles. Run it nightly (cron, a
+incremental, so later runs only pick up new or changed subtitles, and it works newest first. Run it nightly (cron, a
 systemd timer: see `deploy/`).
 
 ## Docker

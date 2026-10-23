@@ -18,6 +18,9 @@ Design notes: what each part does and why it is built that way. For setup, see t
   cues and a phrase can straddle two.
 - **Incremental:** an item is re-read only when its subtitle source or that file's mtime
   changes, and every item is committed on its own, so a run can be stopped at any time.
+- **Order:** subtitle files first (fast), then embedded tracks (ffmpeg reads the whole file), each
+  newest added first, and the nightly unit does movies before TV. A run cut short by its time cap
+  has then done what was just added.
 - Bitmap subtitles (PGS / VobSub) can't be searched; those items need text subtitles (Bazarr) or
   speech-to-text.
 
