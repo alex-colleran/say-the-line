@@ -250,6 +250,13 @@ class ClipNames(unittest.TestCase):
             finally:
                 web.CLIPS = real
 
+    def test_speaker_dashes_left_out_of_the_name(self):
+        from saytheline import web
+        row = {"kind": "movie", "title": "Some Film", "year": 1999}
+        self.assertEqual(web.clip_name(row, 75000, "- This is it! - Is it?", "gif"),
+                         "Some Film (1999) - This is it! Is it - 1m15s.gif")
+        self.assertEqual(web.clip_name(row, 75000, "Well-known line", "gif"), "Some Film (1999) - Well-known line - 1m15s.gif")
+
 
 class CaptionEdits(unittest.TestCase):
     def test_word_cues_take_line_edits(self):

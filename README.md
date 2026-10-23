@@ -10,6 +10,20 @@ looks), pick a shape (16:9, 9:16, 1:1…) and render. Or join every hit into one
 
 It runs on the machine that has your media, next to Jellyfin, and is used from a browser.
 
+![Searching for "story" on a phone, the editor with the cut on the timeline, and the finished GIF](docs/screenshots/phone.png)
+
+<p align="center"><img src="docs/screenshots/clip.gif" alt="A GIF made with Say the Line, with TikTok-style word-by-word captions" width="360"></p>
+
+<details>
+<summary>On a desktop</summary>
+
+![Search results in a grid](docs/screenshots/desktop-search.png)
+![The editor with TikTok-style captions](docs/screenshots/desktop-editor.png)
+
+</details>
+
+<sub>Screenshots use *His Girl Friday* (1940), which is in the public domain.</sub>
+
 ## Features
 
 - **Search**: phrase or any-word search across every subtitle line (SQLite FTS5, a few ms),

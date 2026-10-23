@@ -259,6 +259,7 @@ def clip_name(row, in_ms, text, fmt, aspect="original", audio="original"):
     else:
         who = f"{row['title']} ({row['year']})"
     s = in_ms // 1000
+    text = re.sub(r"(^|\s)[-–—]+\s+", r"\1", text).strip()     # "- Hi. - Hello." speaker dashes
     words = text[:48].rsplit(" ", 1)[0] if len(text) > 48 else text
     base = media.safe_name(f"{who} - {words} - {s // 60}m{s % 60:02d}s", 120)
     shape = "" if aspect in (None, "original") else f" ({aspect.replace(':', 'x')})"
