@@ -801,17 +801,18 @@ SA_MAX_WORDS = 40
 
 
 def sa_find(req):
-    """Exact-phrase subtitle hits for Say Anything, short lines first (cleaner takes)."""
+    """Exact-phrase subtitle hits for Say Anything: short lines first (cleaner takes), then any line
+    with the phrase, narrowed by sayany.pick to the exact words and a spread of titles."""
     kind = req.get("kind") or None
 
     def find(q):
-        pq = sayany.phrase_query(q.split())
-        hits = srch.search(INDEX, pq, exact=True, limit=sayany.CANDIDATES, short=True, kind=kind)
+        want = q.split()
+        pq = sayany.phrase_query(want)
+        hits = srch.search(INDEX, pq, exact=True, limit=sayany.POOL, short=True, kind=kind)
         seen = {(h["item_id"], h["start_ms"]) for h in hits}
-        if len(hits) < sayany.CANDIDATES:
-            hits += [h for h in srch.search(INDEX, pq, exact=True, limit=sayany.CANDIDATES, kind=kind)
-                     if (h["item_id"], h["start_ms"]) not in seen]
-        return [hit_json(h) for h in hits[:sayany.CANDIDATES]]
+        hits += [h for h in srch.search(INDEX, pq, exact=True, limit=sayany.POOL, kind=kind)
+                 if (h["item_id"], h["start_ms"]) not in seen]
+        return [hit_json(h) for h in sayany.pick(hits, want)]
     return find
 
 

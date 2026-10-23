@@ -190,8 +190,11 @@ Design notes: what each part does and why it is built that way. For setup, see t
 - **Plan:** the sentence is split into words (hyphens and slashes split too). From each position
   the longest phrase (up to 6 words) that some subtitle line has exactly is tried first; a
   multi-word piece is kept only if it's heard cleanly, otherwise shorter pieces are tried.
-- **Candidates:** up to 8 lines per phrase, the line that is just the phrase first, then lines that
-  start or end with it, then short lines. Each candidate is listened to (snap, word timing) and
+- **Candidates:** up to 16 lines per phrase, picked from 150 search hits: only lines with the words
+  exactly as typed (search matches stems, so "chocolates" also finds "chocolate"), at most 2 from one
+  title. The line that is just the phrase comes first, then lines that start or end with it, then
+  short lines; lines that say it more than once or are sung (♪) come last, since chants are seldom
+  heard word for word. The first few are listened to; the rest wait for ›. Each candidate is listened to (snap, word timing) and
   scored on the gap before and after the words, each word's length and loudness.
 - **Budget:** about 5 listens per word (40–150 a sentence). Past it, the rest get one try each and
   a missing word says so ("rushed"), with the untried lines kept so › can listen to the next one.

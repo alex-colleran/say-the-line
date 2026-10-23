@@ -15,7 +15,9 @@ import subprocess
 from . import media, snap
 
 MAX_PHRASE = 6           # words per piece, at most
-CANDIDATES = 8           # subtitle lines fetched per phrase
+CANDIDATES = 16          # subtitle lines kept per phrase (the first few are listened to, the rest are ›)
+POOL = 150               # lines searched per phrase, to pick those from
+PER_TITLE = 2            # at most this many candidates from one title: a chant fills a scene
 TRIES = 3                # of those, how many are listened to before settling...
 MORE_TRIES = 5           # ...or this many while no take has a pause on both sides
 OK_GAP_MS = 100
@@ -71,12 +73,36 @@ def take_from(facts, want):
     return best
 
 
+def _line(h):
+    return [x for x in (snap.norm(w) for w in re.split(r"[\s‐-―/-]+", h.get("text") or "")) if x]
+
+
+def says(h, want):
+    """How many times the line says exactly these words. Search matches word stems ("chocolates"
+    finds "chocolate"), but a take must be the word as typed."""
+    return len(runs([dict(w=w) for w in _line(h)], want))
+
+
+def pick(hits, want, n=CANDIDATES):
+    """Candidates for a phrase from a search pool: lines with the exact words, in order(), and no
+    more than PER_TITLE from one title, so the list is not one scene's chant."""
+    per, out = {}, []
+    for h in order([h for h in hits if says(h, want)], want):
+        k = h.get("item_id")
+        if per.get(k, 0) < PER_TITLE:
+            per[k] = per.get(k, 0) + 1
+            out.append(h)
+    return out[:n]
+
+
 def order(hits, want):
     """Lines that are just the phrase first, then ones it starts or ends (a natural pause on one
-    side), then the rest; shorter lines first within each."""
+    side), then the rest; shorter lines first within each. A line saying it more than once
+    ("Eat! Eat! Eat!") or sung (♪) goes last: chants, repeats and songs are seldom heard word for word."""
     def rank(h):
-        t = [x for x in (snap.norm(w) for w in (h.get("text") or "").split()) if x]
-        n = len(want)
+        t, n = _line(h), len(want)
+        if says(h, want) > 1 or "♪" in (h.get("text") or ""):
+            return (3, len(t))
         return (0 if t == want else 1 if t[-n:] == want or t[:n] == want else 2, len(t))
     return sorted(hits, key=rank)
 

@@ -591,3 +591,16 @@ class SayAnything(unittest.TestCase):
         self.assertLessEqual(len(calls), sayany.MAX_LISTENS + sayany.TRIES + 60)
         self.assertEqual(pieces[-1]["why"], "rushed")
         self.assertTrue(pieces[-1]["alts"], "the untried lines stay, for the › button")
+
+    def test_candidates_are_the_exact_words_and_not_one_chant(self):
+        from saytheline import sayany
+        # search matches stems: "chocolates" finds "chocolate" lines, which can never be the take
+        pool = [dict(item_id=1, text="Chocolate!"), dict(item_id=2, text="a box of chocolates."),
+                dict(item_id=3, text="Chocolates."), dict(item_id=4, text="chocolate. I like chocolate.")]
+        self.assertEqual([h["item_id"] for h in sayany.pick(pool, ["chocolates"])], [3, 2])
+        # one scene's "Eat! Eat! Eat!" four times over, then lines that say it once
+        pool = [dict(item_id=7, idx=k, text="Eat! Eat! Eat!") for k in range(4)] + [
+            dict(item_id=8, text="♪ eat ♪"), dict(item_id=9, text="You should eat something."), dict(item_id=10, text="Eat.")]
+        got = sayany.pick(pool, ["eat"])
+        self.assertEqual([h["item_id"] for h in got[:2]], [10, 9])
+        self.assertEqual(sum(h["item_id"] == 7 for h in got), sayany.PER_TITLE)
