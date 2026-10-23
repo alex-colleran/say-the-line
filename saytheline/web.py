@@ -934,6 +934,62 @@ def run_sa_render(job_id, req):
         job.update(state="error", error=str(e)[:500])
 
 
+# ---- script view ------------------------------------------------------------------------------
+def script_lines(item_id):
+    """(body, cache) for /api/lines: the item, every subtitle line in order, and for an episode the
+    ids of the episodes either side (‹ › in the script view)."""
+    c = db()
+    row = c.execute("SELECT id, kind, series, season, episode, title, year FROM items WHERE id = ?", (item_id,)).fetchone()
+    if not row:
+        return {"error": "no such title"}, None
+    item = dict(row, label=srch.label(row))
+    lines = [list(r) for r in c.execute("SELECT idx, start_ms, end_ms, text FROM cues WHERE item_id = ? ORDER BY idx",
+                                        (item_id,))]
+    prev = nxt = None
+    if row["kind"] == "episode":
+        key = (row["series"], row["season"] or 0, row["episode"] or 0)
+        prev = c.execute("SELECT id FROM items WHERE kind = 'episode' AND series = ? AND (ifnull(season, 0), ifnull(episode, 0)) < (?, ?) "
+                         "ORDER BY ifnull(season, 0) DESC, ifnull(episode, 0) DESC LIMIT 1", key).fetchone()
+        nxt = c.execute("SELECT id FROM items WHERE kind = 'episode' AND series = ? AND (ifnull(season, 0), ifnull(episode, 0)) > (?, ?) "
+                        "ORDER BY ifnull(season, 0), ifnull(episode, 0) LIMIT 1", key).fetchone()
+    return dict(item=item, lines=lines, prev=prev and prev[0], next=nxt and nxt[0]), "max-age=60"
+
+
+def browse(text, series=None, kind=None):
+    """Titles that have a script: shows and movies whose name matches `text` (for main search,
+    above the matching lines), or one show's episodes. Each title gets a frame to show."""
+    c = db()
+    if series:
+        return [dict(r) for r in c.execute("SELECT id, season, episode, title FROM items WHERE kind = 'episode' AND series = ? "
+                                           "ORDER BY ifnull(season, 0), ifnull(episode, 0)", (series,))]
+    text = text.strip().strip('"')
+    if len(text) < 2:
+        return []
+    like = f"%{text}%"
+    out = []
+
+    def frame(item_id, runtime_s):         # a frame a third of the way in: past the titles
+        return f"/thumb/{item_id}/{int((runtime_s or 900) * 1000 * 0.33)}.jpg"
+    if kind != "movie":
+        for name, n, seasons in c.execute("SELECT series, COUNT(*), COUNT(DISTINCT ifnull(season, 0)) FROM items "
+                                          "WHERE kind = 'episode' AND series LIKE ? GROUP BY series LIMIT 30", (like,)).fetchall():
+            first = c.execute("SELECT id, runtime_s FROM items WHERE kind = 'episode' AND series = ? "
+                              "ORDER BY ifnull(season, 0) = 0, season, episode LIMIT 1", (name,)).fetchone()
+            out.append(dict(kind="series", name=name, n=n, seasons=seasons, thumb=frame(*first)))
+    if kind != "episode":
+        for i, title, year, rt in c.execute("SELECT id, title, year, runtime_s FROM items WHERE kind = 'movie' AND title LIKE ? "
+                                            "LIMIT 30", (like,)).fetchall():
+            out.append(dict(kind="movie", id=i, label=f"{title} ({year})" if year and not title.endswith(f"({year})") else title,
+                            year=year, thumb=frame(i, rt)))
+    # names that start with the text first ("Friends" before "Friends with Benefits" before "Best Friends")
+    low = text.lower()
+
+    def rank(x):
+        name = (x.get("name") or x.get("label") or "").lower()
+        return (0 if name == low else 1 if name.startswith(low) else 2, name)
+    return sorted(out, key=rank)[:40]
+
+
 def hit_json(h):
     it = h["item"]
     return dict(
@@ -1165,6 +1221,11 @@ class Handler(BaseHTTPRequestHandler):
                     run = [dict(id=k, kind=j["kind"], state=j["state"]) for k, j in JOBS.items()
                            if j["state"] not in ("done", "error", "cancelled")]
                 return self.send(200, run)
+            if u.path == "/api/lines":            # a title's whole subtitle, for the script view
+                body, cache = script_lines(int(q["item"]))
+                return self.send(404 if "error" in body else 200, body, cache=cache)
+            if u.path == "/api/browse":           # the script view's title picker
+                return self.send(200, browse(q.get("q", ""), q.get("series"), q.get("kind")))
             if u.path == "/api/titles":           # every show and movie, for the title filter's "no hits" note
                 rows = db().execute("SELECT DISTINCT series AS name FROM items WHERE kind = 'episode' "
                                     "UNION SELECT title || CASE WHEN year THEN ' (' || year || ')' ELSE '' END "

@@ -271,6 +271,54 @@
   /* Say Anything: one row per piece of the sentence */
   #saText { width: 100%; min-height: 64px; font: inherit; font-size: 17px; padding: 10px; background: var(--panel);
     color: var(--text); border: 1px solid var(--line); resize: vertical; box-sizing: border-box; }
+  /* main search: shows and movies whose name matches, above the matching lines */
+  .view-seg { margin: 0 0 12px; }
+  .titles { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 10px; margin-bottom: 18px; }
+  .trow { display: grid; grid-template-columns: 112px 1fr auto; gap: 12px; align-items: center; padding: 8px; text-align: left;
+    background: var(--panel); border: 1px solid var(--line); color: var(--text); font: inherit; cursor: pointer; }
+  @media (hover: hover) { .trow:hover { border-color: var(--edge); } }
+  .trow .tt { width: 112px; aspect-ratio: 16/9; background: #000; overflow: hidden; }
+  .trow .tt img { width: 100%; height: 100%; object-fit: cover; display: block; }
+  .trow b { display: block; font-size: 16px; }
+  .trow small { color: var(--dim); font-size: 13px; }
+  .trow .i { color: var(--dim); }
+  .titles .more { grid-column: 1 / -1; justify-self: start; }
+  /* header menu: a short list under the ≡ button */
+  .bar .row:first-child { position: relative; }
+  .menu { position: absolute; right: 0; top: calc(100% + 6px); z-index: 15; min-width: 270px; max-width: calc(100vw - 32px);
+    background: var(--panel); border: 1px solid var(--edge); box-shadow: 0 10px 30px rgba(0, 0, 0, .5); display: flex; flex-direction: column; }
+  .menu button { display: flex; gap: 12px; align-items: center; text-align: left; min-height: 56px; padding: 8px 14px;
+    background: none; border: 0; border-bottom: 1px solid var(--line); color: var(--text); font: inherit; font-size: 16px; cursor: pointer; }
+  .menu button:last-child { border-bottom: 0; }
+  .menu button:hover, .menu button:focus-visible { background: var(--panel-2); }
+  .menu small { display: block; color: var(--dim); font-size: 12.5px; }
+  /* scripts: a title's subtitles with find-in-page */
+  #scriptSheet { z-index: 19; }                      /* the editor opens on top, and closes back to it */
+  .sp-head { position: sticky; top: 0; z-index: 2; background: var(--bg); display: flex; flex-direction: column; gap: 8px; padding-bottom: 8px; }
+  .sp-find { display: flex; gap: 6px; align-items: center; }
+  .sp-find input, #spPickQ { flex: 1; min-width: 0; min-height: 44px; font: inherit; font-size: 16px; padding: 0 10px;
+    background: var(--panel); color: var(--text); border: 1px solid var(--line); }
+  .sp-count { min-width: 58px; text-align: center; color: var(--dim); font-size: 13px; font-variant-numeric: tabular-nums; }
+  .sp-lines { padding-right: 14px; }
+  .sp-l { display: grid; grid-template-columns: 52px 1fr; gap: 10px; padding: 7px 6px; cursor: pointer; border-left: 3px solid transparent;
+    content-visibility: auto; contain-intrinsic-size: auto 34px; }
+  .sp-l:hover { background: var(--panel); }
+  .sp-l .sp-tc { color: var(--dim); font-size: 12px; padding-top: 3px; font-variant-numeric: tabular-nums; }
+  .sp-l.sel { background: rgba(255, 176, 0, .1); border-left-color: var(--accent); }
+  .sp-l.here { animation: sp-here 2s ease-out; }
+  @keyframes sp-here { from { background: rgba(255, 176, 0, .35); } }
+  .sp-l mark.cur { outline: 2px solid var(--text); outline-offset: 1px; }
+  .sp-gap { height: 1px; background: var(--line); margin: 8px 0 8px 62px; }
+  .sp-ticks { position: fixed; right: 3px; width: 8px; bottom: 76px; z-index: 3; pointer-events: none; }
+  .sp-ticks i { position: absolute; left: 0; right: 0; height: 3px; margin-top: -1px; background: var(--accent); opacity: .75;
+    pointer-events: auto; cursor: pointer; }
+  .sp-ticks i::before { content: ""; position: absolute; inset: -6px -4px; }      /* a bigger target than the mark */
+  .sp-ticks i.cur { opacity: 1; left: -3px; height: 4px; background: var(--text); }
+  .sp-pick { display: flex; flex-direction: column; gap: 6px; }
+  .sp-pick .res button { display: block; width: 100%; text-align: left; min-height: 46px; padding: 8px 10px; background: var(--panel);
+    border: 1px solid var(--line); color: var(--text); font: inherit; cursor: pointer; margin-bottom: 6px; }
+  .sp-pick .res small { color: var(--dim); }
+  .sp-pick h4 { margin: 10px 0 4px; color: var(--dim); font-weight: 600; font-size: 13px; }
   /* one card per piece: ‹ thumbnail + source › on top (the chevrons swap takes), then the trim */
   .sa-row { position: relative; display: flex; flex-direction: column; gap: 10px; padding: 10px 10px 12px;
     background: var(--panel); border: 1px solid var(--line); }
@@ -357,6 +405,9 @@
 <symbol id="i-message" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 9h8"/> <path d="M8 13h6"/> <path d="M18 4a3 3 0 0 1 3 3v8a3 3 0 0 1 -3 3h-5l-5 3v-3h-2a3 3 0 0 1 -3 -3v-8a3 3 0 0 1 3 -3h12z"/></g></symbol>
 <symbol id="i-chev-left" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M15 6l-6 6l6 6"/></g></symbol>
 <symbol id="i-chev-right" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M9 6l6 6l-6 6"/></g></symbol>
+<symbol id="i-menu" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 6l16 0"/> <path d="M4 12l16 0"/> <path d="M4 18l16 0"/></g></symbol>
+<symbol id="i-script" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 3v4a1 1 0 0 0 1 1h4"/> <path d="M17 21h-10a2 2 0 0 1 -2 -2v-14a2 2 0 0 1 2 -2h7l5 5v11a2 2 0 0 1 -2 2z"/> <path d="M9 9l1 0"/> <path d="M9 13l6 0"/> <path d="M9 17l6 0"/></g></symbol>
+<symbol id="i-up" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 15l6 -6l6 6"/></g></symbol>
 <symbol id="i-share" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 12m-3 0a3 3 0 1 0 6 0a3 3 0 1 0 -6 0"/> <path d="M18 6m-3 0a3 3 0 1 0 6 0a3 3 0 1 0 -6 0"/> <path d="M18 18m-3 0a3 3 0 1 0 6 0a3 3 0 1 0 -6 0"/> <path d="M8.7 10.7l6.6 -3.4"/> <path d="M8.7 13.3l6.6 3.4"/></g></symbol></svg>
 
 <header>
@@ -365,8 +416,12 @@
       <span class="brand">Say the Line</span>
       <div class="qbox"><svg class="i" aria-hidden="true"><use href="#i-search"/></svg><input id="q" type="search" list="recentQ" placeholder="Search a line of dialogue" aria-label="Search a line of dialogue" autocomplete="off" enterkeyhint="search" autofocus></div>
       <datalist id="recentQ"></datalist>
-      <button class="hbtn" id="saBtn" title="Say Anything: type a sentence, the library says it" aria-label="Say Anything"><svg class="i" aria-hidden="true"><use href="#i-message"/></svg><span class="lbl">Say Anything</span></button>
       <button class="hbtn" id="libBtn" title="Saved moments, rendered clips and tags" aria-label="Library"><svg class="i" aria-hidden="true"><use href="#i-library"/></svg><span class="lbl">Library</span></button>
+      <button class="hbtn" id="menuBtn" title="More: Say Anything, Scripts" aria-label="Menu" aria-haspopup="menu" aria-expanded="false" aria-controls="menu"><svg class="i" aria-hidden="true"><use href="#i-menu"/></svg></button>
+      <div class="menu" id="menu" role="menu" hidden>
+        <button type="button" role="menuitem" data-go="sa"><svg class="i" aria-hidden="true"><use href="#i-message"/></svg><span>Say Anything<small>Type a sentence; the library says it</small></span></button>
+        <button type="button" role="menuitem" data-go="script"><svg class="i" aria-hidden="true"><use href="#i-script"/></svg><span>Scripts<small>Read a title's subtitles, find a line, clip it</small></span></button>
+      </div>
     </div>
     <div class="row">
       <div class="seg" role="group" aria-label="Match">
@@ -391,6 +446,11 @@
     <div class="hint" id="fInfo"></div>
     <div class="flist" id="fList"></div>
   </div>
+  <div class="seg view-seg" id="viewSeg" role="group" aria-label="Show" hidden>
+    <button type="button" class="chip" data-view="all" aria-pressed="true">All</button>
+    <button type="button" class="chip" data-view="titles" aria-pressed="false">Titles</button>
+    <button type="button" class="chip" data-view="lines" aria-pressed="false">Lines</button></div>
+  <div class="titles" id="titles" hidden></div>
   <div class="grid" id="grid"></div>
   <button class="load" id="load" hidden>Load more</button>
   <div class="empty" id="empty"></div>
@@ -400,6 +460,7 @@
   <div class="sheet-in">
     <div class="sheet-head">
       <div class="t" id="edTitle"></div>
+      <button class="hbtn2" id="edScript" title="Read the whole script around this line" aria-label="Script"><svg class="i" aria-hidden="true"><use href="#i-script"/></svg></button>
       <button class="hbtn2" id="edHeart" title="Save this clip as it is now to the library" aria-label="Save to the library"><svg class="i" aria-hidden="true"><use href="#i-heart"/></svg></button>
       <button class="x" id="edClose" aria-label="Close"><svg class="i" aria-hidden="true"><use href="#i-x"/></svg></button>
     </div>
@@ -598,6 +659,36 @@
     <button class="b" id="saStop" hidden><svg class="i" aria-hidden="true"><use href="#i-stop"/></svg>Stop</button>
   </div></div>
 </div>
+<div class="sheet" id="scriptSheet" hidden>
+  <div class="sheet-in">
+    <div class="sp-head">
+      <div class="sheet-head"><div class="t" id="spTitle">Scripts</div>
+        <button class="hbtn2" id="spPrev" hidden aria-label="Previous episode" title="Previous episode"><svg class="i" aria-hidden="true"><use href="#i-chev-left"/></svg></button>
+        <button class="hbtn2" id="spNext" hidden aria-label="Next episode" title="Next episode"><svg class="i" aria-hidden="true"><use href="#i-chev-right"/></svg></button>
+        <button class="hbtn2" id="spChange" hidden aria-label="Episodes and other titles" title="Episodes and other titles"><svg class="i" aria-hidden="true"><use href="#i-library"/></svg></button>
+        <button class="x" id="spClose" aria-label="Close"><svg class="i" aria-hidden="true"><use href="#i-x"/></svg></button></div>
+      <div class="sp-find" id="spFindBar" hidden>
+        <input id="spQ" type="search" placeholder="Find in this script" aria-label="Find in this script" autocomplete="off" enterkeyhint="search">
+        <span class="sp-count" id="spCount" aria-live="polite"></span>
+        <button class="b" id="spUp" aria-label="Previous match" title="Previous match (Shift+Enter)"><svg class="i" aria-hidden="true"><use href="#i-up"/></svg></button>
+        <button class="b" id="spDown" aria-label="Next match" title="Next match (Enter)"><svg class="i" aria-hidden="true"><use href="#i-down"/></svg></button>
+        <button class="info" type="button" aria-expanded="false" aria-controls="spHow" aria-label="How to use the script">i</button></div>
+      <div class="infotext" id="spHow" hidden>Type to find a line; ▲ ▼ (or Enter) step through the matches, and the marks on the right edge show where they are; tap one to jump there.
+        Tap a line to select it, tap another to select everything between, then <b>Clip</b> opens it in the editor.</div>
+    </div>
+    <div class="sp-pick" id="spPick" hidden>
+      <input id="spPickQ" type="search" placeholder="Find a show or movie" aria-label="Find a show or movie" autocomplete="off">
+      <div class="res" id="spPickRes"></div>
+    </div>
+    <div class="sp-lines" id="spLines"></div>
+  </div>
+  <div class="sp-ticks" id="spTicks" aria-hidden="true"></div>
+  <div class="footer" id="spFoot" hidden><div class="footer-in">
+    <div class="sum" id="spSum"></div>
+    <button class="b" id="spClear">Clear</button>
+    <button class="b primary" id="spClip">Clip</button>
+  </div></div>
+</div>
 <datalist id="tagList"></datalist>
 
 <script>
@@ -606,7 +697,7 @@ const $$ = s => [...document.querySelectorAll(s)];
 const ic = n => `<svg class="i" aria-hidden="true"><use href="#i-${n}"/></svg>`;      // Tabler icon from the sprite
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 // ex: titles unticked (group keys "s:<series>" / "m:<item id>"); only: titles ticked after "None" (null = all)
-const state = { q: "", mode: "phrase", kind: "", ex: [], only: null, offset: 0, seq: 0, facets: null, labels: {} };
+const state = { q: "", mode: "phrase", kind: "", ex: [], only: null, offset: 0, seq: 0, facets: null, labels: {}, titles: [], view: "all" };
 const PAGE = 30;
 const COLOURS = { white: "#FFFFFF", yellow: "#FFE14D", cyan: "#6BE4FF", black: "#000000" };
 const HL = { yellow: "#FFE14D", green: "#3CFF6A", cyan: "#6BE4FF", pink: "#FF4FA3", orange: "#FF9A1F" };
@@ -766,12 +857,16 @@ async function run(append = false) {
   if (!append) { state.offset = 0; $("#grid").innerHTML = ""; }
   syncUrl();
   $("#showsBtn").hidden = !state.q.trim();
-  if (!state.q.trim()) { $("#status").textContent = ""; $("#load").hidden = true; $("#scBtn").hidden = true; toggleFacets(false); showEmpty(); return; }
+  if (!state.q.trim()) { $("#status").textContent = ""; $("#load").hidden = true; $("#scBtn").hidden = true; toggleFacets(false);
+    state.titles = []; drawTitles(); showEmpty(); return; }
   $("#empty").innerHTML = "";
   $("#status").textContent = "Searching…";
   const p = filterParams(new URLSearchParams({ q: state.q, mode: state.mode, limit: PAGE, offset: state.offset }));
+  const titlesP = append ? null : fetch("/api/browse?" + new URLSearchParams({ q: state.q, ...(state.kind ? { kind: state.kind } : {}) }))
+    .then(r => r.json()).catch(() => []);
   const data = await (await fetch("/api/search?" + p)).json();
   if (seq !== state.seq) return;
+  if (titlesP) { state.titles = await titlesP; if (seq !== state.seq) return; drawTitles(); }
   if (data.error) { $("#status").textContent = data.error; return; }
   data.hits.forEach(h => $("#grid").appendChild(card(h)));
   const shown = state.offset + data.hits.length;
@@ -779,10 +874,38 @@ async function run(append = false) {
   drawStatus();
   if (!append) loadFacets();
   $("#scBtn").hidden = shown < 2;
-  $("#load").hidden = !data.more;
+  $("#load").hidden = !data.more || state.view === "titles";
   clearTimeout(seenTimer);
   if (shown && !append) { const q = state.q; seenTimer = setTimeout(() => { if (state.q === q) rememberSearch(); }, 3000); }
 }
+/* ================= titles in search: shows and movies by name, opening their script ================= */
+const TITLES_SHOWN = 4;
+function drawTitles() {
+  const box = $("#titles"), list = state.titles || [], view = state.view || "all";
+  $("#viewSeg").hidden = !list.length;
+  $$("#viewSeg [data-view]").forEach(b => b.setAttribute("aria-pressed", String(b.dataset.view === view)));
+  box.hidden = !list.length || view === "lines";
+  $("#grid").hidden = view === "titles" && list.length > 0;
+  const shown = view === "titles" || box.dataset.all ? list : list.slice(0, TITLES_SHOWN);
+  box.innerHTML = shown.map((x, k) => `<button class="trow" type="button" data-k="${k}">
+      <span class="tt"><img loading="lazy" alt="" src="${x.thumb}"></span>
+      <span><b>${esc(x.kind === "series" ? x.name : x.label)}</b><small>${x.kind === "series"
+        ? `Show · ${x.seasons > 1 ? x.seasons + " seasons · " : ""}${x.n} episode${x.n === 1 ? "" : "s"}` : "Movie"} · script</small></span>
+      ${ic("chev-right")}</button>`).join("")
+    + (shown.length < list.length ? `<button class="b more" type="button" id="titlesMore">All ${list.length} titles</button>` : "");
+  box.querySelectorAll("img").forEach(i => i.onerror = () => i.remove());
+  box.querySelectorAll(".trow").forEach(b => b.onclick = () => {
+    const x = shown[Number(b.dataset.k)];
+    rememberSearch();
+    if (x.kind === "series") openSeries(x.name); else openScript(x.id);
+  });
+  const more = $("#titlesMore"); if (more) more.onclick = () => { box.dataset.all = "1"; drawTitles(); };
+}
+$$("#viewSeg [data-view]").forEach(b => b.onclick = () => {
+  state.view = b.dataset.view; delete $("#titles").dataset.all; drawTitles();
+  $("#load").hidden = state.view === "titles" || !(state.res && state.res.more);
+});
+
 /* ================= title filter ================= */
 function labelOf(key) { return state.labels[key] || (key.startsWith("s:") ? key.slice(2) : "a movie"); }
 const facetKey = () => [state.q, state.mode, state.kind].join("\u0000");
@@ -2489,7 +2612,6 @@ function openSayAnything() {
   $("#saSheet").hidden = false; document.body.style.overflow = "hidden"; history.pushState({ sheet: 4 }, "");
   drawSa(); if (!sa.pieces.length) $("#saText").focus();
 }
-$("#saBtn").onclick = openSayAnything;
 // ⓘ buttons: show or hide the short explanation they point at (aria-controls). Which ones are
 // open is remembered, so a card redrawn after a tap keeps its explanation showing.
 const openInfo = new Set();
@@ -2502,6 +2624,212 @@ document.addEventListener("click", e => {
   if (box.hidden) openInfo.delete(id); else openInfo.add(id);
 });
 $("#saClose").onclick = () => history.back();
+
+/* ================= menu ================= */
+function setMenu(open) {
+  $("#menu").hidden = !open; $("#menuBtn").setAttribute("aria-expanded", String(open));
+  if (open) $("#menu button").focus();
+}
+$("#menuBtn").onclick = e => { e.stopPropagation(); setMenu($("#menu").hidden); };
+document.addEventListener("click", e => { if (!$("#menu").hidden && !e.target.closest("#menu")) setMenu(false); });
+$("#menu").addEventListener("keydown", e => {
+  const items = $$("#menu [role=menuitem]"), k = items.indexOf(document.activeElement);
+  if (e.key === "Escape") { setMenu(false); $("#menuBtn").focus(); }
+  else if (e.key === "ArrowDown" || e.key === "ArrowUp") { e.preventDefault(); items[(k + (e.key === "ArrowDown" ? 1 : items.length - 1)) % items.length].focus(); }
+});
+$$("#menu [data-go]").forEach(b => b.onclick = () => { setMenu(false); b.dataset.go === "sa" ? openSayAnything() : openScript(); });
+
+/* ================= scripts: a title's whole subtitle, find in page, clip from it ================= */
+const SP_GAP_MS = 5000;           // a longer silence draws a faint divider (roughly a scene change)
+const SP_MAX_CLIP_MS = 180000;
+const sp = { item: null, lines: [], tok: [], matches: [], cur: -1, marked: new Set(), sel: null, prev: null, next: null };
+// = snap.norm: lower case, no punctuation, dropped-g spellings made one ("doing" = "doin'")
+function spNorm(w) {
+  let t = w.toLowerCase().replace(/[’']/g, "").replace(/[^a-z0-9]/g, "");
+  if (/ing$/.test(t) && /[aeiouy]/.test(t.slice(0, -3))) t = t.slice(0, -1);
+  return t;
+}
+function spTokens(text) {
+  const out = [], re = /[\w’']+/g;
+  let m;
+  while ((m = re.exec(text))) { const n = spNorm(m[0]); if (n) out.push({ a: m.index, b: m.index + m[0].length, n }); }
+  return out;
+}
+function spOpen() {
+  if (!$("#scriptSheet").hidden) return;
+  $("#scriptSheet").hidden = false; document.body.style.overflow = "hidden"; history.pushState({ sheet: 5 }, "");
+}
+async function openScript(itemId, idx) {
+  spOpen();
+  if (!itemId) return spPicker();
+  $("#spPick").hidden = true; $("#spFindBar").hidden = false; $("#spChange").hidden = false;
+  $("#spLines").innerHTML = `<div class="empty">Loading the script…</div>`;
+  const r = await fetch("/api/lines?item=" + itemId);
+  if (!r.ok) { $("#spLines").innerHTML = `<div class="err">That title has no subtitles indexed.</div>`; return; }
+  const d = await r.json();
+  Object.assign(sp, { item: d.item, lines: d.lines, prev: d.prev, next: d.next, matches: [], cur: -1, marked: new Set(), sel: null });
+  sp.tok = d.lines.map(l => spTokens(l[3]));
+  const it = d.item;
+  $("#spTitle").innerHTML = it.kind === "episode"
+    ? `${esc(it.series)} · S${String(it.season ?? 0).padStart(2, "0")}E${String(it.episode ?? 0).padStart(2, "0")}<small>${esc(it.title)} · ${d.lines.length} lines</small>`
+    : `${esc(it.label)}<small>${d.lines.length} lines</small>`;
+  $("#spPrev").hidden = $("#spNext").hidden = it.kind !== "episode";
+  $("#spPrev").disabled = !d.prev; $("#spNext").disabled = !d.next;
+  let html = "", last = null;
+  d.lines.forEach(([i, a, b, t], k) => {
+    if (last !== null && a - last > SP_GAP_MS) html += `<div class="sp-gap"></div>`;
+    html += `<div class="sp-l" data-k="${k}"><span class="sp-tc">${fmt(a)}</span><span class="sp-tx">${esc(t)}</span></div>`;
+    last = b;
+  });
+  $("#spLines").innerHTML = html || `<div class="empty">No lines.</div>`;
+  spFind($("#spQ").value);
+  spFoot();
+  const k = idx == null ? -1 : d.lines.findIndex(l => l[0] === idx);
+  if (k >= 0) {
+    const el = $(`#spLines .sp-l[data-k="${k}"]`);
+    el.scrollIntoView({ block: "center" }); el.classList.add("here");
+  } else $("#scriptSheet").scrollTop = 0;
+}
+// the find: every place the typed words appear in order in one line (the last word may be unfinished)
+function spFind(q) {
+  const want = (q.match(/[\w’']+/g) || []).map(spNorm).filter(Boolean), partial = !/\s$/.test(q);
+  for (const k of sp.marked) $(`#spLines .sp-l[data-k="${k}"] .sp-tx`).textContent = sp.lines[k][3];
+  sp.marked = new Set(); sp.matches = [];
+  if (want.length) sp.tok.forEach((toks, k) => {
+    for (let i = 0; i + want.length <= toks.length; i++) {
+      let ok = true;
+      for (let j = 0; j < want.length && ok; j++) {
+        const n = toks[i + j].n, w = want[j];
+        ok = j === want.length - 1 && partial ? n.startsWith(w) : n === w;
+      }
+      if (ok) sp.matches.push({ k, a: toks[i].a, b: toks[i + want.length - 1].b });
+    }
+  });
+  const byLine = {};
+  sp.matches.forEach((m, n) => (byLine[m.k] = byLine[m.k] || []).push([m, n]));
+  for (const [k, ms] of Object.entries(byLine)) {
+    const t = sp.lines[k][3]; let out = "", at = 0;
+    for (const [m, n] of ms) { out += esc(t.slice(at, m.a)) + `<mark data-n="${n}">${esc(t.slice(m.a, m.b))}</mark>`; at = m.b; }
+    $(`#spLines .sp-l[data-k="${k}"] .sp-tx`).innerHTML = out + esc(t.slice(at));
+    sp.marked.add(Number(k));
+  }
+  // the marks down the right edge: where each matching line sits in the whole script
+  $("#spTicks").style.top = ($(".sp-head").getBoundingClientRect().bottom + 6) + "px";
+  $("#spTicks").innerHTML = [...new Set(sp.matches.map(m => m.k))].map(k =>
+    `<i data-k="${k}" style="top:${(k / Math.max(1, sp.lines.length - 1) * 100).toFixed(2)}%"></i>`).join("");
+  sp.cur = -1;
+  if (sp.matches.length) spGo(0, false); else spCount();
+}
+function spCount() {
+  const q = $("#spQ").value.trim();
+  $("#spCount").textContent = !q ? "" : sp.matches.length ? `${sp.cur + 1} of ${sp.matches.length}` : "none";
+  $("#spUp").disabled = $("#spDown").disabled = sp.matches.length < 2;
+}
+function spGo(n, scroll = true) {
+  if (!sp.matches.length) return;
+  sp.cur = (n + sp.matches.length) % sp.matches.length;
+  $$("#spLines mark.cur").forEach(m => m.classList.remove("cur"));
+  const mk = $(`#spLines mark[data-n="${sp.cur}"]`); if (mk) mk.classList.add("cur");
+  $$("#spTicks i.cur").forEach(t => t.classList.remove("cur"));
+  const tk = $(`#spTicks i[data-k="${sp.matches[sp.cur].k}"]`); if (tk) tk.classList.add("cur");
+  if (scroll && mk) mk.scrollIntoView({ block: "center", behavior: "smooth" });
+  else if (mk && !scroll) mk.scrollIntoView({ block: "center" });
+  spCount();
+}
+let spTimer;
+$("#spQ").addEventListener("input", e => { clearTimeout(spTimer); spTimer = setTimeout(() => spFind(e.target.value), 120); });
+$("#spQ").addEventListener("keydown", e => { if (e.key === "Enter") { e.preventDefault(); clearTimeout(spTimer); if (!sp.matches.length) spFind(e.target.value); else spGo(sp.cur + (e.shiftKey ? -1 : 1)); } });
+$("#spUp").onclick = () => spGo(sp.cur - 1);
+$("#spDown").onclick = () => spGo(sp.cur + 1);
+$("#spTicks").addEventListener("click", e => {
+  const t = e.target.closest("i"); if (!t) return;
+  const n = sp.matches.findIndex(m => m.k === Number(t.dataset.k)); if (n >= 0) spGo(n);
+});
+// select: tap a line, then another to take everything between; the footer offers the clip
+$("#spLines").addEventListener("click", e => {
+  const row = e.target.closest(".sp-l"); if (!row) return;
+  const k = Number(row.dataset.k), s = sp.sel;
+  // nothing picked or a stretch already: start again here; one line picked: tap it again to drop
+  // it, or another line to take everything between the two
+  sp.sel = !s || s[0] !== s[1] ? [k, k] : s[0] === k ? null : [Math.min(s[0], k), Math.max(s[0], k)];
+  spFoot();
+});
+function spFoot() {
+  $$("#spLines .sp-l.sel").forEach(r => r.classList.remove("sel"));
+  if (!sp.sel) { $("#spFoot").hidden = true; return; }
+  const [a, b] = sp.sel;
+  for (let k = a; k <= b; k++) { const r = $(`#spLines .sp-l[data-k="${k}"]`); if (r) r.classList.add("sel"); }
+  const ms = sp.lines[b][2] - sp.lines[a][1];
+  $("#spFoot").hidden = false;
+  $("#spSum").textContent = (a === b ? "1 line" : `${b - a + 1} lines`) + ` · ${fmt(sp.lines[a][1])} · ${(ms / 1000).toFixed(1)} s`
+    + (ms > SP_MAX_CLIP_MS ? " · too long for one clip (3 min)" : a === b ? " · tap another line to select a stretch" : "");
+  $("#spClip").disabled = ms > SP_MAX_CLIP_MS;
+}
+$("#spClear").onclick = () => { sp.sel = null; spFoot(); };
+$("#spClip").onclick = () => {
+  if (!sp.sel) return;
+  const [a, b] = sp.sel, it = sp.item, first = sp.lines[a], last = sp.lines[b];
+  openEditor({ item_id: it.id, idx: first[0], kind: it.kind, label: it.label, title: it.title || "",
+    text: sp.lines.slice(a, b + 1).map(l => l[3]).join(" "), start_ms: first[1], end_ms: last[2] });
+};
+$("#spPrev").onclick = () => sp.prev && openScript(sp.prev);
+$("#spNext").onclick = () => sp.next && openScript(sp.next);
+$("#spChange").onclick = () => sp.item && sp.item.kind === "episode" ? openSeries(sp.item.series) : spPicker();
+$("#spClose").onclick = () => history.back();
+function closeScript() { $("#scriptSheet").hidden = true; $("#spTicks").innerHTML = ""; document.body.style.overflow = ""; }
+// the picker: a show or movie by name; a show then lists its episodes
+function spPicker() {
+  $("#spPick").hidden = false; $("#spPickQ").hidden = false; $("#spFindBar").hidden = true; $("#spHow").hidden = true; $("#spFoot").hidden = true;
+  $("#spPrev").hidden = $("#spNext").hidden = $("#spChange").hidden = true;
+  $("#spTitle").innerHTML = "Scripts<small>pick a show or movie</small>";
+  $("#spLines").innerHTML = ""; $("#spTicks").innerHTML = "";
+  $("#spPickQ").value = ""; spPickFind(""); $("#spPickQ").focus();
+}
+let spPickTimer;
+$("#spPickQ").addEventListener("input", e => { clearTimeout(spPickTimer); spPickTimer = setTimeout(() => spPickFind(e.target.value), 200); });
+async function spPickFind(q) {
+  const res = $("#spPickRes");
+  if (!q.trim()) { res.innerHTML = `<div class="hint">Type part of a name. Only titles with subtitles have a script.</div>`; return; }
+  const list = await (await fetch("/api/browse?q=" + encodeURIComponent(q))).json();
+  res.innerHTML = list.length ? list.map(x => x.kind === "series"
+    ? `<button data-series="${esc(x.name)}">${esc(x.name)} <small>· ${x.n} episodes</small></button>`
+    : `<button data-id="${x.id}">${esc(x.label)} <small>· movie</small></button>`).join("") : `<div class="hint">No title with subtitles matches.</div>`;
+}
+$("#spPickRes").addEventListener("click", e => {
+  const b = e.target.closest("button"); if (!b) return;
+  if (b.dataset.id) return openScript(Number(b.dataset.id));
+  if (b.dataset.series) return openSeries(b.dataset.series);
+  if (b.dataset.season !== undefined) return spSeason(Number(b.dataset.season));
+  if (b.dataset.back) return b.dataset.back === "series" ? openSeries(sp.series) : spPicker();
+});
+// a show: its seasons, then a season's episodes; an episode opens like a movie
+async function openSeries(name) {
+  spOpen();
+  $("#spPick").hidden = false; $("#spPickQ").hidden = true; $("#spFindBar").hidden = true; $("#spHow").hidden = true; $("#spFoot").hidden = true;
+  $("#spPrev").hidden = $("#spNext").hidden = true; $("#spChange").hidden = false;
+  $("#spLines").innerHTML = ""; $("#spTicks").innerHTML = "";
+  if (sp.series !== name || !sp.eps) { sp.series = name; sp.eps = await (await fetch("/api/browse?series=" + encodeURIComponent(name))).json(); }
+  const seasons = [...new Set(sp.eps.map(x => x.season || 0))];
+  if (seasons.length === 1) return spSeason(seasons[0], true);
+  $("#spTitle").innerHTML = `${esc(name)}<small>${seasons.length} seasons · ${sp.eps.length} episodes</small>`;
+  $("#spPickRes").innerHTML = seasons.map(n => {
+    const c = sp.eps.filter(x => (x.season || 0) === n).length;
+    return `<button data-season="${n}">${n ? "Season " + n : "Specials"} <small>· ${c} episode${c === 1 ? "" : "s"}</small></button>`;
+  }).join("");
+  $("#scriptSheet").scrollTop = 0;
+}
+function spSeason(n, only) {
+  const eps = sp.eps.filter(x => (x.season || 0) === n);
+  $("#spTitle").innerHTML = `${esc(sp.series)}<small>${n ? "Season " + n : "Specials"} · ${eps.length} episodes</small>`;
+  $("#spPickRes").innerHTML = (only ? "" : `<button data-back="series">${ic("chev-left")} All seasons</button>`)
+    + eps.map(x => `<button data-id="${x.id}">E${String(x.episode ?? 0).padStart(2, "0")} · ${esc(x.title || "")}</button>`).join("");
+  $("#scriptSheet").scrollTop = 0;
+}
+$("#edScript").onclick = () => {
+  const h = ed.hit; if (!h) return;
+  history.back();                                 // close the editor, then open the script on its line
+  setTimeout(() => openScript(h.item_id, h.idx), 60);
+};
 
 /* ?edit=<clip id>: open a rendered clip (made here, or by an agent over MCP) as it was made */
 function recipeState(c) {
@@ -2602,7 +2930,10 @@ window.addEventListener("popstate", () => {
   if (!$("#scSheet").hidden) { const v = $("#scVid"); v.pause(); v.removeAttribute("src"); $("#scSheet").hidden = true;
     document.body.style.overflow = ""; return; }
   if (!$("#libSheet").hidden) { $("#libSheet").hidden = true; refreshCardHearts(); return; }
-  if (!$("#sheet").hidden) { closeEditor(); refreshCardHearts(); }
+  if (!$("#sheet").hidden) { closeEditor(); refreshCardHearts();
+    if (!$("#scriptSheet").hidden) document.body.style.overflow = "hidden";   // back to the script it came from
+    return; }
+  if (!$("#scriptSheet").hidden) closeScript();
 });
 
 let timer;
