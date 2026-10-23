@@ -53,7 +53,9 @@ sed -n '/<script>/,/<\/script>/p' saytheline/static/index.html | sed '1d;$d' > /
   `normalize_words`, `_pop`) and JS (`drawWords`, `chunkWords`, `normalizeWords`, `popAttr`). Change
   both together; the comments mark the pairs (`= media.xyz`).
 - **No private data in the repo**: no hostnames, IPs, personal paths, API keys or library contents.
-  Machine-specific settings belong in `saytheline.toml` (gitignored).
+  Machine-specific settings belong in `saytheline.toml` (gitignored). Screenshots only ever show a
+  public-domain film from a one-title demo index: after a visible UI change, retake them with
+  `docs/screenshots/take.py` (steps in docs/screenshots/README.md).
 - **No login exists**: the default bind is 127.0.0.1; don't change that default.
 - **MCP tools are for models**: few tools, concise text + structured fields, readable ids
   ("51:99", "c1a2b3c4"), errors that say what to change (raise `ToolError`). Keep them talking to
