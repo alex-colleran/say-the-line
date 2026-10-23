@@ -977,6 +977,11 @@ class Handler(BaseHTTPRequestHandler):
                 return self.send(200, {"offset_ms": OFFSETS.get(int(q["item"]), 0)})
             if u.path == "/api/tags":
                 return self.send(200, LIB.tags())
+            if u.path == "/api/titles":           # every show and movie, for the title filter's "no hits" note
+                rows = db().execute("SELECT DISTINCT series AS name FROM items WHERE kind = 'episode' "
+                                    "UNION SELECT title || CASE WHEN year THEN ' (' || year || ')' ELSE '' END "
+                                    "FROM items WHERE kind = 'movie' ORDER BY 1").fetchall()
+                return self.send(200, [r[0] for r in rows if r[0]], cache="max-age=300")
             if u.path == "/api/series":
                 rows = db().execute("SELECT series, COUNT(*) n FROM items WHERE kind = 'episode' "
                                     "GROUP BY series ORDER BY series").fetchall()

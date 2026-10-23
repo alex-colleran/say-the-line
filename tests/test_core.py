@@ -289,6 +289,18 @@ class CaptionEdits(unittest.TestCase):
         self.assertEqual(len(speech), 3, "a transcript isn't subtitle lines")
 
 
+class DroppedG(unittest.TestCase):
+    def test_search_tries_both_spellings(self):
+        self.assertEqual(search.fts_query("how you doin", "phrase"), '"how you doin" OR "how you doing"')
+        self.assertEqual(search.fts_query("nothin' to lose", "phrase"), '"nothin to lose" OR "nothing to lose"')
+        for w in ("thing", "sing", "king", "bring", "tin", "skin"):         # not a dropped g
+            self.assertEqual(search.spellings(w), [w])
+
+    def test_speech_and_subtitles_compare_as_one_word(self):
+        self.assertEqual({snap.norm(w) for w in ("doing", "doin'", "Doin", "DOING?")}, {"doin"})
+        self.assertEqual(snap.norm("thing"), "thing")
+
+
 class CaptionShift(unittest.TestCase):
     def test_shift_moves_lines_and_words(self):
         from saytheline import web

@@ -21,7 +21,15 @@ LEAD_MS, TAIL_MS = 250, 400
 
 
 def norm(w):
-    return re.sub(r"[^a-z0-9']", "", w.lower().replace("’", "'"))
+    """A word as compared with speech-to-text: lower case, no punctuation, and dropped-g spellings
+    made one ("doing", "doin'", "doin" -> "doin"; = search.spellings), since subtitles and Whisper
+    seldom spell them the same way."""
+    t = re.sub(r"[^a-z0-9']", "", w.lower().replace("’", "'"))
+    if t.endswith("ing") and re.search(r"[aeiouy]", t[:-3]):
+        return t[:-1]
+    if t.endswith("in'") and re.search(r"[aeiouy]", t[:-3]):
+        return t[:-1]
+    return t
 
 
 def tokens(text):

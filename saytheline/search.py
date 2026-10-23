@@ -6,15 +6,32 @@ import sqlite3
 from . import db
 
 
+def spellings(w):
+    """A word and its dropped-g twin: subtitles write "doing", "doin'" and "doin" for the same word.
+    Only "-ing" with a vowel before it ("do-ing", "noth-ing"), so "thing" never also finds "thin";
+    going the other way, "begin" also tries "beging", which matches nothing, which is harmless."""
+    w = w.strip("'")
+    if w.endswith("ing") and re.search(r"[aeiouy]", w[:-3]):
+        return [w, w[:-1]]
+    if w.endswith("in") and len(w) > 3 and re.search(r"[aeiouy]", w[:-2]):
+        return [w, w + "g"]
+    return [w]
+
+
 def fts_query(q, mode):
-    """phrase: the words in order (default). any: any of the words. raw: FTS5 syntax as typed."""
+    """phrase: the words in order (default). any: any of the words. raw: FTS5 syntax as typed.
+    Either spelling of a dropped-g word finds both ("how you doin" finds "How you doing?")."""
     if mode == "raw":
         return q
-    words = re.findall(r"[\w']+", q.lower())
+    words = [w for w in (x.strip("'") for x in re.findall(r"[\w']+", q.lower())) if w]
     if not words:
         return None
-    quoted = ['"' + w.replace('"', '') + '"' for w in words]
-    return '"' + " ".join(words) + '"' if mode == "phrase" else " OR ".join(quoted)
+    if mode != "phrase":
+        return " OR ".join('"' + s + '"' for w in words for s in spellings(w))
+    phrases = [[]]
+    for w in words:                     # every combination, at most 8 phrases
+        phrases = [p + [s] for p in phrases for s in (spellings(w) if len(phrases) < 8 else [w])]
+    return " OR ".join('"' + " ".join(p) + '"' for p in phrases)
 
 
 # A "group" is what the show filter lists: one per series ("s:<name>"), one per movie ("m:<item id>").

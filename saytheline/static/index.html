@@ -545,7 +545,11 @@ const HEAVY_FONTS = ["Inter Black", "League Spartan Black"];
 const MAX_WIN = 170000, MAX_CLIP = 180000;
 
 function esc(s) { return String(s ?? "").replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c])); }
-function qwords() { return (state.q.toLowerCase().match(/[\w']+/g) || []).filter(w => w.length > 1); }
+// a dropped-g word highlights both spellings: "doin" is a prefix of "doing" (= search.spellings)
+function qwords() {
+  return (state.q.toLowerCase().match(/[\w']+/g) || []).map(w => w.replace(/^'+|'+$/g, ""))
+    .map(w => /ing$/.test(w) && /[aeiouy]/.test(w.slice(0, -3)) ? w.slice(0, -1) : w).filter(w => w.length > 1);
+}
 function hl(text) {
   const ws = qwords(); let out = esc(text);
   if (!ws.length) return out;
@@ -737,6 +741,21 @@ async function loadFacets() {
     paintShowsBtn(); drawFacets(); drawStatus();
   } catch (e) {}
 }
+// The list only holds titles with hits, so an empty filter is usually a title that has none for this
+// search, not one that's missing: say which.
+let allTitles = null;
+function noHitsNote(find) {
+  if (!allTitles) {                              // fetched once, then the list is drawn again
+    allTitles = [];
+    fetch("/api/titles").then(r => r.json()).then(t => { allTitles = t; drawFacets(); }).catch(() => {});
+  }
+  if (!allTitles.length) return "No title matches.";
+  const hits = allTitles.filter(t => t.toLowerCase().includes(find));
+  if (!hits.length) return `No title called “${$("#fFind").value.trim()}” in the library.`;
+  const names = hits.slice(0, 3).join(", ") + (hits.length > 3 ? ` and ${hits.length - 3} more` : "");
+  return `${names} ${hits.length === 1 ? "has" : "have"} no lines matching “${state.q.trim()}”. Try other wording`
+    + (state.mode === "phrase" ? `, or Any word.` : ".");
+}
 function drawFacets() {
   if ($("#facets").hidden) return;
   const rows = state.facets ? [...state.facets.rows] : [];
@@ -757,7 +776,7 @@ function drawFacets() {
       <span class="nm">${esc(r.label)}${r.kind === "movie" ? " <small>movie</small>" : ""}</span>
       <span class="n">${r.n === null ? "" : r.n.toLocaleString()}</span>
       <button class="only" type="button" title="Show only this title">only</button></label>`).join("")
-    || `<div class="frow"><span></span><span class="hint">${find ? "No title matches." : "No titles."}</span></div>`;
+    || `<div class="frow"><span></span><span class="hint" id="fNone">${find ? esc(noHitsNote(find)) : "No titles."}</span></div>`;
   list.querySelectorAll(".frow[data-k]").forEach(row => {
     const k = row.dataset.k;
     row.querySelector("input").onchange = e => {
