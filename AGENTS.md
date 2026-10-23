@@ -82,6 +82,9 @@ sed -n '/<script>/,/<\/script>/p' saytheline/static/index.html | sed '1d;$d' > /
   only under `__main__`, so tests can load its timing functions with the speech Python.
 - Never try `raw.decode("utf-16")` on a subtitle without a BOM: it "succeeds" on most even-length
   Latin-1 files and yields gibberish. `subs.read_text` needs a BOM or NUL bytes before using UTF-16.
+- Snap results are cached in `data/listen.db` (`web.cached_snap`). Bump `web.LISTEN_V` whenever
+  `snap.py` or `stt_worker.py` timing changes, or old timings keep being served.
+- Say Anything (`sayany.py`): `sayany.cut` = JS `saCut`; a take's measured `cuts` are what both use.
 - A systemd `Type=oneshot` job is capped with `TimeoutStartSec`, not `RuntimeMaxSec`.
 - Input-side `-t` can let one frame past the out point through: renders start their video chain
   with `trim=end=` so a clip ending on a camera cut never shows the next shot.

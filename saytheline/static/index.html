@@ -2331,7 +2331,7 @@ function drawSa() {
     });
   });
   $("#saFitOpt").hidden = sa.o.aspect === "16:9";
-  const found = sa.pieces.filter(p => p.take), missing = sa.pieces.length - found.length;
+  const found = sa.pieces.filter(p => p.take), missing = sa.pieces.length - found.length;  // = sayany.plan pieces
   const stale = sa.pieces.length && $("#saText").value.trim() !== sa.sentence;
   const dur = found.reduce((n, p) => { const [a, b] = saCut(p); return n + b - a; }, 0) / 1000;
   if (!sa.busy) $("#saSum").textContent = !sa.pieces.length ? "Type a sentence, then Find the words"
@@ -2346,7 +2346,15 @@ function drawSa() {
   sa.pieces.forEach((p, i) => {
     const row = document.createElement("div"); row.className = "sa-row" + (p.take ? "" : " missing");
     if (!p.take) {
-      row.innerHTML = `<div><div class="w">${esc(p.text)}</div><div class="src">Nobody says this in your library, so it's left out. Try another word for it.</div></div>`;
+      const why = { unheard: "It's in the subtitles, but no take was heard clearly.",
+                    rushed: "It's in the subtitles; the sentence is long, so only one take was tried." }[p.why]
+        || "No subtitle in your library has this word.";
+      const tryMore = (p.alts || []).length ? " Tap › to listen to another line." : " It's left out: try another word for it.";
+      row.innerHTML = `<div class="sa-top" style="grid-template-columns:1fr 40px"><div><div class="w">${esc(p.text)}</div>
+          <div class="src">${why}${tryMore}</div></div>
+        ${(p.alts || []).length ? `<button class="sa-nav next${sa.taking === i ? " busy" : ""}" type="button" ${sa.busy ? "disabled" : ""}
+          aria-label="Listen for this word" title="Listen for this word (~5 s)">${ic("chev-right")}</button>` : ""}</div>`;
+      const nx = row.querySelector(".sa-nav"); if (nx) nx.onclick = () => { if (!sa.busy) saTake(i, 1); };
       return list.appendChild(row);
     }
     p.takes = p.takes || [p.take]; p.ti = p.ti || 0;
@@ -2423,8 +2431,8 @@ $("#saText").addEventListener("input", () => { saveSa(); if (sa.pieces.length &&
 // ‹ › on a piece: step through the takes heard so far; past the last one, listen for a new one
 async function saTake(i, dir) {
   const p = sa.pieces[i];
-  p.takes = p.takes || [p.take]; p.ti = p.ti || 0;
-  if (dir < 0 || p.ti < p.takes.length - 1) {
+  p.takes = p.takes || (p.take ? [p.take] : []); p.ti = p.ti || 0;
+  if (p.take && (dir < 0 || p.ti < p.takes.length - 1)) {
     p.ti = Math.max(0, p.ti + dir); p.take = p.takes[p.ti]; drawSa(); return saPlay([p]);
   }
   if (!p.alts.length) return;
@@ -2435,7 +2443,7 @@ async function saTake(i, dir) {
       if (sa.job !== j.id) { sa.job = j.id; $("#saStop").hidden = false; }
     });
     if (job.piece) { p.takes.push(job.piece.take); p.ti = p.takes.length - 1; p.take = job.piece.take; p.alts = job.piece.alts; }
-    else { p.alts = []; note = `That was the last take of “${p.text}” in your library.`; }
+    else { p.alts = []; note = p.take ? `That was the last take of “${p.text}” in your library.` : `“${p.text}” wasn't heard clearly anywhere.`; }
   } catch (e) { if (e.message !== "Stopped") $("#saResult").innerHTML = `<div class="err">${esc(e.message)}</div>`; }
   finally { sa.busy = false; sa.taking = null; sa.job = null; drawSa(); }
   if (note) $("#saSum").textContent = note; else saPlay([p]);

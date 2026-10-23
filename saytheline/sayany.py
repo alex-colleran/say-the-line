@@ -19,7 +19,9 @@ CANDIDATES = 8           # subtitle lines fetched per phrase
 TRIES = 3                # of those, how many are listened to before settling...
 MORE_TRIES = 5           # ...or this many while no take has a pause on both sides
 OK_GAP_MS = 100
-MAX_LISTENS = 60         # per sentence: each one is a few seconds of Whisper
+LISTENS_PER_WORD, MIN_LISTENS, MAX_LISTENS = 5, 40, 150   # the listening budget for a sentence:
+# each listen is a few seconds of Whisper. Past it, each word still left gets one listen of its own,
+# so a long sentence finishes with every word tried instead of the tail marked missing.
 GOOD_GAP_MS = 180        # silence on both sides of a take: clean enough to stop looking
 # padding around the heard words (ms before, after). Whisper's word ends run early more often
 # than its starts, so the tail gets more.
@@ -27,12 +29,14 @@ PAD = {"tight": (30, 70), "normal": (70, 140), "loose": (150, 260)}
 
 
 def words(text):
-    """The typed sentence as [(as typed, normalised)], punctuation kept on the typed form."""
+    """The typed sentence as [(as typed, normalised)], punctuation kept on the typed form.
+    Hyphens and slashes split words ("say-the-line" is three words said), as search does."""
     out = []
     for raw in text.split():
-        n = snap.norm(raw)
-        if n:
-            out.append((raw, n))
+        for part in re.split(r"[-‐-―/]+", raw):
+            n = snap.norm(part)
+            if n:
+                out.append((part, n))
     return out
 
 
@@ -92,6 +96,7 @@ def plan(sentence, find, listen, max_phrase=MAX_PHRASE, progress=None):
     already listened to are reused, so trying the shorter phrase costs little."""
     ws = words(sentence)
     pieces, i, listens, heard = [], 0, [0], {}
+    budget = min(MAX_LISTENS, max(MIN_LISTENS, LISTENS_PER_WORD * len(ws)))
 
     def try_hits(hits, want, text, limit):
         best, tried = None, 0
@@ -99,7 +104,7 @@ def plan(sentence, find, listen, max_phrase=MAX_PHRASE, progress=None):
         for k, h in enumerate(hits):
             key = (h.get("item_id"), h.get("start_ms"))
             if key not in heard:
-                if tried >= limit or listens[0] >= MAX_LISTENS:
+                if tried >= limit:
                     return best, [x for x in hits[k:] if (x.get("item_id"), x.get("start_ms")) not in heard]
                 tried += 1
                 listens[0] += 1
@@ -114,15 +119,21 @@ def plan(sentence, find, listen, max_phrase=MAX_PHRASE, progress=None):
         return best, []
 
     while i < len(ws):
-        fallback = None
-        for n in range(min(max_phrase, len(ws) - i), 0, -1):
+        fallback, why, left = None, "none", []
+        spent = listens[0] >= budget          # over budget: one word at a time, one listen each
+        for n in range(1 if spent else min(max_phrase, len(ws) - i), 0, -1):
+            if n > 1 and listens[0] >= budget:
+                continue                      # ran out part-way: straight to the single word
+            spent = spent or listens[0] >= budget
             text = " ".join(raw for raw, _ in ws[i:i + n])
             want = [w for _, w in ws[i:i + n]]
             hits = find(" ".join(want))
             if not hits:
                 continue
-            take, rest = try_hits(hits, want, text, TRIES if n > 1 else MORE_TRIES)
+            take, rest = try_hits(hits, want, text, 1 if spent else TRIES if n > 1 else MORE_TRIES)
             if not take:
+                if n == 1:              # in the subtitles, not heard yet: the rest can still be tried
+                    why, left = ("rushed" if spent else "unheard"), rest
                 continue
             piece = dict(text=text, want=want, take=take, alts=rest, n=n)
             if clean(take) or n == 1:
@@ -139,7 +150,7 @@ def plan(sentence, find, listen, max_phrase=MAX_PHRASE, progress=None):
             i += piece["n"]
         else:
             raw, w = ws[i]
-            pieces.append(dict(text=raw, want=[w], take=None, alts=[]))     # not in the library
+            pieces.append(dict(text=raw, want=[w], take=None, alts=left, why=why))   # none: no subtitle has it
             i += 1
     return pieces
 

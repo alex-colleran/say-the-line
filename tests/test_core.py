@@ -530,3 +530,52 @@ class JellyfinSubtitleCache(unittest.TestCase):
             self.assertIsNone(jellyfin.cached_subtitle(d, jf, 3, "ass", video), "ASS is cached as .ass")
             os.utime(video, (3000, 3000))           # the file was replaced after Jellyfin extracted
             self.assertIsNone(jellyfin.cached_subtitle(d, jf, 3, "subrip", video))
+
+
+class SayAnything(unittest.TestCase):
+    def facts(self, text, start=1000, gap=300):
+        """A line heard word by word, 250 ms a word, with silence either side."""
+        ws, t = [], start
+        for w in text.split():
+            ws.append(dict(w=w, s=t, e=t + 230))
+            t += 250
+        return dict(found=True, line_s=start, line_e=t, words=ws)
+
+    def test_hyphens_split_and_punctuation_is_ignored(self):
+        from saytheline import sayany
+        self.assertEqual([n for _, n in sayany.words('say-the-line has a "new" feature.')],
+                         ["say", "the", "line", "has", "a", "new", "feature"])
+
+    def test_longest_heard_phrase_wins_and_unknown_words_say_why(self):
+        from saytheline import sayany
+        lines = {"walter": ["Walter."], "you're": ["You're the danger."], "you're the danger": ["You're the danger."],
+                 "the danger": ["You're the danger."], "the": ["The."], "danger": ["Danger."]}
+
+        def find(q):
+            return [dict(item_id=1, start_ms=sorted(lines).index(q) * 10000 + k, text=t) for k, t in enumerate(lines.get(q, []))]
+        heard = []
+
+        def listen(h, text):
+            heard.append(text)
+            return self.facts(h["text"])
+        pieces = sayany.plan("Walter, you're the danger, zorp", find, listen)
+        self.assertEqual([p["text"] for p in pieces], ["Walter,", "you're the danger,", "zorp"])
+        self.assertIsNone(pieces[-1]["take"])
+        self.assertEqual(pieces[-1]["why"], "none")
+
+    def test_a_long_sentence_still_tries_every_word(self):
+        from saytheline import sayany
+        words = " ".join(f"w{k}" for k in range(60))
+
+        def find(q):              # a different line for every phrase (the planner reuses a line it has heard)
+            return [dict(item_id=1, start_ms=sum(map(ord, q)) * 1000 + len(q) * 10 + k, text=q) for k in range(8)]
+        calls = []
+
+        def listen(h, text):
+            calls.append(text)
+            return dict(found=False)          # nothing is ever heard: the worst case for the budget
+        pieces = sayany.plan(words, find, listen)
+        self.assertEqual(len(pieces), 60)
+        self.assertLessEqual(len(calls), sayany.MAX_LISTENS + sayany.TRIES + 60)
+        self.assertEqual(pieces[-1]["why"], "rushed")
+        self.assertTrue(pieces[-1]["alts"], "the untried lines stay, for the › button")

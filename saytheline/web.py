@@ -6,6 +6,7 @@ it on 127.0.0.1 (the default) or a private network such as a tailnet, never the 
 
   python3 -m saytheline.web            # http://$SAYTHELINE_HOST:$SAYTHELINE_PORT/
 """
+import contextlib
 import functools
 import hashlib
 import json
@@ -384,7 +385,7 @@ def run_snap(job_id, req):
         with RENDER_SLOT:
             job["state"] = "listening"
             t = time.time()
-            res = snapper.snap(row["path"], in_ms, out_ms, cues, context=near)
+            res = cached_snap(row["path"], in_ms, out_ms, cues, True, near)
         if res.get("found"):
             base = int(req.get("offset_ms") or 0)
             remember_offset(row["id"], base + (res["offset_ms"] if abs(res["offset_ms"]) >= 250 else 0))
@@ -521,6 +522,45 @@ def sc_label(row):
     return f"{row['title']} ({row['year']})"
 
 
+# ---- listen cache ------------------------------------------------------------------------------
+# Checking a line by ear is the slow step (a few seconds of Whisper), and the same lines come up
+# again and again: common words in Say Anything, a supercut re-rendered, a take swapped back.
+# Each snap result is kept, keyed on everything it depends on: the file (and its mtime), the
+# window, the subtitle lines listened for and their neighbours, and LISTEN_V.
+LISTEN_DB = os.path.join(os.path.dirname(INDEX), "listen.db")
+LISTEN_V = 1          # bump whenever snap.py or stt_worker.py timing changes: old results are re-heard
+
+
+def _listen_key(path, a, b, cues, wide, near):
+    try:
+        mt = os.path.getmtime(path)
+    except OSError:
+        mt = 0
+    sig = [LISTEN_V, path, mt, a, b, bool(wide), [(c["start_ms"], c["end_ms"], c["text"]) for c in cues],
+           [(c["start_ms"], c["text"]) for c in near]]
+    return hashlib.sha1(json.dumps(sig).encode()).hexdigest()
+
+
+def cached_snap(path, a, b, cues, wide, near):
+    key = _listen_key(path, a, b, cues, wide, near)
+    try:
+        with contextlib.closing(sqlite3.connect(LISTEN_DB, timeout=10)) as c:
+            c.execute("CREATE TABLE IF NOT EXISTS snaps (key TEXT PRIMARY KEY, res TEXT NOT NULL, at REAL NOT NULL)")
+            row = c.execute("SELECT res FROM snaps WHERE key = ?", (key,)).fetchone()
+        if row:
+            return json.loads(row[0])
+    except sqlite3.Error:
+        pass                          # a broken cache only costs the listen
+    res = snapper.snap(path, a, b, cues, wide=wide, context=near)
+    try:
+        with contextlib.closing(sqlite3.connect(LISTEN_DB, timeout=10)) as c:
+            c.execute("INSERT OR REPLACE INTO snaps VALUES (?, ?, ?)", (key, json.dumps(res), time.time()))
+            c.commit()
+    except sqlite3.Error:
+        pass
+    return res
+
+
 def sc_check_hit(row, hit, query, offset=None, wide=True):
     """Listen to one hit. Returns raw facts (not a cut), so padding and cut style can change later
     without listening again: where the line's words were heard, where the searched phrase is, the
@@ -540,7 +580,7 @@ def sc_check_hit(row, hit, query, offset=None, wide=True):
         return dict(found=False, foreign=lang, status=f"{lang} audio: subtitle timing", offset_ms=off,
                     sub_in=a, sub_out=b, words=words)
     near = [c for c in item_cues(row["id"], a - 45000, b + 45000, off) if c["end_ms"] <= a or c["start_ms"] >= b]
-    res = snapper.snap(row["path"], a, b, cues, wide=wide, context=near)
+    res = cached_snap(row["path"], a, b, cues, wide, near)
     if not res.get("found"):
         return dict(found=False, status="not heard", offset_ms=off, sub_in=a, sub_out=b)
     total = off + (res["offset_ms"] if abs(res["offset_ms"]) >= 250 else 0)
@@ -802,7 +842,7 @@ def sa_piece_json(p):
         take = dict(item_id=h["item_id"], label=h["label"], start_ms=h["start_ms"], end_ms=h["end_ms"],
                     line=h["text"], thumb=h["thumb"], s=t["s"], e=t["e"], before=t["before"], after=t["after"],
                     score=t["score"], words=t["words"], cuts=t.get("cuts"))
-    return dict(text=p["text"], want=p["want"], take=take, alts=p["alts"])
+    return dict(text=p["text"], want=p["want"], take=take, alts=p["alts"], why=p.get("why"))
 
 
 def run_sa_plan(job_id, req):
