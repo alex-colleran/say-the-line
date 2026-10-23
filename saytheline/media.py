@@ -89,6 +89,25 @@ def font_path(family="Inter"):
         return ""
 
 
+@functools.lru_cache(maxsize=64)
+def font_box(family):
+    """(ascent, descent) of a font per pixel of em size."""
+    try:
+        from PIL import ImageFont              # only the caption looks need Pillow
+        a, d = ImageFont.truetype(font_path(family), 1000).getmetrics()
+        return a / 1000, d / 1000
+    except Exception:
+        return 0.82, 0.18                     # sums to 1: sizes pass through unchanged
+
+
+def ass_size(family, size):
+    """The ASS font size that draws text `size` px to the em, as the preview (CSS) and the layout
+    (Pillow) measure it. libass, like VSFilter, sizes a font by its ascent + descent instead, so the
+    same number came out about 18% smaller in renders than in the editor (Inter: 1.21 em)."""
+    a, d = font_box(family)
+    return round(size * (a + d), 1)
+
+
 def _fpath(p):
     """A path inside an ffmpeg filter argument: escape the characters the filter parser treats
     specially (a Windows drive colon among them)."""
@@ -164,7 +183,7 @@ def write_srt(cues, in_ms, out_ms, path):
 # Word-synced looks. Chunk rules per look (max words, max chars, break on a pause longer than);
 # the browser preview uses the same table.
 CHUNK_RULES = {"tiktok": (3, 18, 350), "popin": (5, 28, 500), "bigword": (1, 999, 0)}
-LOOKS = tuple(CHUNK_RULES) + ("poster",)            # every look that needs word timing
+LOOKS = tuple(CHUNK_RULES) + ("poster", "kinetic")  # every look that needs word timing
 
 
 def chunk_words(words, max_words=3, max_chars=18, gap_ms=350):
@@ -264,7 +283,7 @@ def word_ass(cues, in_ms, out_ms, w, h, st, path):
              "Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, "
              "Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, "
              "MarginL, MarginR, MarginV, Encoding",
-             f"Style: TT,{font},{fs},&H00{base},&H00{base},&H00000000,&H78000000,{0 if 'Black' in font else -1},0,0,0,100,100,0,0,1,"
+             f"Style: TT,{font},{ass_size(font, fs)},&H00{base},&H00{base},&H00000000,&H78000000,{0 if 'Black' in font else -1},0,0,0,100,100,0,0,1,"
              f"{outline},{shadow},{align},{round(w * 0.06)},{round(w * 0.06)},{margin_v},1",
              "", "[Events]", "Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text"]
     events = []
@@ -286,7 +305,7 @@ def word_ass(cues, in_ms, out_ms, w, h, st, path):
                 # shrink a long word so it fits ~88 % of the width (~0.62 em per character)
                 fit = min(fs, int(w * 0.88 / max(1, 0.62 * len(text))))
                 col = hl if text[-1:] == "!" else base
-                events.append((c_start, c_end, "{" + f"\\c&H{col}&\\fs{fit}" + pop(100, c_end - c_start) + "}" + text))
+                events.append((c_start, c_end, "{" + f"\\c&H{col}&\\fs{ass_size(font, fit)}" + pop(100, c_end - c_start) + "}" + text))
                 continue
             for j, wj in enumerate(ch):
                 if look == "tiktok":
@@ -359,7 +378,7 @@ def poster_ass(posters, in_ms, out_ms, w, h, st, path):
                     seen += 1
                     col = hl if x["tier"] == 4 else soft if x["tier"] <= 1 else base
                     bold = 0 if "Black" in x["font"] else 1
-                    tag = (f"\\fn{x['font']}\\fs{x['size']}\\b{bold}\\c&H{col}&"
+                    tag = (f"\\fn{x['font']}\\fs{ass_size(x['font'], x['size'])}\\b{bold}\\c&H{col}&"
                            f"\\bord{max(2, round(x['size'] * 0.075))}\\shad{max(1, round(x['size'] * 0.04))}")
                     if j > k:
                         tag += "\\alpha&HFF&\\fscx100\\fscy100"
@@ -380,7 +399,7 @@ def force_style(st):
     colour = COLOURS.get(st.get("colour"), "FFFFFF")
     bgr = colour[4:6] + colour[2:4] + colour[0:2]
     font = st.get("font") if st.get("font") in FONTS else "Inter"
-    parts = [f"FontName={font}", f"FontSize={SIZES.get(st.get('size'), 20)}",
+    parts = [f"FontName={font}", f"FontSize={ass_size(font, SIZES.get(st.get('size'), 20))}",
              f"PrimaryColour=&H00{bgr}", "Bold=1",
              # ffmpeg reads force_style Alignment in legacy SSA numbering (2 bottom, 6 top, 10 middle;
              # all centred), not the ASS numpad layout: 5 would be top-left, 8 middle-left
@@ -472,7 +491,12 @@ def caption_filter(st, cues, in_ms, out_ms, w, h, tmp):
     """The libass filter that burns the chosen caption look (times relative to in_ms), or None."""
     if not st.get("on"):
         return None
-    if st.get("style") == "poster":
+    if st.get("style") == "kinetic":
+        from . import kinetic
+        ass = os.path.join(tmp, "cut.ass")
+        if kinetic.ass(kinetic.layout(caption_words(cues, in_ms, out_ms), w, h, st), in_ms, out_ms, w, h, st, ass):
+            return f"subtitles={_fpath(ass)}:fontsdir={_fpath(FONT_DIR)}"
+    elif st.get("style") == "poster":
         from . import poster
         ass = os.path.join(tmp, "cut.ass")
         if poster_ass(poster.layout(caption_words(cues, in_ms, out_ms), w, h, st), in_ms, out_ms, w, h, st, ass):

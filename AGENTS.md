@@ -21,6 +21,7 @@ saytheline/
   stt_worker.py  faster-whisper child process (+ energy-onset refinement of word starts)
   pos_worker.py  spaCy child process: emphasis tier per word (Poster look)
   poster.py      Poster layout with real font metrics (Pillow)
+  kinetic.py     Kinetic look: Poster's layout as justified stacks + lockups, animated per frame
   library.py     favourites, tags, drafts (data/library.db; separate from the index)
   web.py         HTTP server (stdlib ThreadingHTTPServer) + JSON API + job queue
   doctor.py      `python -m saytheline doctor`
@@ -50,8 +51,10 @@ sed -n '/<script>/,/<\/script>/p' saytheline/static/index.html | sed '1d;$d' > /
   them is optional: features degrade with a clear message, never a crash.
 - **Preview = render.** Shot trimming exists twice too: `shots.fit` / `whole_shot` and JS
   `fitShots` / `shotTargets`. Caption logic exists twice: Python (`media.word_ass`, `chunk_words`,
-  `normalize_words`, `_pop`) and JS (`drawWords`, `chunkWords`, `normalizeWords`, `popAttr`). Change
-  both together; the comments mark the pairs (`= media.xyz`).
+  `normalize_words`, `_pop`) and JS (`drawWords`, `chunkWords`, `normalizeWords`, `popAttr`). Kinetic's
+  motion is `kinetic.word_state` and JS `kineticState`. Change both together; the comments mark the
+  pairs (`= media.xyz`). Every ASS font size goes through `media.ass_size` (libass sizes fonts by
+  ascent + descent, the preview by the em).
 - **No private data in the repo**: no hostnames, IPs, personal paths, API keys or library contents.
   Machine-specific settings belong in `saytheline.toml` (gitignored). Screenshots only ever show a
   public-domain film from a one-title demo index: after a visible UI change, retake them with

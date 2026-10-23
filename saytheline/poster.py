@@ -21,6 +21,8 @@ MAX_WORDS, MAX_CHARS, GAP_MS = 9, 48, 650             # one poster = one short s
 MAX_FILL = 1.6                                        # how far a short poster may be scaled up
 HOLD_MS = 400
 LEADING = 1.02                                        # tight, poster-like line spacing
+# a full stop after these doesn't end the sentence ("Mr. Smith" stays on one poster)
+ABBREV = {"mr", "mrs", "ms", "dr", "st", "jr", "sr", "prof", "vs", "mt", "lt", "sgt", "capt", "col", "gen", "rev"}
 
 
 def tiers(words):
@@ -54,7 +56,8 @@ def group(words):
         if cur:
             text = " ".join(x["w"] for x in cur)
             last = cur[-1]["w"][-1:]
-            if (last in ".?!" or w["s"] - cur[-1]["e"] > GAP_MS or (last in ",;:" and len(cur) >= 4)
+            ends = last in ".?!" and not (last == "." and cur[-1]["w"][:-1].lower() in ABBREV)
+            if (ends or w["s"] - cur[-1]["e"] > GAP_MS or (last in ",;:" and len(cur) >= 4)
                     or len(cur) >= MAX_WORDS or len(text) + 1 + len(w["w"]) > MAX_CHARS):
                 posters.append(cur)
                 cur = []

@@ -37,8 +37,9 @@ It runs on the machine that has your media, next to Jellyfin, and is used from a
 - **Snap to speech**: listens to the cut (faster-whisper) and moves it onto the spoken words.
   It also finds subtitles that run seconds early or late, and remembers that per episode.
 - **Captions**: burned in with libass. Classic subtitles, or word-synced looks: **TikTok**,
-  **Pop-in**, **Big word**, and **Poster** (automatic expressive typography sized by part of
-  speech). Text from the subtitles or from speech-to-text, editable before rendering, and
+  **Pop-in**, **Big word**, **Poster** (automatic expressive typography sized by part of
+  speech) and **Kinetic** (Poster in motion: justified stacks, words that rise from behind their
+  line or slam in, a vertical word locked up beside the stack, cards that fall away). Text from the subtitles or from speech-to-text, editable before rendering, and
   movable earlier or later for subtitles that run early or late.
 - **Output**: MP4, WebM, GIF or a **still** (JPEG); original / 16:9 / 4:3 / 1:1 / 9:16 with
   crop or bars; 480–1080 or source size.

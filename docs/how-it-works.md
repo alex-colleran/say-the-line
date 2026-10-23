@@ -97,6 +97,17 @@ Design notes: what each part does and why it is built that way. For setup, see t
   largest, the clause's core nouns and main verb next, then other content words; function words
   are smallest and lighter). `poster.py` lays out one poster per clause with real font metrics:
   one big word per line, and the whole poster scaled to fill the frame.
+- **Kinetic** (`kinetic.py`): Poster's tiers and sizes, set as justified stacks (each line scaled
+  to the widest), and on every other card that can take it a lockup: the card's first word (on the
+  left, reading up) or last word (on the right, reading down) turned 90 degrees and sized to run the
+  stack's height, so the card still reads in spoken order. Words arrive as they are said: most rise
+  from behind their line's baseline (an ASS `\clip` mask), tier-4 words slam in oversized and
+  settle, the vertical word slides along its column. A held card grows 5 %; the next card's arrival
+  drops the old words one by one. `word_state(card, word, t)` is the whole animation; the render
+  writes one ASS event per word per frame (30 fps) from it, the preview runs the same function in JS.
+- **Font sizes:** libass (like VSFilter) sizes a font by its ascent + descent, CSS and Pillow by its
+  em, so every ASS writer converts with `media.ass_size` (Inter: x1.21). Without it renders came out
+  about 18 % smaller than the editor showed.
 - **Timing:** Earlier / Later (Captions tab) moves every caption in the clip, words too, by up to
   5 s (`caption_shift_ms`; `web.shift_cues` = JS `shiftCues`). It is separate from the subtitle
   offset snap learns, which moves the cut: this only moves the text.
