@@ -597,7 +597,9 @@
 </div>
 <div class="sheet" id="scSheet" hidden>
   <div class="sheet-in">
-    <div class="sheet-head"><div class="t" id="scTitle"></div><button class="x" id="scClose" aria-label="Close"><svg class="i" aria-hidden="true"><use href="#i-x"/></svg></button></div>
+    <div class="sheet-head"><div class="t" id="scTitle"></div>
+      <button class="hbtn2" id="scHeart" aria-label="Save as a draft"><svg class="i" aria-hidden="true"><use href="#i-heart"/></svg></button><button class="x" id="scClose" aria-label="Close"><svg class="i" aria-hidden="true"><use href="#i-x"/></svg></button></div>
+    <div class="tagrow" id="scDraftTags" hidden></div>
     <div style="position:relative"><video id="scVid" playsinline controls hidden style="width:100%;max-height:40vh;background:#000;display:block"></video>
       <div class="loadbar" id="scLoad" hidden><i></i></div></div>
     <div id="scResult"></div>
@@ -638,7 +640,9 @@
 </div>
 <div class="sheet" id="saSheet" hidden>
   <div class="sheet-in">
-    <div class="sheet-head"><div class="t">Say Anything<small>type a sentence, the library says it</small></div><button class="x" id="saClose" aria-label="Close"><svg class="i" aria-hidden="true"><use href="#i-x"/></svg></button></div>
+    <div class="sheet-head"><div class="t">Say Anything<small>type a sentence, the library says it</small></div>
+      <button class="hbtn2" id="saHeart" aria-label="Save as a draft"><svg class="i" aria-hidden="true"><use href="#i-heart"/></svg></button><button class="x" id="saClose" aria-label="Close"><svg class="i" aria-hidden="true"><use href="#i-x"/></svg></button></div>
+    <div class="tagrow" id="saDraftTags" hidden></div>
     <textarea id="saText" placeholder="Type a sentence for the library to say" aria-label="Sentence" enterkeyhint="go"></textarea>
     <div class="opt"><button class="b primary" id="saGo"><svg class="i" aria-hidden="true"><use href="#i-headphones"/></svg>Find the words</button>
       <button class="info" type="button" aria-expanded="false" aria-controls="saHowTo" aria-label="How Say Anything works">i</button></div>
@@ -2280,6 +2284,7 @@ function drawSc() {
     };
     listEl.appendChild(row);
   });
+  touchDraft("sc");
 }
 // Reorder by dragging a row's handle (pointer events, so it works with touch too) or with the arrow keys
 // on it. The new order becomes "Your order"; render sends the clips in it.
@@ -2327,7 +2332,8 @@ function scDrag(row) {
   };
 }
 async function openSupercut() {
-  sc.q = state.q; sc.checks = {}; sc.sel = new Set(); sc.hits = []; sc.busy = false; sc.job = null; sc.custom = null;
+  draftFlush("sc");
+  sc.q = state.q; sc.checks = {}; sc.sel = new Set(); sc.hits = []; sc.busy = false; sc.job = null; sc.custom = null; sc.draftId = null;
   if (sc.o.order === "custom") sc.o.order = "match";
   // only the best 300 hits are loaded: say so when there are more, so a huge search isn't mistaken for all of it
   const total = state.facets && state.facets.key === facetKey() && !state.facets.rows.some(x => x.n === null)
@@ -2532,6 +2538,7 @@ function drawSa() {
     });
     list.appendChild(row);
   });
+  touchDraft("sa");
 }
 // play pieces back to back from their previews (each is cut on the server, a second or so the first time),
 // each in its own card's thumbnail. One <video>, moved between cards, so a phone that allowed sound once keeps it.
@@ -2570,6 +2577,7 @@ $("#saPlay").onclick = () => saPlay(sa.pieces);
 async function saFind() {
   const text = $("#saText").value.trim();
   if (!text || sa.busy) return;
+  if (sa.draftId && sa.pieces.length && text !== sa.sentence) { draftFlush("sa"); sa.draftId = null; }
   saveSa(); sa.busy = true; sa.sentence = text; $("#saResult").innerHTML = ""; drawSa();
   $("#saSum").textContent = "Finding the words…";
   try {
@@ -2585,7 +2593,7 @@ async function saFind() {
 }
 $("#saGo").onclick = saFind;
 $("#saText").addEventListener("keydown", e => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); e.target.blur(); saFind(); } });
-$("#saText").addEventListener("input", () => { saveSa(); if (sa.pieces.length && !sa.busy) drawSa(); });
+$("#saText").addEventListener("input", () => { saveSa(); if (sa.pieces.length && !sa.busy) drawSa(); else touchDraft("sa"); });
 // ‹ › on a piece: step through the takes heard so far; past the last one, listen for a new one
 async function saTake(i, dir) {
   const p = sa.pieces[i];
@@ -2648,6 +2656,87 @@ $("#saStop").onclick = async () => {
 function openSayAnything() {
   $("#saSheet").hidden = false; document.body.style.overflow = "hidden"; history.pushState({ sheet: 4 }, "");
   drawSa(); if (!sa.pieces.length) $("#saText").focus();
+}
+/* ================= drafts: a hearted Say Anything or supercut ================= */
+// The heart in the sheet's header keeps the sheet as it is (library kind "draft": pieces and takes, or
+// hits, ticks and checks), and from then on every change is saved into it a moment later, the way a
+// hearted moment follows the editor. Library > Drafts reopens it.
+const DRAFT = {
+  sa: { st: () => sa, heart: "#saHeart", tags: "#saDraftTags", ready: () => sa.pieces.length > 0 || !!$("#saText").value.trim(),
+    snap: () => ({ type: "sayany", sentence: sa.sentence, text: $("#saText").value, pieces: sa.pieces, o: sa.o }),
+    meta: () => { const p = sa.pieces.find(p => p.take), words = (sa.sentence || $("#saText").value).trim();
+      return { label: "Say Anything", text: `“${words}”`, item_id: p ? p.take.item_id : null, start_ms: p ? p.take.s : null, end_ms: p ? p.take.e : null }; } },
+  sc: { st: () => sc, heart: "#scHeart", tags: "#scDraftTags", ready: () => sc.hits.length > 0,
+    snap: () => ({ type: "supercut", q: sc.q, sub: ($("#scTitle small") || {}).textContent || "", hits: sc.hits, sel: [...sc.sel],
+                   checks: sc.checks, o: sc.o, custom: sc.custom, seed: sc.seed }),
+    meta: () => { const h = scChosen()[0] || sc.hits[0];
+      return { label: "Supercut", text: `“${sc.q}” · ${sc.sel.size} clip${sc.sel.size === 1 ? "" : "s"}`,
+               item_id: h ? h.item_id : null, start_ms: h ? h.start_ms : null, end_ms: h ? h.end_ms : null }; } },
+};
+function draftEntry(k) { const id = DRAFT[k].st().draftId; return id ? lib.entries.find(e => e.id === id) : null; }
+function drawDraftHeart(k) {
+  const D = DRAFT[k], s = D.st(), e = draftEntry(k), b = $(D.heart);
+  if (s.draftId && !e && lib.entries.length) s.draftId = null;      // removed in the library
+  b.className = "hbtn2" + (e ? " on" : ""); b.innerHTML = ic(e ? "heart-f" : "heart");
+  b.disabled = !e && !D.ready();
+  b.title = e ? "Draft saved: keeps following your changes · tap to remove" : "Save as a draft to finish later (Library › Drafts)";
+  const key = e ? e.id + "|" + (e.tags || []).join(",") : "";
+  if (key === D.key) return;               // the tag editor is redrawn only when it changes, so typing a tag survives
+  D.key = key; $(D.tags).hidden = !e;
+  if (e) tagEditor($(D.tags), e, () => drawDraftHeart(k));
+}
+async function draftWrite(k) {
+  const D = DRAFT[k], id = D.st().draftId;
+  clearTimeout(D.timer); D.timer = null;
+  if (!id) return;
+  const state = JSON.stringify(D.snap());
+  if (state === D.last) return;
+  D.last = state;
+  await fetch("/api/library/" + id, { method: "POST", headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ ...D.meta(), state }) }).catch(() => { D.last = null; });
+}
+function touchDraft(k) {
+  drawDraftHeart(k);
+  const D = DRAFT[k];
+  if (!D.st().draftId) return;
+  clearTimeout(D.timer); D.timer = setTimeout(() => draftWrite(k), 1200);
+}
+function draftFlush(k) { if (DRAFT[k].timer) draftWrite(k); }
+async function toggleDraft(k) {
+  const D = DRAFT[k], s = D.st(), e = draftEntry(k);
+  if (e) { clearTimeout(D.timer); D.timer = null; await libDelete(e.id); s.draftId = null; }
+  else {
+    const state = JSON.stringify(D.snap());
+    const n = await libSave({ kind: "draft", ...D.meta(), state });
+    s.draftId = n.id; D.last = state;
+  }
+  drawDraftHeart(k);
+}
+$("#saHeart").onclick = () => toggleDraft("sa");
+$("#scHeart").onclick = () => toggleDraft("sc");
+async function openDraft(id) {
+  const d = await (await fetch("/api/draft?id=" + id)).json();
+  let st = {};
+  try { st = JSON.parse(d.state || "{}"); } catch (e) {}
+  if (st.type === "sayany") {
+    if (sa.busy || sa.taking.size) { openSayAnything(); $("#saSum").textContent = "Stop this or let it finish, then open the draft again"; return; }
+    draftFlush("sa"); saStopPlay();
+    sa.sentence = st.sentence || ""; sa.pieces = st.pieces || []; Object.assign(sa.o, st.o || {});
+    $("#saText").value = st.text ?? sa.sentence; $("#saResult").innerHTML = "";
+    sa.draftId = d.id; DRAFT.sa.last = d.state;
+    openSayAnything();
+  } else if (st.type === "supercut") {
+    if (sc.busy) { $("#scSheet").hidden = false; document.body.style.overflow = "hidden"; history.pushState({ sheet: 3 }, "");
+      $("#scSum").textContent = "Stop this or let it finish, then open the draft again"; return; }
+    draftFlush("sc");
+    Object.assign(sc, { q: st.q || "", hits: st.hits || [], sel: new Set(st.sel || []), checks: st.checks || {}, custom: st.custom || null,
+                        seed: st.seed || 1, busy: false, job: null, draftId: d.id });
+    Object.assign(sc.o, st.o || {}); DRAFT.sc.last = d.state;
+    $("#scTitle").innerHTML = `Supercut<small>${esc(st.sub || "“" + sc.q + "”")}</small>`;
+    $("#scResult").innerHTML = ""; $("#scVid").hidden = true;
+    $("#scSheet").hidden = false; document.body.style.overflow = "hidden"; history.pushState({ sheet: 3 }, "");
+    drawSc();
+  }
 }
 // ⓘ buttons: show or hide the short explanation they point at (aria-controls). Which ones are
 // open is remembered, so a card redrawn after a tap keeps its explanation showing.
@@ -2897,7 +2986,8 @@ async function openClipLink(cid) {
 async function drawLibrary() {
   await loadLibrary();
   const files = await (await fetch("/api/clips")).json().catch(() => []);
-  $("#libKinds").innerHTML = [["", "All saved"], ["moment", ic("heart") + "Moments"], ["clip", ic("movie") + "Clips"], ["recent", ic("pencil") + "Recent edits"], ["files", "All rendered"]]
+  $("#libKinds").innerHTML = [["", "All saved"], ["moment", ic("heart") + "Moments"], ["clip", ic("movie") + "Clips"], ["draft", ic("pencil") + "Drafts"],
+      ["recent", ic("clock") + "Recent edits"], ["files", "All rendered"]]
     .map(([k, l]) => `<button type="button" class="chip" data-k="${k}" aria-pressed="${lib.kind === k}">${l}</button>`).join("");
   $("#libKinds").querySelectorAll("[data-k]").forEach(c => c.onclick = () => { lib.kind = c.dataset.k; drawLibrary(); });
   $("#libTagFilter").innerHTML = ["files", "recent"].includes(lib.kind) ? "" : (lib.tags.length ? `<button type="button" class="chip" data-t="" aria-pressed="${!lib.tag}">Any tag</button>` : "")
@@ -2920,9 +3010,11 @@ async function drawLibrary() {
   const shown = recent ? await (await fetch("/api/library?kind=recent")).json().catch(() => [])
     : lib.entries.filter(e => (!lib.kind || e.kind === lib.kind) && (!lib.tag || (e.tags || []).includes(lib.tag)));
   if (!shown.length) list.innerHTML = `<div class="empty">${recent ? "Clips you edit show up here automatically, with their captions and settings."
+    : lib.kind === "draft" && !lib.tag ? `No drafts yet. Tap ${ic("heart")} at the top of Say Anything or a supercut to keep it here and finish it later.`
     : lib.entries.length ? "Nothing matches this filter." : `Nothing saved yet. Tap ${ic("heart")} on a search result, in the editor, or on a rendered clip.`}</div>`;
   shown.forEach(e => {
     const row = document.createElement("div"); row.className = "li";
+    if (e.kind === "draft") return list.appendChild(draftRow(e, row));
     const mid = e.in_ms != null ? Math.round((e.in_ms + e.out_ms) / 2) : Math.round((e.start_ms + e.end_ms) / 2) + (e.offset_ms || 0);
     const len = e.in_ms != null ? ` · ${((e.out_ms - e.in_ms) / 1000).toFixed(1)} s cut` : "";
     const clipUrl = e.kind === "clip" ? "/clips/" + encodeURIComponent(e.file) : null;
@@ -2955,16 +3047,31 @@ async function drawLibrary() {
     list.appendChild(row);
   });
 }
+// a Say Anything or supercut draft: Continue reopens its sheet as it was left
+function draftRow(e, row) {
+  const mid = e.start_ms != null ? Math.round((e.start_ms + e.end_ms) / 2) : null;
+  row.innerHTML = `<div class="lt">${e.item_id != null ? `<img loading="lazy" src="/thumb/${e.item_id}/${mid}.jpg" alt="">` : ""}<span class="kind">Draft</span></div>
+    <div class="lm"><div class="t">${esc(e.label || "Draft")} <small>edited ${ago(e.updated)}</small></div>
+      <div class="x2">${esc(e.text || "")}</div><div class="tagrow"></div>
+      <div class="acts"><button class="b" data-a="open">${ic("pencil")}Continue</button>
+        <button class="b" data-a="del" title="Remove this draft">${ic("trash")}Remove</button></div></div>`;
+  const img = row.querySelector("img"); if (img) img.onerror = ev => ev.target.remove();
+  tagEditor(row.querySelector(".tagrow"), e, () => drawLibrary());
+  const open = () => { history.back(); setTimeout(() => openDraft(e.id), 50); };
+  row.querySelector("[data-a=open]").onclick = open; row.querySelector(".lt").onclick = open;
+  row.querySelector("[data-a=del]").onclick = async () => { await libDelete(e.id); drawLibrary(); };
+  return row;
+}
 $("#libBtn").onclick = () => { $("#libSheet").hidden = false; history.pushState({ sheet: 2 }, ""); drawLibrary(); };
 $("#libClose").onclick = () => history.back();
 $("#edClose").onclick = () => history.back();
 window.addEventListener("popstate", () => {
-  if (!$("#saSheet").hidden) { saStopPlay(); $("#saSheet").hidden = true;
+  if (!$("#saSheet").hidden) { saStopPlay(); draftFlush("sa"); $("#saSheet").hidden = true;
     document.body.style.overflow = ""; return; }
   // closing the sheet stops a check (its results would be lost with the sheet); a render carries on
   // and lands in Library > All rendered
   if (!$("#scSheet").hidden && sc.busy && sc.job && sc.kind === "check") fetch(`/api/job/${sc.job}/cancel`, { method: "POST" }).catch(() => {});
-  if (!$("#scSheet").hidden) { const v = $("#scVid"); v.pause(); v.removeAttribute("src"); $("#scSheet").hidden = true;
+  if (!$("#scSheet").hidden) { draftFlush("sc"); const v = $("#scVid"); v.pause(); v.removeAttribute("src"); $("#scSheet").hidden = true;
     document.body.style.overflow = ""; return; }
   if (!$("#libSheet").hidden) { $("#libSheet").hidden = true; refreshCardHearts(); return; }
   if (!$("#sheet").hidden) { closeEditor(); refreshCardHearts();

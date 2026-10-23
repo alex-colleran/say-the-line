@@ -52,7 +52,8 @@ It runs on the machine that has your media, next to Jellyfin, and is used from a
   skips lines that are never actually heard, can cut to just the phrase, trims each clip to its
   shot, hides repeats, evens out loudness and adds labels and captions.
 - **Library**: heart moments and clips, tag them for projects; every edited clip is kept as a
-  draft (Library → Recent edits) with its captions, transcript and settings.
+  draft (Library → Recent edits) with its captions, transcript and settings. Heart a supercut or Say
+  Anything that isn't rendered yet to keep it under Library → Drafts and finish it later.
 
 ## What you need
 

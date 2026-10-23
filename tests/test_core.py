@@ -215,6 +215,18 @@ class Library(unittest.TestCase):
             self.assertIsNone(lib.draft(2, 0))
             self.assertEqual(lib.tags(), [{"tag": "ideas", "n": 1}])
 
+    def test_sheet_drafts(self):
+        with tempfile.TemporaryDirectory() as d:
+            lib = library.Library(os.path.join(d, "library.db"))
+            a = lib.save({"kind": "draft", "label": "Say Anything", "text": "“hi”", "item_id": 1, "start_ms": 5, "state": "{}"})
+            b = lib.save({"kind": "draft", "label": "Supercut", "item_id": 1, "start_ms": 5, "state": "{}"})
+            self.assertNotEqual(a["id"], b["id"], "two drafts may start on the same line")
+            lib.update(a["id"], {"text": "“hi there”", "item_id": 2, "start_ms": 9, "state": '{"type": "sayany"}'})
+            got = lib.get(a["id"])
+            self.assertEqual((got["text"], got["item_id"], got["start_ms"], got["state"]), ("“hi there”", 2, 9, '{"type": "sayany"}'))
+            self.assertEqual(len(lib.list(kind="draft")), 2)
+            self.assertEqual(len(lib.list()), 2, "sheet drafts show with the saved entries")
+
 
 class JellyfinAPI(unittest.TestCase):
     def test_items_and_tracks(self):

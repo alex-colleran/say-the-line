@@ -4,7 +4,10 @@ rendered clips, each with free-form tags for projects. Kept in its own small dat
 
 Every clip worked on in the editor is also kept as a 'recent' draft (the last RECENT_KEEP), so work
 is never lost without anyone tapping save. A moment or draft carries the whole editor state as JSON
-(cut, caption look and style, the edited transcript, output settings)."""
+(cut, caption look and style, the edited transcript, output settings).
+
+A 'draft' is a hearted Say Anything or supercut that isn't rendered yet: its state is the whole sheet
+(pieces and takes, or hits, ticks and checks), with item_id/start_ms only for its thumbnail."""
 import contextlib
 import datetime
 import os
@@ -14,7 +17,7 @@ import threading
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS saved (
   id         INTEGER PRIMARY KEY,
-  kind       TEXT NOT NULL,              -- moment | clip | recent
+  kind       TEXT NOT NULL,              -- moment | clip | recent | draft
   item_id    INTEGER,
   idx        INTEGER,                    -- cue index of the line that was found (highlighting)
   media_kind TEXT,                       -- episode | movie
@@ -40,7 +43,7 @@ CREATE TABLE IF NOT EXISTS tags (
 """
 FIELDS = ("kind", "item_id", "idx", "media_kind", "label", "title", "text", "start_ms", "end_ms",
           "in_ms", "out_ms", "offset_ms", "file", "note", "state")
-KINDS = ("moment", "clip", "recent")
+KINDS = ("moment", "clip", "recent", "draft")
 RECENT_KEEP = 40
 _lock = threading.Lock()
 
@@ -93,6 +96,8 @@ class Library:
         with _lock, self._db() as c:
             if kind == "clip":
                 old = c.execute("SELECT id FROM saved WHERE kind='clip' AND file = ?", (vals["file"],)).fetchone()
+            elif kind == "draft":
+                old = None                # two drafts may start on the same line
             else:
                 old = c.execute("SELECT id FROM saved WHERE kind = ? AND item_id = ? AND start_ms = ?",
                                 (kind, vals["item_id"], vals["start_ms"])).fetchone()
@@ -132,7 +137,8 @@ class Library:
         with _lock, self._db() as c:
             if not c.execute("SELECT 1 FROM saved WHERE id = ?", (sid,)).fetchone():
                 return None
-            sets = [k for k in ("note", "in_ms", "out_ms", "offset_ms", "text", "state") if k in data]
+            sets = [k for k in ("note", "in_ms", "out_ms", "offset_ms", "text", "state", "label", "item_id", "start_ms", "end_ms")
+                    if k in data]
             if sets:
                 c.execute(f"UPDATE saved SET {', '.join(k + ' = ?' for k in sets)}, updated = ? WHERE id = ?",
                           [data[k] for k in sets] + [datetime.datetime.now().isoformat(timespec="seconds"), sid])
