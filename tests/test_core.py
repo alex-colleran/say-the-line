@@ -627,6 +627,39 @@ class SpeedRamp(unittest.TestCase):
         self.assertAlmostEqual(t[-1], 6.0, delta=0.11)          # the middle of a 6x last frame
 
 
+class TimingLog(unittest.TestCase):
+    def test_summary_finds_slow_routes_repeats_and_cache_misses(self):
+        import tempfile
+        from saytheline import perf
+        with tempfile.TemporaryDirectory() as d:
+            old = perf.PATH, perf.OLD, perf.MAX_BYTES
+            perf.PATH, perf.OLD = os.path.join(d, "perf.jsonl"), os.path.join(d, "perf.1.jsonl")
+            try:
+                for ms, hit in ((900, False), (12, True), (15, True)):
+                    perf.begin(); perf.cache("preview", hit)
+                    perf.write(dict(ev="req", m="GET", r=perf.route("/preview/5/100-200.mp4"), sig=perf.sig("/preview/5/100-200.mp4"),
+                                    code=200, ms=ms, bytes=2048, cache=perf.end()))
+                perf.write(dict(ev="req", m="GET", r=perf.route("/api/search"), sig=perf.sig("/api/search?q=a"), code=200, ms=40, bytes=10))
+                for _ in range(2):
+                    perf.write(dict(ev="job", kind="snap", key="snap", sig=perf.sig({"item": 1}), units=3, state="done",
+                                    secs=4.0, wait=1.0, phases={"listening": 3.5}))
+                perf.cache("shots", False)                       # outside a request: its own line
+                s = perf.summary()
+                top = s["routes"][0]
+                self.assertEqual((top["route"], top["n"], top["repeats"], top["max_ms"]), ("GET /preview/#/#-#.mp4", 3, 2, 900))
+                self.assertEqual(top["cache"]["preview"], {"hit": 2, "miss": 1})
+                self.assertEqual(s["caches"]["shots"], {"hit": 0, "miss": 1, "rate": 0.0})
+                self.assertEqual(s["jobs"][0]["repeats"], 1)
+                self.assertEqual(s["jobs"][0]["steps"], {"listening": 3.5})
+                perf.MAX_BYTES = 100                              # rolls over instead of growing
+                for _ in range(5):
+                    perf.write(dict(ev="cache", cache="x", hit=True))
+                self.assertTrue(os.path.exists(perf.OLD))
+                self.assertLess(os.path.getsize(perf.PATH), 300)
+            finally:
+                perf.PATH, perf.OLD, perf.MAX_BYTES = old
+
+
 class TimeLeft(unittest.TestCase):
     def test_counters_and_history_give_time_left(self):
         from saytheline import web

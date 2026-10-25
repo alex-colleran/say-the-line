@@ -88,6 +88,9 @@ It runs on the machine that has your media, next to Jellyfin, and is used from a
 - **Time left**: every wait (renders, slow motion, listening, supercuts, Studio) shows how far along
   it is and about how long is left, from the job's own progress and how long the same kind of job
   took before (`data/eta.json`); a job waiting its turn shows how long until it starts.
+- **Timing log**: every request and job step is timed into `data/perf.jsonl` (capped at about 20 MB),
+  with whether a cache already had it; `GET /api/perf` (or `python -m saytheline.perf`) sums it up:
+  the slowest routes, repeats a cache could have saved, cache hit rates, and each job's steps.
 - **Supercut**: every hit for a search in one video. It checks each hit against the audio,
   skips lines that are never actually heard, can cut to just the phrase, trims each clip to its
   shot, hides repeats, evens out loudness and adds labels and captions. Each clip previews in its

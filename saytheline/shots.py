@@ -29,7 +29,7 @@ import statistics
 import subprocess
 import threading
 
-from . import config
+from . import config, perf
 
 W, H = 32, 18
 CHANGE_MIN = 0.28        # median normalised pixel change of a cut, after the best small shift
@@ -224,6 +224,7 @@ class Cache:
             if d.get("loose") is None:
                 d["loose"] = loose_timing(src)
             gaps = _gaps(d["spans"], a_ms, b_ms)
+            perf.cache("shots", not gaps)
             if gaps:
                 g0, g1 = gaps[0][0], gaps[-1][1]             # one ffmpeg run over all of them
                 with SCAN_SLOT:

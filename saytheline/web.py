@@ -25,6 +25,7 @@ from . import jellyfin
 from . import library
 from . import media
 from . import music
+from . import perf
 from . import ramp
 from . import sayany
 from . import search as srch
@@ -188,7 +189,9 @@ def contact_sheet(frames, cell=None):
 
 def thumbnail(item_id, ms):
     out = os.path.join(THUMBS, str(item_id), f"{ms}.jpg")
-    if os.path.exists(out):
+    hit = os.path.exists(out)
+    perf.cache("thumb", hit)
+    if hit:
         return out
     row = db().execute("SELECT path FROM items WHERE id = ?", (item_id,)).fetchone()
     if not row or not os.path.exists(row["path"]):
@@ -222,6 +225,7 @@ def cover_image(item_id):
         return None
     key = ("s-" + hashlib.sha1(row["series"].encode()).hexdigest()[:16]) if row["kind"] == "episode" and row["series"] else f"m-{item_id}"
     out = os.path.join(COVERS, key + ".jpg")
+    perf.cache("cover", os.path.exists(out) or key in NO_COVER)
     if os.path.exists(out):
         return out
     if key in NO_COVER:
@@ -301,6 +305,7 @@ def preview_file(item_id, start_ms, end_ms):
         return None
     track = media.audio_track(row["path"])
     out = os.path.join(PREVIEWS, str(item_id), f"{start_ms}-{end_ms}{f'.a{track}' if track else ''}.t.mp4")
+    perf.cache("preview", os.path.exists(out))
     if os.path.exists(out):
         try:
             os.utime(out)                             # recently used: pruned last
@@ -423,14 +428,22 @@ def run_still(job_id, req):
 
 
 class Job(dict):
-    """A job's state dict; notes when it leaves the queue (the clock for its time left)."""
+    """A job's state dict; notes when it leaves the queue (the clock for its time left) and how
+    long it spends in each state (_ph, for the timing log)."""
     def __init__(self, *a, **kw):
         super().__init__(*a, **kw)
         self._seen()
 
     def _seen(self):
-        if "_t0" not in self and self.get("state") not in (None, "queued"):
-            dict.__setitem__(self, "_t0", time.time())
+        st, now = self.get("state"), time.time()
+        if "_t0" not in self and st not in (None, "queued"):
+            dict.__setitem__(self, "_t0", now)
+        ps = self.get("_ps")
+        if ps is None or ps[0] != st:
+            if ps:
+                ph = dict.setdefault(self, "_ph", {})
+                ph[ps[0]] = round(ph.get(ps[0], 0) + now - ps[1], 2)
+            dict.__setitem__(self, "_ps", (st, now))
 
     def __setitem__(self, k, v):
         dict.__setitem__(self, k, v)
@@ -584,6 +597,20 @@ def learn_rate(job):
 def run_job(runner, job_id, req):
     runner(job_id, req)
     learn_rate(JOBS[job_id])
+    log_job(JOBS[job_id], req)
+
+
+def log_job(job, req):
+    """The job's line in the timing log: its steps, its wait in the queue, and a signature of its
+    request (the same one again = work a cache could have saved)."""
+    ph = dict(job.get("_ph") or {})
+    wait = ph.pop("queued", 0)
+    rec = dict(ev="job", kind=job["kind"], key=job.get("_key"), sig=perf.sig(req), units=job.get("_units"),
+               state=job.get("state"), secs=round(time.time() - job["_t0"], 1) if job.get("_t0") else 0,
+               wait=wait, phases=ph)
+    if job.get("state") == "error":
+        rec["err"] = str(job.get("error") or "")[:160]
+    perf.write(rec)
 
 
 def item_shots(item_id, a_ms, b_ms):
@@ -788,6 +815,7 @@ def cached_snap(path, a, b, cues, wide, near):
         with contextlib.closing(sqlite3.connect(LISTEN_DB, timeout=10)) as c:
             c.execute("CREATE TABLE IF NOT EXISTS snaps (key TEXT PRIMARY KEY, res TEXT NOT NULL, at REAL NOT NULL)")
             row = c.execute("SELECT res FROM snaps WHERE key = ?", (key,)).fetchone()
+        perf.cache("listen", bool(row))
         if row:
             return json.loads(row[0])
     except sqlite3.Error:
@@ -1486,11 +1514,37 @@ class Handler(BaseHTTPRequestHandler):
         if not self.path.startswith(("/thumb/", "/cover/", "/preview/", "/interp/", "/api/job/")):
             super().log_message(fmt, *args)
 
+    def send_response(self, code, message=None):
+        self._code = code
+        super().send_response(code, message)
+
+    def _timed(self, method, handle):
+        """Every request's line in the timing log (but not the job polls: twice a second each)."""
+        t, self._code, self._bytes = time.time(), None, 0
+        perf.begin()
+        try:
+            handle()
+        finally:
+            marks, path = perf.end(), urlparse(self.path).path
+            if not path.startswith(("/api/job/", "/api/busy")):
+                rec = dict(ev="req", m=method, r=perf.route(path), sig=perf.sig(self.path), code=self._code,
+                           ms=round((time.time() - t) * 1000, 1), bytes=self._bytes)
+                if marks:
+                    rec["cache"] = marks
+                perf.write(rec)
+
+    def do_GET(self):
+        self._timed("GET", self._get)
+
+    def do_POST(self):
+        self._timed("POST", self._post)
+
     def send(self, code, body, ctype="application/json", cache=None):
         if isinstance(body, (dict, list)):
             body = json.dumps(body).encode()
         elif isinstance(body, str):
             body = body.encode()
+        self._bytes = getattr(self, "_bytes", 0) + len(body)
         self.send_response(code)
         self.send_header("Content-Type", ctype)
         self.send_header("Content-Length", str(len(body)))
@@ -1522,6 +1576,7 @@ class Handler(BaseHTTPRequestHandler):
             self.send_header("Content-Disposition", f"attachment; filename*=UTF-8''{quote(download)}")
         self.send_header("Cache-Control", "max-age=86400")
         self.end_headers()
+        self._bytes = getattr(self, "_bytes", 0) + end - start + 1
         with open(path, "rb") as f:
             f.seek(start)
             left = end - start + 1
@@ -1532,7 +1587,7 @@ class Handler(BaseHTTPRequestHandler):
                 self.wfile.write(chunk)
                 left -= len(chunk)
 
-    def do_POST(self):
+    def _post(self):
         u = urlparse(self.path)
         try:
             n = int(self.headers.get("Content-Length") or 0)
@@ -1576,7 +1631,7 @@ class Handler(BaseHTTPRequestHandler):
         except Exception as e:
             self.send(500, {"error": str(e)})
 
-    def do_GET(self):
+    def _get(self):
         u = urlparse(self.path)
         q = {k: v[0] for k, v in parse_qs(u.query).items()}
         try:
@@ -1587,7 +1642,10 @@ class Handler(BaseHTTPRequestHandler):
                 mode = q.get("mode", "phrase") if q.get("mode") in ("phrase", "any", "raw") else "phrase"
                 kind = q.get("kind") if q.get("kind") in ("episode", "movie") else None
                 try:
-                    return self.send(200, cached_facets(q.get("q", ""), mode, kind, index_stamp()))
+                    hits = cached_facets.cache_info().hits
+                    body = cached_facets(q.get("q", ""), mode, kind, index_stamp())
+                    perf.cache("facets", cached_facets.cache_info().hits > hits)
+                    return self.send(200, body)
                 except sqlite3.OperationalError as e:
                     return self.send(400, {"error": str(e)})
             if u.path == "/api/search":
@@ -1723,6 +1781,8 @@ class Handler(BaseHTTPRequestHandler):
                     run = [dict(id=k, kind=j["kind"], state=j["state"]) for k, j in JOBS.items()
                            if j["state"] not in ("done", "error", "cancelled")]
                 return self.send(200, run)
+            if u.path == "/api/perf":             # the timing log, summed up (perf.summary)
+                return self.send(200, perf.summary(float(q.get("days") or 7)))
             if u.path == "/api/lines":            # a title's whole subtitle, for the script view
                 body, cache = script_lines(int(q["item"]))
                 return self.send(404 if "error" in body else 200, body, cache=cache)

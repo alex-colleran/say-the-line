@@ -319,3 +319,11 @@ Design notes: what each part does and why it is built that way. For setup, see t
 faster-whisper `small.en` int8 on 4 CPU cores runs at about 2–3× realtime with word timestamps.
 That is a few seconds per clip, but far too slow to transcribe a whole library. Use subtitles
 where they exist.
+
+## Timing log
+
+`perf.py` writes one line per request (route with its numbers taken out, ms, bytes, the caches it
+looked in and whether they had it) and one per job (each state's seconds, the queue wait, its size),
+each with a short hash of the exact request: the same hash twice is work a cache could have saved.
+Job polls and `/api/busy` are left out. The file rolls to `perf.1.jsonl` at 10 MB. `summary()` sorts
+routes by the total time spent on them, which is where a cache would pay back most.
