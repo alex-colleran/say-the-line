@@ -107,11 +107,17 @@ Design notes: what each part does and why it is built that way. For setup, see t
   are smallest and lighter). `poster.py` lays out one poster per clause with real font metrics:
   one big word per line, and the whole poster scaled to fill the frame.
 - **Loudness:** word timing also measures each word (its loudest 10 ms frames) against the clip's
-  typical word (`stt_worker.loudness`, `"loud"` in dB). Poster and Kinetic use it: +6 dB is a shout
+  typical word (`stt_worker.loudness`, `"loud"` in dB). Poster and Intense use it: +6 dB is a shout
   (the biggest tier; at most two per poster, so a line said loudly throughout isn't all big), +3 dB
   over the rest of its own poster at least a big word, and -11 dB with a quiet neighbour a whisper
   (a size smaller, drawn in outline only). Drafts timed before this have no loudness; Redo adds it.
-- **Kinetic** (`kinetic.py`): Poster's tiers and sizes, set as justified stacks (each line scaled
+- **Kinetic** (`kinetic.py`): the original, calmer motion. Poster's tiers and sizes, set as
+  justified stacks (each line scaled to the widest), and on every other card that can take it a
+  lockup: the card's first or last word turned 90 degrees to run the stack's height. Words arrive as
+  they are said: most rise from behind their line's baseline (an ASS `\clip` mask), tier-4 words slam
+  in oversized and settle, the vertical word slides along its column. A held card grows 5 %; the next
+  card's arrival drops the old words one by one. `word_state` is the whole animation (JS `kineticState`).
+- **Intense** (`intense.py`): Kinetic grown into everything. Poster's tiers and sizes, set as justified stacks (each line scaled
   to the widest, and a line too short for that stretched sideways, up to 1.5x), and on every other
   card that can take it a lockup: the card's first word (on the left, reading up) or last word (on
   the right, reading down) turned 90 degrees and sized to run the stack's height, so the card still
@@ -123,6 +129,12 @@ Design notes: what each part does and why it is built that way. For setup, see t
   by how its sentence ends: `!` scatters, `?` lifts away, anything else falls. `word_state` and
   `bar_state` are the whole animation; the render writes one ASS event per word or bar per frame
   (30 fps) from them, and the preview runs the same functions in JS.
+- **Size and position:** one scale for every look (`media.SIZE_STEPS`, `block_top`, `fill`; = JS
+  `SIZE_STEPS`, `capPlace`): XS, S, M, L, XL, each about 1.4x the last (XS half of M, XL twice it);
+  Top and Bottom 5 % in from the frame's edges, Upper and Lower a quarter in, Middle centred. The
+  laid-out looks (Poster, Kinetic, Intense) scale each card to fill part of the frame, so for them the
+  size sets that share (45 % of the width at XS to 97 % at XL) rather than the font size alone. The
+  preview balances its line breaks (`text-wrap: balance`) as libass's smart wrapping does.
 - **Font sizes:** libass (like VSFilter) sizes a font by its ascent + descent, CSS and Pillow by its
   em, so every ASS writer converts with `media.ass_size` (Inter: x1.21). Without it renders came out
   about 18 % smaller than the editor showed.

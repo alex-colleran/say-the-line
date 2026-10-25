@@ -45,11 +45,13 @@ It runs on the machine that has your media, next to Jellyfin, and is used from a
   It also finds subtitles that run seconds early or late, and remembers that per episode.
 - **Captions**: burned in with libass. Classic subtitles, or word-synced looks: **TikTok**,
   **Pop-in**, **Big word**, **Poster** (automatic expressive typography sized by part of
-  speech) and **Kinetic** (Poster in motion: justified stacks, a vertical word locked up beside
-  them, words that rise, slam, drop, wipe or type themselves in, a highlight bar behind the key
-  word, cards that fall, lift or scatter away). Both size words by how loudly they are said:
+  speech), **Kinetic** (Poster in motion: justified stacks with a vertical word locked up beside
+  them, words that rise, slam or slide in, cards that push in and fall away) and **Intense**
+  (Kinetic with everything: words that also drop, wipe or type themselves in, a highlight bar behind
+  the key word, cards that fall, lift or scatter away). Poster and Intense size words by how loudly they are said:
   shouts land big, whispers are drawn in outline. Text from the subtitles or from speech-to-text, editable before rendering, and
   movable earlier or later for subtitles that run early or late.
+  Five sizes (XS to XL, a 4x range) and five positions (Top, Upper, Middle, Lower, Bottom).
 - **Output**: MP4, WebM, GIF or a **still** (JPEG); original / 16:9 / 4:3 / 1:1 / 9:16 with
   crop or bars; 480–1080 or source size.
 - **Audio** (optional): *Dialogue only* or *No dialogue* via demucs stem separation.

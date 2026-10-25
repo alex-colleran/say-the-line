@@ -552,18 +552,18 @@ def reword(words, text, a, b):
 
 
 def run_poster(job_id, req):
-    """Poster (or, with "look": "kinetic", Kinetic) layout for the editor's live preview: the same
+    """Poster (or, with "look": "kinetic" / "intense", Kinetic / Intense) layout for the editor's live preview: the same
     layout() the render uses, in output pixels, plus the output size so the browser can scale it
     onto the preview."""
     job = JOBS[job_id]
     try:
-        from . import kinetic, poster
+        from . import intense, kinetic, poster
         row = item_row(int(req["item"]))
         in_ms, out_ms = int(req["in_ms"]), int(req["out_ms"])
         w, h = media.output_size(row["path"], req)
         words = media.caption_words(shift_cues(caption_cues(req), caption_shift(req)), in_ms, out_ms)
         job["state"] = "laying out"
-        lay = kinetic.layout if req.get("look") == "kinetic" else poster.layout
+        lay = {"kinetic": kinetic.layout, "intense": intense.layout}.get(req.get("look"), poster.layout)
         job.update(state="done", w=w, h=h, posters=lay(words, w, h, req.get("subs") or {}))
     except Exception as e:
         job.update(state="error", error=str(e)[:500])

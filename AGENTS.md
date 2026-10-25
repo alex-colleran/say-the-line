@@ -21,7 +21,8 @@ saytheline/
   stt_worker.py  faster-whisper child process (+ energy-onset refinement of word starts)
   pos_worker.py  spaCy child process: emphasis tier per word (Poster look)
   poster.py      Poster layout with real font metrics (Pillow)
-  kinetic.py     Kinetic look: Poster's layout as justified stacks + lockups, animated per frame
+  kinetic.py     Kinetic look (the original, calm motion): Poster's layout as justified stacks + lockups
+  intense.py     Intense look: Kinetic with every effect (drop, wipe, type, bars, loudness, exits)
   sayany.py      Say Anything: plan a sentence into heard takes, measured cut points
   slowmo.py      slow motion: time map, caption re-timing, RIFE per camera shot, the slowed master
   library.py     favourites, tags, drafts (data/library.db; separate from the index)
@@ -54,7 +55,7 @@ sed -n '/<script>/,/<\/script>/p' saytheline/static/index.html | sed '1d;$d' > /
 - **Preview = render.** Shot trimming exists twice too: `shots.fit` / `whole_shot` and JS
   `fitShots` / `shotTargets`. Caption logic exists twice: Python (`media.word_ass`, `chunk_words`,
   `normalize_words`, `_pop`) and JS (`drawWords`, `chunkWords`, `normalizeWords`, `popAttr`). Kinetic's
-  motion is `kinetic.word_state` / `bar_state` / `_held` and JS `kineticState` / `kineticBarState` / `kineticHeld`. Change both together; the comments mark the
+  motion is `kinetic.word_state` = JS `kineticState`; Intense's is `intense.word_state` / `bar_state` / `_held` and JS `intenseState` / `intenseBarState` / `intenseHeld`. Change both together; the comments mark the
   pairs (`= media.xyz`). Every ASS font size goes through `media.ass_size` (libass sizes fonts by
   ascent + descent, the preview by the em).
 - **No private data in the repo**: no hostnames, IPs, personal paths, API keys or library contents.

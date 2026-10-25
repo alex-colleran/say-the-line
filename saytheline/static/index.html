@@ -759,12 +759,24 @@ const state = { q: "", mode: "phrase", kind: "", ex: [], only: null, offset: 0, 
 const PAGE = 30;
 const COLOURS = { white: "#FFFFFF", yellow: "#FFE14D", cyan: "#6BE4FF", black: "#000000" };
 const HL = { yellow: "#FFE14D", green: "#3CFF6A", cyan: "#6BE4FF", pink: "#FF4FA3", orange: "#FF9A1F" };
-const SIZES = { s: 16, m: 20, l: 26, xl: 34 };                       // classic: libass size on a 288-line script
-const TT_SIZES = { s: 0.075, m: 0.095, l: 0.115, xl: 0.140 };       // word looks: fraction of the short side
+// = media.SIZE_STEPS / EDGE / THIRD: each size step ~1.4x the last; Top/Bottom near the edges, Upper/Lower a quarter in
+const SIZE_STEPS = { xs: 0.5, s: 0.71, m: 1, l: 1.41, xl: 2 }, EDGE = 0.05, THIRD = 0.25;
+const SIZES = Object.fromEntries(Object.entries(SIZE_STEPS).map(([k, v]) => [k, Math.round(20 * v * 10) / 10]));   // classic: libass size on a 288-line script
+const TT_SIZES = Object.fromEntries(Object.entries(SIZE_STEPS).map(([k, v]) => [k, 0.095 * v]));                     // word looks: fraction of the short side
+// CSS top / bottom for a caption at a position (= media.force_style / word_ass margins); `inner` is
+// how far in Upper / Lower sit, `low` how far up Bottom sits, `midTop` the top of a centred block
+function capPlace(pos, r, inner, low, midTop) {
+  const fromBottom = f => ($("#stage").clientHeight - (r.top + r.H) + r.H * f) + "px";
+  return pos === "top" ? { top: (r.top + r.H * EDGE) + "px", bottom: "auto" }
+    : pos === "upper" ? { top: (r.top + r.H * inner) + "px", bottom: "auto" }
+    : pos === "middle" ? { top: midTop + "px", bottom: "auto" }
+    : pos === "lower" ? { top: "auto", bottom: fromBottom(inner) }
+    : { top: "auto", bottom: fromBottom(low) };
+}
 const ASPECT = { "16:9": 16 / 9, "4:3": 4 / 3, "1:1": 1, "9:16": 9 / 16 };
 const CHUNK_RULES = { tiktok: [3, 18, 350], popin: [5, 28, 500], bigword: [1, 999, 0] };   // = media.CHUNK_RULES
-const WORD_LOOKS = [...Object.keys(CHUNK_RULES), "poster", "kinetic"];
-const LAID_OUT = ["poster", "kinetic"];          // looks the server lays out (real font metrics)
+const WORD_LOOKS = [...Object.keys(CHUNK_RULES), "poster", "kinetic", "intense"];
+const LAID_OUT = ["poster", "kinetic", "intense"];          // looks the server lays out (real font metrics)
 const HEAVY_FONTS = ["Inter Black", "League Spartan Black"];
 const MAX_WIN = 170000, MAX_CLIP = 180000;
 
@@ -1131,13 +1143,16 @@ const CHOICES = {
   slowSound: [["deep", "Deep"], ["pitch", "Same pitch"], ["mute", "Silent"]],
   subsOn: [[true, "On"], [false, "Off"]],
   captionSrc: [["subs", "Subtitles"], ["speech", "Speech"]],
-  look: [["classic", "Classic"], ["tiktok", "TikTok"], ["popin", "Pop-in"], ["bigword", "Big word"], ["poster", "Poster"], ["kinetic", "Kinetic"]],
-  size: [["s", "S"], ["m", "M"], ["l", "L"], ["xl", "XL"]],
+  look: [["classic", "Classic"], ["tiktok", "TikTok"], ["popin", "Pop-in"], ["bigword", "Big word"], ["poster", "Poster"], ["kinetic", "Kinetic"], ["intense", "Intense"]],
+  size: [["xs", "XS"], ["s", "S"], ["m", "M"], ["l", "L"], ["xl", "XL"]],
   caps: [[false, "As spoken"], [true, "ALL CAPS"]],
   box: [[false, "Outline"], [true, "Box"]],
-  position: [["bottom", "Bottom"], ["middle", "Middle"], ["top", "Top"]],
+  position: [["top", "Top"], ["upper", "Upper"], ["middle", "Middle"], ["lower", "Lower"], ["bottom", "Bottom"]],
 };
 try { Object.assign(opts, JSON.parse(localStorage.getItem("saytheline.opts.v2") || "{}")); } catch (e) {}
+// Oct 2026: the Kinetic look of the time is now called Intense (Kinetic is the original again), so
+// a choice or draft saved before that keeps the look it was made with
+try { if (!localStorage.getItem("saytheline.intense") && opts.look === "kinetic") opts.look = "intense"; localStorage.setItem("saytheline.intense", "1"); } catch (e) {}
 function saveOpts() { try { localStorage.setItem("saytheline.opts.v2", JSON.stringify(opts)); } catch (e) {} }
 
 const isWordLook = () => WORD_LOOKS.includes(opts.look);
@@ -1257,13 +1272,14 @@ const DRAFT_OPTS = ["subsOn", "captionSrc", "look", "fontClassic", "fontWord", "
   "format", "aspect", "fit", "res", "audio", "slow", "slowSound", "smooth"];
 function edState() {
   const o = {}; DRAFT_OPTS.forEach(k => o[k] = opts[k]);
-  return { v: 1, in_ms: Math.round(ed.inMs), out_ms: Math.round(ed.outMs), offset_ms: ed.offset, opts: o,
+  return { v: 2, in_ms: Math.round(ed.inMs), out_ms: Math.round(ed.outMs), offset_ms: ed.offset, opts: o,
     stt: ed.stt && ed.stt.item === ed.hit.item_id ? ed.stt : null, sub_text: ed.subText, cap_shift: ed.capShift, file: ed.lastFile,
     slow_a: slowOn() ? Math.round(ed.slowA) : undefined, slow_b: slowOn() ? Math.round(ed.slowB) : undefined };
 }
 function applyState(st) {
   ed.inMs = st.in_ms; ed.outMs = st.out_ms; ed.offset = st.offset_ms || 0;
   DRAFT_OPTS.forEach(k => { if (st.opts && k in st.opts) opts[k] = st.opts[k]; });
+  if ((st.v || 1) < 2 && opts.look === "kinetic") opts.look = "intense";       // saved before the rename
   ed.stt = st.stt && st.stt.item === ed.hit.item_id ? st.stt : null;
   ed.lastFile = st.file || null;
   ed.subText = st.sub_text || {};
@@ -2008,6 +2024,7 @@ function drawOverlay() {
   if (!capsOn() || now < ed.inMs || now > ed.outMs) { cap.hidden = true; return; }
   if (opts.look === "poster") return drawPoster(cap, r, now);
   if (opts.look === "kinetic") return drawKinetic(cap, r, now);
+  if (opts.look === "intense") return drawIntense(cap, r, now);
   if (isWordLook()) return drawWords(cap, r, now);
   // classic
   const text = captionCues().filter(c => now >= c.start_ms && now < c.end_ms).map(c => c.text).join("\n");
@@ -2018,9 +2035,9 @@ function drawOverlay() {
   const pos = opts.position;
   Object.assign(cap.style, {
     left: (r.left + r.W * 0.04) + "px", width: (r.W * 0.92) + "px", fontWeight: 700, lineHeight: 1.15,
+    textWrap: "balance",                     // libass's smart wrapping evens the lines out too
     fontFamily: `"${curFont()}", system-ui, sans-serif`, fontSize: px + "px", color: col,
-    top: pos === "top" ? (r.top + r.H * 0.05) + "px" : pos === "middle" ? (r.top + r.H / 2 - px) + "px" : "auto",
-    bottom: pos === "bottom" ? ($("#stage").clientHeight - (r.top + r.H) + r.H * 0.05) + "px" : "auto",
+    ...capPlace(pos, r, THIRD - 0.05, EDGE, r.top + r.H / 2 - px),
     background: opts.box ? (opts.colour === "black" ? "rgba(255,255,255,.75)" : "rgba(0,0,0,.5)") : "transparent",
     textShadow: opts.box ? "none" : "0 0 2px #000, 0 0 2px #000, 1px 1px 2px #000",
   });
@@ -2042,10 +2059,10 @@ function wordStyle(cap, r, fs, look) {
   const pos = opts.position || (look === "bigword" ? "middle" : "bottom");
   Object.assign(cap.style, {
     left: (r.left + r.W * 0.06) + "px", width: (r.W * 0.88) + "px", fontWeight: 900, lineHeight: 1.1,
+    textWrap: "balance",
     fontFamily: `"${curFont()}", system-ui, sans-serif`, fontSize: fs + "px", paintOrder: "stroke fill",
     WebkitTextStroke: (fs * 0.18) + "px #000", textShadow: `0 ${fs * 0.05}px ${fs * 0.06}px rgba(0,0,0,.55)`,
-    top: pos === "top" ? (r.top + r.H * 0.12) + "px" : pos === "middle" ? (r.top + r.H / 2 - fs * 0.6) + "px" : "auto",
-    bottom: pos === "bottom" ? ($("#stage").clientHeight - (r.top + r.H) + r.H * 0.22) + "px" : "auto",
+    ...capPlace(pos, r, THIRD - 0.06, EDGE + 0.01, r.top + r.H / 2 - fs * 0.6),
   });
 }
 function drawWords(cap, r, now) {
@@ -2094,7 +2111,7 @@ function posterRequest() {
   return { item: ed.hit.item_id, in_ms: Math.round(ed.inMs), out_ms: Math.round(ed.outMs),
     aspect: opts.aspect, fit: opts.fit, res: opts.res,
     caption_cues: sttCovers() ? ed.stt.cues.map(c => ({ start_ms: c.start_ms, end_ms: c.end_ms, text: c.text, words: c.words || [] })) : [],
-    caption_shift_ms: ed.capShift || undefined, look: opts.look === "kinetic" ? "kinetic" : undefined,
+    caption_shift_ms: ed.capShift || undefined, look: ["kinetic", "intense"].includes(opts.look) ? opts.look : undefined,
     subs: { font: curFont(), size: opts.size, caps: opts.caps, position: opts.position, hl: opts.hl } };
 }
 function schedulePoster() {
@@ -2109,9 +2126,9 @@ function schedulePoster() {
     } catch (e) {}
   }, 350);
 }
-/* kinetic: the server lays out each card (kinetic.layout); every word's motion is a pure function
+/* intense: the server lays out each card (intense.layout); every word's motion is a pure function
    of time, the same one the render samples each frame */
-const KIN = { exit: 300, stagger: 22, push: 0.05, barDelay: 60, bar: 220 };   // = kinetic.py
+const INT = { exit: 300, stagger: 22, push: 0.05, barDelay: 60, bar: 220 };   // = intense.py
 const kEaseOutCubic = x => 1 - (1 - x) ** 3;
 const kEaseOutBack = (x, s = 1.9) => 1 + (s + 1) * (x - 1) ** 3 + s * (x - 1) ** 2;
 function kEaseOutBounce(x) {
@@ -2122,11 +2139,11 @@ function kEaseOutBounce(x) {
   x -= 2.625 / d; return n * x * x + 0.984375;
 }
 const kClamp = x => x < 0 ? 0 : x > 1 ? 1 : x;
-// = kinetic._held: the push-in and the exit, shared by words and bars
-function kineticHeld(card, cx, cy, kw, t) {
-  const k = 1 + KIN.push * kClamp((t - card.start_ms) / Math.max(1, card.end_ms - card.start_ms));
+// = intense._held: the push-in and the exit, shared by words and bars
+function intenseHeld(card, cx, cy, kw, t) {
+  const k = 1 + INT.push * kClamp((t - card.start_ms) / Math.max(1, card.end_ms - card.start_ms));
   let gx = card.cx + (cx - card.cx) * k, gy = card.cy + (cy - card.cy) * k, scale = k, rot = 0, alpha = 1;
-  const q = (t - card.end_ms - KIN.stagger * kw) / KIN.exit;
+  const q = (t - card.end_ms - INT.stagger * kw) / INT.exit;
   if (q > 0) {
     const sign = kw % 2 ? 1 : -1;
     if (card.exit === "scatter") {
@@ -2140,10 +2157,10 @@ function kineticHeld(card, cx, cy, kw, t) {
   }
   return { gx, gy, scale, rot, alpha, leaving: q > 0, k };
 }
-// = kinetic.word_state
-function kineticState(card, x, t) {
-  if (t < x.s || t >= card.end_ms + KIN.stagger * x.k + KIN.exit) return null;
-  const H = kineticHeld(card, x.cx, x.cy, x.k, t), k = H.k;
+// = intense.word_state
+function intenseState(card, x, t) {
+  if (t < x.s || t >= card.end_ms + INT.stagger * x.k + INT.exit) return null;
+  const H = intenseHeld(card, x.cx, x.cy, x.k, t), k = H.k;
   const grow = (px, c) => c + (px - c) * k;
   const mask = [grow(x.clip[0], card.cx), grow(x.clip[1], card.cy), grow(x.clip[2], card.cx), grow(x.clip[3], card.cy)];
   let cx = H.gx, cy = H.gy, scale = H.scale, alpha = H.alpha, rot = x.rot + H.rot, clip = null, dx = 0, dy = 0;
@@ -2165,11 +2182,11 @@ function kineticState(card, x, t) {
   }
   return { cx: cx + dx, cy: cy + dy, scale, sx: x.sx, rot, alpha, clip };
 }
-// = kinetic.bar_state
-function kineticBarState(card, bar, t) {
-  const start = bar.s + KIN.barDelay;
-  if (t < start || t >= card.end_ms + KIN.stagger * bar.k + KIN.exit) return null;
-  const H = kineticHeld(card, bar.cx, bar.cy, bar.k, t), p = (t - start) / KIN.bar;
+// = intense.bar_state
+function intenseBarState(card, bar, t) {
+  const start = bar.s + INT.barDelay;
+  if (t < start || t >= card.end_ms + INT.stagger * bar.k + INT.exit) return null;
+  const H = intenseHeld(card, bar.cx, bar.cy, bar.k, t), p = (t - start) / INT.bar;
   let clip = null;
   if (p < 1 && !H.leaving) {
     const left = H.gx - bar.bw * H.scale / 2;
@@ -2177,7 +2194,7 @@ function kineticBarState(card, bar, t) {
   }
   return { cx: H.gx, cy: H.gy, scale: H.scale, sx: 1, rot: H.rot, alpha: H.alpha, clip };
 }
-function drawKinetic(cap, r, now) {
+function drawIntense(cap, r, now) {
   const P = ed.poster;
   if (!P || P.key !== JSON.stringify(posterRequest())) { cap.hidden = true; return; }
   const sc = r.W / P.w, base = COLOURS[opts.colour] || "#FFFFFF", hlc = HL[opts.hl];
@@ -2194,11 +2211,11 @@ function drawKinetic(cap, r, now) {
   let html = "";
   for (const card of P.posters) {
     for (const bar of card.bars || []) {                 // highlight bars under the words
-      const s = kineticBarState(card, bar, now);
+      const s = intenseBarState(card, bar, now);
       if (s && s.alpha > 0.01) html += place(s, "", `width:${bar.bw * sc}px;height:${bar.bh * sc}px;background:${hlc}`);
     }
     for (const x of card.words) {
-      const s = kineticState(card, x, now);
+      const s = intenseState(card, x, now);
       if (!s || s.alpha <= 0.01) continue;
       const sz = x.size * sc;
       const look = x.onbar ? "color:#1A1A1A;text-shadow:none"
@@ -2206,6 +2223,56 @@ function drawKinetic(cap, r, now) {
         : `color:${x.tier === 4 ? hlc : x.tier <= 1 ? "#D9D9D9" : base};-webkit-text-stroke:${sz * 0.15}px #000;paint-order:stroke fill`;
       html += place(s, esc(x.w), `font-family:'${x.font}',system-ui,sans-serif;font-size:${sz}px;line-height:${x.lh};white-space:nowrap;${look}`);
     }
+  }
+  cap.className = "cap tt";
+  cap.innerHTML = html;
+  Object.assign(cap.style, { left: r.left + "px", top: r.top + "px", width: r.W + "px", height: r.H + "px",
+    fontWeight: 900, textShadow: "0 2px 3px rgba(0,0,0,.5)" });
+  cap.hidden = !html;
+}
+/* kinetic: the original, calmer motion (kinetic.py): words rise, slam or slide in, the card
+   pushes in, then falls away */
+const KIN = { enter: { rise: 260, slam: 320, slide: 420 }, exit: 300, stagger: 22, push: 0.05 };   // = kinetic.py
+// = kinetic.word_state
+function kineticState(card, x, t) {
+  const exitAt = card.end_ms + KIN.stagger * x.k;
+  if (t < x.s || t >= exitAt + KIN.exit) return null;
+  const k = 1 + KIN.push * kClamp((t - card.start_ms) / Math.max(1, card.end_ms - card.start_ms));
+  const grow = (px, c) => c + (px - c) * k;
+  let cx = grow(x.cx, card.cx), cy = grow(x.cy, card.cy), scale = k, rot = x.rot, alpha = 1, clip = null, dy = 0;
+  const mask = [grow(x.clip[0], card.cx), grow(x.clip[1], card.cy), grow(x.clip[2], card.cx), grow(x.clip[3], card.cy)];
+  const p = (t - x.s) / KIN.enter[x.enter];
+  if (p < 1) {
+    if (x.enter === "rise") { dy = (1 - kEaseOutCubic(p)) * (mask[3] - cy + x.size * k * x.lh / 2); clip = mask; }
+    else if (x.enter === "slam") { scale *= 1.5 - 0.5 * kEaseOutBack(p); alpha = kClamp(p * 4); }
+    else { dy = (1 - kEaseOutCubic(p)) * (mask[3] - mask[1]) * (x.rot > 0 ? 1 : -1); clip = mask; }
+  }
+  const q = (t - exitAt) / KIN.exit;
+  if (q > 0) {
+    dy += q * q * card.fall;
+    rot += (x.k % 2 ? 1 : -1) * (8 + 5 * (x.k % 3)) * q;
+    alpha *= 1 - kClamp((q - 0.2) / 0.8);
+    clip = null;
+  }
+  return { cx, cy: cy + dy, scale, rot, alpha, clip };
+}
+function drawKinetic(cap, r, now) {
+  const P = ed.poster;
+  if (!P || P.key !== JSON.stringify(posterRequest())) { cap.hidden = true; return; }
+  const sc = r.W / P.w, base = COLOURS[opts.colour] || "#FFFFFF", hlc = HL[opts.hl];
+  let html = "";
+  for (const card of P.posters) for (const x of card.words) {
+    const s = kineticState(card, x, now);
+    if (!s || s.alpha <= 0.01) continue;
+    const col = x.tier === 4 ? hlc : x.tier <= 1 ? "#D9D9D9" : base, sz = x.size * sc;
+    const span = (ox, oy) => `<span style="position:absolute;left:${(s.cx - ox) * sc}px;top:${(s.cy - oy) * sc}px;`
+      + `transform:translate(-50%,-50%) scale(${s.scale}) rotate(${-s.rot}deg);font-family:'${x.font}',system-ui,sans-serif;`
+      + `font-size:${sz}px;line-height:${x.lh};white-space:nowrap;color:${col};opacity:${s.alpha};`
+      + `-webkit-text-stroke:${sz * 0.15}px #000;paint-order:stroke fill">${esc(x.w)}</span>`;
+    if (s.clip) {                                // the mask a word rises out of (= ASS \clip)
+      const [x1, y1, x2, y2] = s.clip;
+      html += `<div style="position:absolute;overflow:hidden;left:${x1 * sc}px;top:${y1 * sc}px;width:${(x2 - x1) * sc}px;height:${(y2 - y1) * sc}px">${span(x1, y1)}</div>`;
+    } else html += span(0, 0);
   }
   cap.className = "cap tt";
   cap.innerHTML = html;
@@ -2327,7 +2394,7 @@ const SC_CHOICES = {
   loudnorm: [[true, "Even out"], [false, "As is"]],
   label: [[true, "Show · episode"], [false, "None"]],
   captions: [["off", "Off"], ["classic", "Subtitles"], ["tiktok", "TikTok"], ["popin", "Pop-in"], ["bigword", "Big word"],
-             ["poster", "Poster"], ["kinetic", "Kinetic"]],
+             ["poster", "Poster"], ["kinetic", "Kinetic"], ["intense", "Intense"]],
   aspect: [["16:9", "16:9"], ["9:16", "9:16"], ["1:1", "1:1"], ["4:3", "4:3"]],
   fit: [["crop", "Fill (crop)"], ["pad", "Whole picture (bars)"]],
   res: [[1080, "1080"], [720, "720"], [480, "480"]],
@@ -2571,7 +2638,7 @@ $("#scRender").onclick = async () => {
     check: sc.o.check, cut: sc.o.cut, padding: sc.o.padding, shots: sc.o.shots, unheard: sc.o.unheard, transition: sc.o.transition, loudnorm: sc.o.loudnorm,
     label: sc.o.label, aspect: sc.o.aspect, res: sc.o.res, fit: sc.o.fit,
     subs: { on: look !== "off", style: look === "classic" ? "classic" : look, font: look === "classic" ? opts.fontClassic : opts.fontWord,
-            size: opts.size, colour: opts.colour, box: opts.box, position: ["bigword", "poster", "kinetic"].includes(look) ? "middle" : opts.position, hl: opts.hl, caps: opts.caps } };
+            size: opts.size, colour: opts.colour, box: opts.box, position: ["bigword", "poster", "kinetic", "intense"].includes(look) ? "middle" : opts.position, hl: opts.hl, caps: opts.caps } };
   try {
     const job = await postJob("/api/supercut", body, j => {
       if (sc.job !== j.id) { sc.job = j.id; sc.kind = "render"; drawSc(); }

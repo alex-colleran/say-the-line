@@ -38,7 +38,7 @@ BASE = os.environ.get("SAYTHELINE_URL") or \
 PUBLIC = (os.environ.get("SAYTHELINE_PUBLIC_URL") or BASE).rstrip("/")
 
 FORMATS = ("gif", "mp4", "webm", "still")
-LOOKS = ("classic", "tiktok", "popin", "bigword", "poster", "kinetic")
+LOOKS = ("classic", "tiktok", "popin", "bigword", "poster", "kinetic", "intense")
 SHAPES = ("original", "16:9", "9:16", "1:1", "4:3")
 WORD_LOOKS = LOOKS[1:]
 
@@ -453,7 +453,7 @@ async def saytheline_make_clip(ctx: Context, moment_id: str, format: str = "gif"
     moment_id: from saytheline_search ("51:99").
     format: "gif" (silent, small; default), "mp4" or "webm" (with sound), "still" (one JPEG frame).
     captions: "subtitles" (default), "none", or "speech" (transcribe what is said instead).
-    look: "classic" (plain subtitles), "tiktok", "popin", "bigword" (word-by-word, timed to speech), "poster", "kinetic" (Poster in motion).
+    look: "classic" (plain subtitles), "tiktok", "popin", "bigword" (word-by-word, timed to speech), "poster", "kinetic" (Poster in motion), "intense" (Kinetic with every effect: bounces, typing, shakes, highlight bars).
     caption_text: your own caption instead of the line (e.g. a punchline); timed to the speech.
     shape: "original", "16:9", "9:16" (vertical), "1:1" or "4:3" (cropped to fill).
     size: short side in px (0 = 480 for GIFs, 720 otherwise).
@@ -463,7 +463,8 @@ async def saytheline_make_clip(ctx: Context, moment_id: str, format: str = "gif"
       padding is trimmed, never the words.
     whole_shot: use the entire shot(s) the line is in, however long (up to ~12 s each side).
     start_ms / end_ms: extra time to add (positive) or trim (negative) at each end, after all that.
-    caption_size: "s", "m", "l" or "xl". caption_position: "bottom", "middle" or "top".
+    caption_size: "xs", "s", "m", "l" or "xl" (each about 1.4x the last; xl is twice m).
+    caption_position: "top", "upper", "middle", "lower" or "bottom" (top / bottom sit at the frame's edges).
     hide_lines: subtitle line numbers not to show (the number after the colon in a moment id, also
       listed in the result). A neighbouring line cut off by the clip's edge and on screen under
       0.5 s is hidden anyway.
@@ -574,7 +575,7 @@ async def saytheline_refine_clip(ctx: Context, clip_id: str, start_ms: int = 0, 
       e.g. "start half a second earlier" = start_ms=500; "cut the last word" ~ end_ms=-400.
     format, captions ("subtitles" | "none" | "speech"), look, caption_text, shape, size: as in saytheline_make_clip.
     caption_shift_ms: captions appear too early -> positive (e.g. 200); too late -> negative.
-    caption_size ("s"-"xl"), caption_position ("bottom" | "middle" | "top").
+    caption_size ("xs"-"xl"), caption_position ("top" | "upper" | "middle" | "lower" | "bottom").
     whole_shot: widen (or narrow) the cut to the entire shot(s) the line is in; start_ms / end_ms
       then apply on top.
     still_at_ms: for a still, which moment of the clip to grab (ms from its start).

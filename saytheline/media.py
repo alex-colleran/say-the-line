@@ -12,8 +12,13 @@ from . import config
 VAAPI = config.vaapi()          # None = encode previews on the CPU
 
 ASPECTS = {"16:9": 16 / 9, "4:3": 4 / 3, "1:1": 1.0, "9:16": 9 / 16}
+# Caption size steps, each about 1.4x the one before (XS is half of M, XL twice it), and where a
+# caption block sits. Every look uses these, and the editor's preview the same numbers (= JS).
+SIZE_STEPS = {"xs": 0.5, "s": 0.71, "m": 1.0, "l": 1.41, "xl": 2.0}
+POSITIONS = ("top", "upper", "middle", "lower", "bottom")
+EDGE, THIRD = 0.05, 0.25          # top / bottom: this far in from the edge; upper / lower: this far in
 # libass sizes SRT text against a 288-line script, so these are relative to the output height.
-SIZES = {"s": 16, "m": 20, "l": 26, "xl": 34}
+SIZES = {k: round(20 * v, 1) for k, v in SIZE_STEPS.items()}
 COLOURS = {"white": "FFFFFF", "yellow": "FFE14D", "cyan": "6BE4FF", "black": "000000"}
 FONTS = ["Inter", "Inter Black", "League Spartan Black", "Liberation Sans", "Lato", "DejaVu Sans",
          "Comfortaa", "Departure Mono"]
@@ -26,7 +31,21 @@ FONT_FILES = {"Inter": "Inter-Bold.otf", "Inter Black": "Inter-Black.otf",
               "Departure Mono": "DepartureMono-Regular.otf"}
 HIGHLIGHTS = {"yellow": "FFE14D", "green": "3CFF6A", "cyan": "6BE4FF", "pink": "FF4FA3", "orange": "FF9A1F"}
 # TikTok-style size = this fraction of the output's short side (cap height reads ~like CapCut's)
-TT_SIZES = {"s": 0.075, "m": 0.095, "l": 0.115, "xl": 0.140}
+TT_SIZES = {k: 0.095 * v for k, v in SIZE_STEPS.items()}
+
+
+def block_top(pos, block_h, h):
+    """Where a caption block of height block_h starts (y of its top edge) in a frame h tall: Top and
+    Bottom near the edges, Upper and Lower centred a quarter of the way in, Middle centred."""
+    y = {"top": h * EDGE, "upper": h * THIRD - block_h / 2, "lower": h * (1 - THIRD) - block_h / 2,
+         "bottom": h * (1 - EDGE) - block_h}.get(pos, (h - block_h) / 2)
+    return max(h * 0.02, min(y, h * 0.98 - block_h))
+
+
+def fill(size):
+    """How much of the frame (width, height) a laid-out look (Poster, Kinetic, Intense) may fill:
+    its words are scaled to fill this, so the size step sets it rather than the font size alone."""
+    return {"xs": (0.45, 0.3), "s": (0.65, 0.42), "m": (0.86, 0.55), "l": (0.93, 0.7), "xl": (0.97, 0.86)}.get(size, (0.86, 0.55))
 
 
 DEMUCS = config.demucs()        # optional: enables the Dialogue only / No dialogue audio options
@@ -183,7 +202,7 @@ def write_srt(cues, in_ms, out_ms, path):
 # Word-synced looks. Chunk rules per look (max words, max chars, break on a pause longer than);
 # the browser preview uses the same table.
 CHUNK_RULES = {"tiktok": (3, 18, 350), "popin": (5, 28, 500), "bigword": (1, 999, 0)}
-LOOKS = tuple(CHUNK_RULES) + ("poster", "kinetic")  # every look that needs word timing
+LOOKS = tuple(CHUNK_RULES) + ("poster", "kinetic", "intense")  # every look that needs word timing
 
 
 def chunk_words(words, max_words=3, max_chars=18, gap_ms=350):
@@ -274,8 +293,9 @@ def word_ass(cues, in_ms, out_ms, w, h, st, path):
     fs = round(min(w, h) * TT_SIZES.get(st.get("size"), 0.095) * (1.7 if look == "bigword" else 1))
     outline, shadow = max(2, round(fs * 0.09)), max(1, round(fs * 0.05))
     default_pos = "middle" if look == "bigword" else "bottom"
-    align, margin_v = {"top": (8, round(h * 0.12)), "middle": (5, 0)}.get(st.get("position") or default_pos,
-                                                                          (2, round(h * 0.22)))
+    align, margin_v = {"top": (8, round(h * EDGE)), "upper": (8, round(h * (THIRD - 0.06))), "middle": (5, 0),
+                       "lower": (2, round(h * (THIRD - 0.06))), "bottom": (2, round(h * (EDGE + 0.01)))
+                       }.get(st.get("position") or default_pos, (2, round(h * (EDGE + 0.01))))
     hl = _bgr(HIGHLIGHTS.get(st.get("hl"), "FFE14D"))
     base = _bgr(COLOURS.get(st.get("colour"), "FFFFFF") if st.get("colour") != "black" else "FFFFFF")
     lines = ["[Script Info]", "ScriptType: v4.00+", f"PlayResX: {w}", f"PlayResY: {h}", "WrapStyle: 0",
@@ -398,14 +418,18 @@ def poster_ass(posters, in_ms, out_ms, w, h, st, path):
 
 
 def force_style(st):
+    inset, third = round(288 * EDGE), round(288 * (THIRD - 0.05))
+    align, margin = {"top": (6, inset), "upper": (6, third), "middle": (10, 0), "lower": (2, third)
+                     }.get(st.get("position"), (2, inset))
     colour = COLOURS.get(st.get("colour"), "FFFFFF")
     bgr = colour[4:6] + colour[2:4] + colour[0:2]
     font = st.get("font") if st.get("font") in FONTS else "Inter"
     parts = [f"FontName={font}", f"FontSize={ass_size(font, SIZES.get(st.get('size'), 20))}",
              f"PrimaryColour=&H00{bgr}", "Bold=1",
              # ffmpeg reads force_style Alignment in legacy SSA numbering (2 bottom, 6 top, 10 middle;
-             # all centred), not the ASS numpad layout: 5 would be top-left, 8 middle-left
-             f"Alignment={ {'top': 6, 'middle': 10}.get(st.get('position'), 2) }", "MarginV=14"]
+             # all centred), not the ASS numpad layout: 5 would be top-left, 8 middle-left.
+             # MarginV is in the 288-line script's units.
+             f"Alignment={align}", f"MarginV={margin}"]
     dark = st.get("colour") == "black"          # black text gets a light box / white outline
     if st.get("box"):
         back = "&H40FFFFFF" if dark else "&H80000000"
@@ -510,10 +534,11 @@ def caption_filter(st, cues, in_ms, out_ms, w, h, tmp):
     """The libass filter that burns the chosen caption look (times relative to in_ms), or None."""
     if not st.get("on"):
         return None
-    if st.get("style") == "kinetic":
-        from . import kinetic
+    if st.get("style") in ("kinetic", "intense"):
+        from . import intense, kinetic
+        mod = intense if st.get("style") == "intense" else kinetic
         ass = os.path.join(tmp, "cut.ass")
-        if kinetic.ass(kinetic.layout(caption_words(cues, in_ms, out_ms), w, h, st), in_ms, out_ms, w, h, st, ass):
+        if mod.ass(mod.layout(caption_words(cues, in_ms, out_ms), w, h, st), in_ms, out_ms, w, h, st, ass):
             return f"subtitles={_fpath(ass)}:fontsdir={_fpath(FONT_DIR)}"
     elif st.get("style") == "poster":
         from . import poster

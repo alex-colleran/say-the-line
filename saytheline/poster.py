@@ -138,9 +138,9 @@ def layout(words, w, h, st):
                                         for j in (i - 1, i + 1) if 0 <= j < len(words)):
             words[i] = dict(x, whisper=False, tier=x["tier0"])
     heavy = st.get("font") or "Inter Black"
-    sizes = {"s": 0.075, "m": 0.095, "l": 0.115, "xl": 0.140}
-    unit = min(w, h) * sizes.get(st.get("size"), 0.095)
-    max_w, max_h = w * 0.86, h * 0.55
+    unit = min(w, h) * media.TT_SIZES.get(st.get("size"), 0.095)
+    fw, fh = media.fill(st.get("size"))
+    max_w, max_h = w * fw, h * fh
     pos = st.get("position") or "middle"
     out = []
     groups = group(words)
@@ -166,7 +166,7 @@ def layout(words, w, h, st):
                 break
             scale *= 0.92
         total = sum(heights)
-        top = {"top": h * 0.12, "bottom": h * 0.78 - total}.get(pos, (h - total) / 2)
+        top = media.block_top(pos, total, h)
         rows, y = [], top
         for ln, lh in zip(lines, heights):
             rows.append(dict(y=round(y), height=round(lh),

@@ -414,12 +414,50 @@ class Kinetic(unittest.TestCase):
             for x in c["words"]:
                 self.assertTrue(0 < x["cx"] < 1280 and 0 < x["cy"] < 720, x)
 
+    def test_motion(self):
+        from saytheline import kinetic
+        card = self.cards("You'll never find me now!")[0]
+        x = card["words"][1]
+        self.assertIsNone(kinetic.word_state(card, x, x["s"] - 1), "not before it is said")
+        settled = kinetic.word_state(card, x, x["s"] + 600)
+        self.assertIsNone(settled["clip"])
+        self.assertAlmostEqual(settled["alpha"], 1)
+        gone = card["end_ms"] + kinetic.EXIT_STAGGER_MS * x["k"] + kinetic.EXIT_MS
+        self.assertIsNone(kinetic.word_state(card, x, gone))
+        self.assertGreater(kinetic.word_state(card, x, gone - 50)["cy"], settled["cy"], "it falls away")
+
+
+@unittest.skipUnless(HAVE_PIL, "the laid-out looks need Pillow")
+class Intense(unittest.TestCase):
+    def cards(self, text):
+        from unittest import mock
+        from saytheline import intense, poster
+        words = [dict(w=w, s=i * 300, e=i * 300 + 250) for i, w in enumerate(text.split())]
+        tiers = lambda ws: [4 if w.endswith("!") else 3 if len(w) > 4 else 2 for w in ws]   # noqa: E731
+        with mock.patch.object(poster, "tiers", tiers):         # no spaCy needed
+            return intense.layout(words, 1280, 720, dict(size="m", font="Inter Black", position="middle"))
+
+    def test_lockup_keeps_reading_order(self):
+        cards = self.cards("Only this time it'll be really true.")
+        ws = cards[0]["words"]
+        self.assertEqual([x["w"] for x in ws], "Only this time it'll be really true.".split())
+        vert = [x for x in ws if x["rot"]]
+        self.assertEqual(len(vert), 1)
+        self.assertIn(vert[0], (ws[0], ws[-1]), "only a first or last word turns vertical")
+        if vert[0] is ws[-1]:
+            self.assertGreater(vert[0]["cx"], max(x["cx"] for x in ws[:-1]), "the last word stands on the right")
+
+    def test_fits_the_frame(self):
+        for c in self.cards("Never mind that. All right. I'll give you a story. A wonderful story! Only this time it'll be true."):
+            for x in c["words"]:
+                self.assertTrue(0 < x["cx"] < 1280 and 0 < x["cy"] < 720, x)
+
     def loud_cards(self, said):
         from unittest import mock
-        from saytheline import kinetic, poster
+        from saytheline import intense, poster
         words = [dict(w=w, s=i * 300, e=i * 300 + 250, loud=l) for i, (w, l) in enumerate(said)]
         with mock.patch.object(poster, "tiers", lambda ws: [2] * len(ws)):
-            return kinetic.layout(words, 1280, 720, dict(size="m", font="Inter Black", position="middle"))
+            return intense.layout(words, 1280, 720, dict(size="m", font="Inter Black", position="middle"))
 
     def test_loudness_and_texture(self):
         ws = self.loud_cards([("you", 0), ("never", 8), ("listen", 0), ("to", -1), ("me!", 1)])[0]["words"]
@@ -436,16 +474,16 @@ class Kinetic(unittest.TestCase):
             self.assertEqual(self.cards(f"You'll never find me {end}")[0]["exit"], exit)
 
     def test_motion(self):
-        from saytheline import kinetic
+        from saytheline import intense
         card = self.cards("You'll never find me now!")[0]
         x = card["words"][1]
-        self.assertIsNone(kinetic.word_state(card, x, x["s"] - 1), "not before it is said")
-        settled = kinetic.word_state(card, x, x["s"] + 600)
+        self.assertIsNone(intense.word_state(card, x, x["s"] - 1), "not before it is said")
+        settled = intense.word_state(card, x, x["s"] + 600)
         self.assertIsNone(settled["clip"])
         self.assertAlmostEqual(settled["alpha"], 1)
-        gone = card["end_ms"] + kinetic.EXIT_STAGGER_MS * x["k"] + kinetic.EXIT_MS
-        self.assertIsNone(kinetic.word_state(card, x, gone))
-        self.assertGreater(kinetic.word_state(card, x, gone - 50)["cy"], settled["cy"], "it falls away")
+        gone = card["end_ms"] + intense.EXIT_STAGGER_MS * x["k"] + intense.EXIT_MS
+        self.assertIsNone(intense.word_state(card, x, gone))
+        self.assertGreater(intense.word_state(card, x, gone - 50)["cy"], settled["cy"], "it falls away")
 
 
 class AudioTracks(unittest.TestCase):
