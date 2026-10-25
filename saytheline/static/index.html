@@ -366,6 +366,7 @@
   .sa-row.on { border-color: var(--accent); }
   input.st-name { width: 100%; height: 44px; min-height: 0; flex: none; font: inherit; font-size: 16px; padding: 0 10px; background: var(--panel);
     color: var(--text); border: 1px solid var(--line); border-radius: 6px; margin-bottom: 10px; }
+  .sa-top .st-btns { display: flex; flex-direction: column; gap: 6px; }
   .st-ctl { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; }
   .st-ctl .b { min-width: 40px; min-height: 40px; padding: 0 6px; }
   .st-ctl span { color: var(--dim); font-size: 13px; margin: 0 2px 0 8px; }
@@ -760,6 +761,7 @@
     <div class="sclist" id="stList"></div>
     <div class="opt"><button class="b primary" id="stAdd"><svg class="i" aria-hidden="true"><use href="#i-plus"/></svg>Add clips</button>
       <span class="hint" id="stAddHint">From your Library: saved moments and rendered clips.</span></div>
+    <div class="hint"><svg class="i" aria-hidden="true"><use href="#i-scissors"/></svg> on a clip opens it in the editor for its cut, caption text and slow motion. The caption look, shape and size for the whole cut are under Settings.</div>
     <div class="st-pick" id="stPick" hidden>
       <div class="st-pick-act"><button class="b primary" id="stPickAdd" disabled>Add</button><button class="b" id="stPickCancel">Cancel</button>
         <span class="hint">Tap clips to choose them, in any order.</span></div>
@@ -1397,6 +1399,7 @@ function resetEd(h) {
     speech: null,        // the heard words' span after a snap: {a, b, offset}
     seekOnLoad: false, session: (ed.session || 0) + 1,
     slowA: null, slowB: null,   // the slowed part (media ms) while opts.slow is 2 or 4
+    studioClip: null,     // the Studio clip being edited (stEdit), which the edits go back into
     detached: false,      // edits don't go into the hearted moment (after Start fresh, or opened from a render)
     baseState: null });   // the state as opened: a draft is only written once something differs
 }
@@ -1527,7 +1530,43 @@ function closeEditor() {
   flushDraft();
   const v = $("#vid"); v.pause(); v.removeAttribute("src"); v.load();
   $("#sheet").hidden = true; document.body.style.overflow = "";
+  if (ed.studioClip) stEdited();
   ed.hit = null;
+}
+/* a Studio clip in the editor: its cut, caption text and slow motion go back into the Studio on close
+   (the Studio sheet is hidden meanwhile, so Back closes the editor first) */
+function stEdit(c, i) {
+  stStopPlay(); if (studio.audio) studio.audio.pause();
+  const stt = c.caption_cues ? { item: c.item, from: c.in_ms, to: c.out_ms, source: wordSource(), offset: c.offset_ms || 0, cues: c.caption_cues, secs: 0 } : null;
+  const preset = { v: 2, in_ms: c.in_ms, out_ms: c.out_ms, offset_ms: c.offset_ms || 0, stt, sub_text: c.sub_text || {}, cap_shift: c.caption_shift_ms || 0,
+    opts: c.slow ? { slow: c.slow.factor, slowSound: c.slow.sound || "deep" } : { slow: 1 },
+    slow_a: c.slow ? c.slow.a_ms : undefined, slow_b: c.slow ? c.slow.b_ms : undefined };
+  const off = c.offset_ms || 0;
+  $("#stSheet").hidden = true;
+  const opened = openEditor({ item_id: c.item, idx: -1, kind: "movie", label: c.label, title: "", text: c.text || "", start_ms: c.in_ms - off, end_ms: c.out_ms - off },
+                            null, null, preset);
+  ed.studioClip = c;                // after openEditor's reset, which runs before its first wait
+  opened.then(() => {
+    if (ed.studioClip !== c) return;
+    const n = $("#draftNote"); n.hidden = false;
+    n.innerHTML = `<span>${ic("movie")} <b>Clip ${i + 1} of your Studio cut.</b> Changes go back to the Studio when you close this. Caption look and shape come from the Studio's Settings.</span>
+      <button class="b" id="stBack">Back to Studio</button>`;
+    $("#stBack").onclick = () => history.back();
+  });
+}
+function stEdited() {
+  const c = ed.studioClip; ed.studioClip = null;
+  Object.assign(c, { in_ms: Math.round(ed.inMs), out_ms: Math.round(ed.outMs), offset_ms: ed.offset, sub_text: ed.subText || {},
+    caption_shift_ms: ed.capShift || 0, caption_cues: sttCovers() ? ed.stt.cues : null, edited: true,
+    slow: slowOn() ? { factor: opts.slow, a_ms: Math.round(ed.slowA), b_ms: Math.round(ed.slowB), sound: opts.slowSound } : null,
+    thumb: `/thumb/${c.item}/${Math.round((ed.inMs + ed.outMs) / 2)}.jpg`,
+    lines: ed.cues.filter(q => q.end_ms > ed.inMs && q.start_ms < ed.outMs).map(q => [q.start_ms, q.end_ms]) });
+  const cap = ed.cues.filter(q => q.end_ms > ed.inMs && q.start_ms < ed.outMs && !(q.idx in ed.subText && !ed.subText[q.idx]))
+    .map(q => q.idx in ed.subText ? ed.subText[q.idx] : q.text).join(" ");
+  if (cap) c.text = cap;
+  delete c.spoken; delete c.spoken_for;
+  $("#stSheet").hidden = false; document.body.style.overflow = "hidden";
+  drawStudio();
 }
 function showTab(t) {
   opts.tab = t; saveOpts();
@@ -3177,7 +3216,8 @@ function drawStudio() {
     row.innerHTML = `<div class="sa-top">
         <button class="st${c === playing ? " on" : ""}" data-a="play" aria-label="${c === playing ? "Stop" : "Play"} clip ${i + 1}"><img src="${c.thumb}" alt="" loading="lazy"><span class="pp">${ic("play")}</span></button>
         <div class="st-info"><b>${i + 1}. ${esc(c.label)}</b><small>${esc(c.text || "")}</small><small>${(stLen(c) / 1000).toFixed(1)} s${slow}</small></div>
-        <button class="b" data-a="del" aria-label="Take clip ${i + 1} out">${ic("x")}</button></div>
+        <div class="st-btns"><button class="b" data-a="edit" aria-label="Edit clip ${i + 1}: cut, caption text, slow motion" title="Edit the cut, caption text and slow motion">${ic("scissors")}</button>
+          <button class="b" data-a="del" aria-label="Take clip ${i + 1} out">${ic("x")}</button></div></div>
       <div class="st-ctl">
         <button class="b" data-a="up" aria-label="Move up" ${i ? "" : "disabled"}>${ic("up")}</button><button class="b" data-a="down" aria-label="Move down" ${i < studio.clips.length - 1 ? "" : "disabled"}>${ic("down")}</button>
         <span>Start</span><button class="b" data-a="in,-250" aria-label="Start a quarter second earlier">−</button><button class="b" data-a="in,250" aria-label="Start a quarter second later">+</button>
@@ -3198,6 +3238,7 @@ $("#stList").addEventListener("click", e => {
   const b = e.target.closest("[data-a]"), row = e.target.closest(".sa-row"); if (!b || !row || studio.busy) return;
   const i = +row.dataset.i, c = studio.clips[i], a = b.dataset.a;
   if (a === "play") return studio.now === c ? stStopPlay() : stPlayOne(c);
+  if (a === "edit") return stEdit(c, i);
   if (a === "del") { if (studio.now === c) stStopPlay(); studio.clips.splice(i, 1); }
   else if (a === "up" || a === "down") { const j = a === "up" ? i - 1 : i + 1; [studio.clips[i], studio.clips[j]] = [studio.clips[j], studio.clips[i]]; }
   else {

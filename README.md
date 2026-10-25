@@ -65,7 +65,8 @@ It runs on the machine that has your media, next to Jellyfin, and is used from a
 - **Studio**: put any saved clips together, from any mix of shows and movies, in your own order.
   Add them from the Library (by tag), reorder, nudge each start and end, preview each clip in place,
   then render one video with one caption look and shape. Each clip keeps its own cut, caption edits
-  and slow motion from the editor. Saved as a draft like the rest; **New** starts another cut and
+  and slow motion from the editor (the scissors on a clip open it there, and the changes come back
+  to the Studio). Saved as a draft like the rest; **New** starts another cut and
   keeps the current one under Drafts. A rendered Studio cut opens again in the Studio (Library →
   Open in Studio) as a new draft with its clips, song and settings; the render stays as it is.
   **Music**: upload a song to go under it. Its tempo and beats are found on upload (tap or type to
