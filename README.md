@@ -69,6 +69,9 @@ It runs on the machine that has your media, next to Jellyfin, and is used from a
   **Music**: upload a song to go under it. Its tempo and beats are found on upload (tap or type to
   correct the BPM); the song dips whenever someone speaks, and each join can land on the beat or the
   bar. Play all plays the song with the clips before you render.
+  **Speed ramp**: the picture speeds up on every beat (or bar) and slows between, easing along a
+  smooth or sharp curve (Subtle, Strong or Extreme), with the slow stretches made smooth by RIFE.
+  Each beat averages normal speed, so the cut keeps its length; Play all previews it.
 - **Supercut**: every hit for a search in one video. It checks each hit against the audio,
   skips lines that are never actually heard, can cut to just the phrase, trims each clip to its
   shot, hides repeats, evens out loudness and adds labels and captions. Each clip previews in its

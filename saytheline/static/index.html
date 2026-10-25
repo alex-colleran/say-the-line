@@ -770,9 +770,16 @@
         <div class="opt"><span>Tempo</span><input id="stBpm" class="st-bpm" type="number" inputmode="decimal" step="0.1" min="40" max="240" aria-label="Beats per minute">
           <span class="hint">BPM</span><button class="b" id="stTap">Tap</button></div>
         <div class="opt"><span>Volume</span><div class="chips" data-stm="level"></div></div>
-        <div class="opt"><span>Clip sound</span><div class="chips" data-stm="clips"></div></div>
+        <div class="opt" id="stClipSound"><span>Clip sound</span><div class="chips" data-stm="clips"></div></div>
         <div class="opt"><span>Joins</span><div class="chips" data-stm="joins"></div></div>
         <div class="hint" id="stMusicHint"></div>
+        <div class="opt"><span>Speed ramp</span><div class="chips" data-str="strength"></div></div>
+        <div id="stRampMore" hidden style="display:flex;flex-direction:column;gap:10px">
+          <div class="opt"><span>Curve</span><div class="chips" data-str="shape"></div></div>
+          <div class="opt"><span>Fast</span><div class="chips" data-str="direction"></div></div>
+          <div class="opt"><span>Every</span><div class="chips" data-str="every"></div></div>
+          <div class="hint" id="stRampHint"></div>
+        </div>
       </div>
     </div>
     <details class="grp" id="stSettings">
@@ -3079,7 +3086,8 @@ const studio = { clips: [], title: "", music: null, audio: null, queueAll: false
   o: { captions: "classic", transition: "cut", label: false, loudnorm: true, aspect: "16:9", fit: "crop", res: 720 } };
 try { Object.assign(studio.o, JSON.parse(localStorage.getItem("saytheline.studio") || "{}")); } catch (e) {}
 function saveStudio() { try { localStorage.setItem("saytheline.studio", JSON.stringify(studio.o)); } catch (e) {} }
-const stLen = c => c.out_ms - c.in_ms + (c.slow ? (c.slow.b_ms - c.slow.a_ms) * (c.slow.factor - 1) : 0);
+// a clip's length in the cut (a speed ramp replaces its own slow motion)
+const stLen = c => c.out_ms - c.in_ms + (c.slow && !rampOn() ? (c.slow.b_ms - c.slow.a_ms) * (c.slow.factor - 1) : 0);
 function openStudio() {
   $("#stSheet").hidden = false; document.body.style.overflow = "hidden"; history.pushState({ sheet: 6 }, "");
   $("#stName").value = studio.title; drawStudio();
@@ -3155,12 +3163,14 @@ function stPlayOne(c, follow) {
     if (follow) { const r = st.getBoundingClientRect(); if (r.top < 0 || r.bottom > innerHeight) st.scrollIntoView({ behavior: "smooth", block: "center" }); }
   }
   v.src = `/preview/${c.item}/${c.in_ms}-${c.out_ms}.mp4`;
-  v.muted = !!(studio.queueAll && studio.music && studio.music.clips === "mute");
+  v.muted = !!(studio.queueAll && studio.music && (studio.music.clips === "mute" || rampOn()));
+  v.playbackRate = 1;
   if (studio.queueAll && studio.music && studio.audio) {      // keep the song in step with this clip's place in the cut
     const at = studio.clips.slice(0, studio.clips.indexOf(c)).reduce((t, x) => t + stLen(x), 0);
     studio.audio.currentTime = studio.music.offset_ms / 1000 + at / 1000;
   }
   v.play().catch(() => {});
+  if (studio.queueAll && rampOn()) requestAnimationFrame(rampLoop);
 }
 function stStopPlay() {
   const v = studio.vid; studio.queue = [];
@@ -3171,9 +3181,23 @@ function stStopPlay() {
   if (st) { st.classList.remove("on"); st.closest(".sa-row").classList.remove("on"); }
   studio.now = null;
 }
+function rampGrid() {
+  const m = studio.music; let b = m.ramp.every === "bar" ? (m.downbeats || []) : (m.beats || []);
+  if (m.set_bpm) { const step = (m.ramp.every === "bar" ? 240 : 60) / m.set_bpm, a = (m.downbeats || m.beats || [0])[0]; b = []; for (let t = a % step; t < m.duration; t += step) b.push(t); }
+  return b;
+}
+function rampLoop() {
+  if (!studio.queueAll || !rampOn() || !studio.audio || studio.audio.paused || !studio.vid) return;
+  const g = studio.grid, t = studio.audio.currentTime;
+  let i = 0; while (i + 1 < g.length && g[i + 1] <= t) i++;
+  const p = i + 1 < g.length && g[i] <= t ? (t - g[i]) / (g[i + 1] - g[i]) : 0;
+  studio.vid.playbackRate = Math.max(0.1, Math.min(8, rampSpeed(p, studio.music.ramp)));
+  requestAnimationFrame(rampLoop);
+}
 $("#stPlay").onclick = () => {
   if (!studio.clips.length) return;
   studio.queue = studio.clips.slice(1); studio.queueAll = true;
+  if (rampOn()) { studio.grid = rampGrid(); requestAnimationFrame(rampLoop); }
   if (studio.music) { const a = stAudio(); a.currentTime = studio.music.offset_ms / 1000; a.play().catch(() => {}); }
   stPlayOne(studio.clips[0], true);
 };
@@ -3239,7 +3263,8 @@ $("#stRender").onclick = async () => {
   const look = studio.o.captions;
   const m = studio.music;
   const body = { title: studio.title.trim(), clips: studio.clips, transition: studio.o.transition, label: studio.o.label,
-    music: m ? { id: m.id, offset_ms: m.offset_ms, bpm: m.set_bpm || undefined, level: m.level, clips: m.clips, joins: m.joins } : undefined,
+    music: m ? { id: m.id, offset_ms: m.offset_ms, bpm: m.set_bpm || undefined, level: m.level, clips: m.clips, joins: m.joins,
+                 ramp: rampOn() ? m.ramp : undefined } : undefined,
     loudnorm: studio.o.loudnorm, aspect: studio.o.aspect, fit: studio.o.fit, res: studio.o.res,
     subs: { on: look !== "off", style: look === "off" ? "classic" : look, font: look === "classic" ? opts.fontClassic : opts.fontWord,
             size: opts.size, colour: opts.colour, box: opts.box, hl: opts.hl, caps: opts.caps,
@@ -3248,7 +3273,8 @@ $("#stRender").onclick = async () => {
     const job = await postJob("/api/studio/render", body, j => {
       if (studio.job !== j.id) { studio.job = j.id; $("#stStop").hidden = false; }
       $("#stSum").textContent = j.state === "timing" ? `Timing the words in clip ${(j.done || 0) + 1} of ${j.total}…`
-        : j.state === "rendering" ? `Rendering clip ${(j.done || 0) + 1} of ${j.total}…` : j.state === "mixing" ? "Mixing in the song…" : "Waiting for the renderer…";
+        : j.state === "rendering" ? `Rendering clip ${(j.done || 0) + 1} of ${j.total}${j.frames_total ? ` · frames ${Math.round(100 * j.frames / j.frames_total)}%` : ""}…`
+        : j.state === "mixing" ? "Mixing in the song…" : "Waiting for the renderer…";
     });
     const url = "/clips/" + encodeURIComponent(job.file);
     $("#stResult").innerHTML = `<div class="result"><video src="${url}" controls playsinline autoplay></video>
@@ -3281,7 +3307,25 @@ const STM_CHOICES = {
   clips: [["duck", "Music dips"], ["keep", "Both full"], ["mute", "Clips muted"]],
   joins: [["off", "As cut"], ["beat", "On the beat"], ["bar", "On the bar"]],
 };
+// = ramp.py: speed within a beat (phase 0 = on the beat), averaging 1 over the beat
+const RAMP = { strength: { subtle: 2, strong: 4, extreme: 8 }, shape: { smooth: 1, sharp: 4 } };
+const STR_CHOICES = {
+  strength: [["off", "Off"], ["subtle", "Subtle"], ["strong", "Strong"], ["extreme", "Extreme"]],
+  shape: [["smooth", "Smooth"], ["sharp", "Sharp"]],
+  direction: [["beat", "On the beat"], ["between", "Between beats"]],
+  every: [["beat", "Beat"], ["bar", "Bar"]],
+};
+const rampW = (p, shape) => ((1 + Math.cos(2 * Math.PI * p)) / 2) ** (RAMP.shape[shape] || 1);
+const rampMeanW = {};
+function rampSpeed(p, o) {
+  const r = RAMP.strength[o.strength] || 4, fast = o.direction !== "between";
+  if (!(o.shape in rampMeanW)) { let t = 0; for (let i = 0; i < 2000; i++) t += rampW((i + 0.5) / 2000, o.shape); rampMeanW[o.shape] = t / 2000; }
+  const m = fast ? rampMeanW[o.shape] : 1 - rampMeanW[o.shape], w = fast ? rampW(p, o.shape) : 1 - rampW(p, o.shape);
+  return (1 + (r - 1) * w) / (1 + (r - 1) * m);
+}
+const rampOn = () => !!(studio.music && studio.music.ramp && studio.music.ramp.strength !== "off");
 const mmss = s => `${Math.floor(s / 60)}:${(s % 60).toFixed(1).padStart(4, "0")}`;
+function flashSt(msg) { const s = $("#stSum"); s.textContent = msg; setTimeout(() => drawStudio(), 2200); }
 function stBpm() { const m = studio.music; return m ? (m.set_bpm || m.bpm) : 0; }
 function drawMusic() {
   const m = studio.music;
@@ -3300,6 +3344,30 @@ function drawMusic() {
       box.appendChild(c);
     });
   });
+  m.ramp = m.ramp || { strength: "off", shape: "smooth", direction: "beat", every: "beat" };
+  $$("[data-str]").forEach(box => {
+    const key = box.dataset.str; box.innerHTML = "";
+    STR_CHOICES[key].forEach(([v, label]) => {
+      const c = document.createElement("button"); c.type = "button"; c.className = "chip"; c.textContent = label;
+      c.setAttribute("aria-pressed", String(m.ramp[key] === v));
+      if (key === "strength" && v !== "off" && !SERVER.slowmo) c.setAttribute("aria-disabled", "true");
+      c.onclick = () => {
+        if (key === "strength" && v !== "off" && !SERVER.slowmo) return flashSt("Needs rife-ncnn-vulkan installed on the server (see README)");
+        m.ramp[key] = v; drawStudio();
+      };
+      box.appendChild(c);
+    });
+  });
+  $("#stRampMore").hidden = !rampOn();
+  $("#stClipSound").classList.toggle("disabled", rampOn());          // a ramp mutes the clips
+  if (rampOn()) {
+    const secs = studio.clips.reduce((t, c) => t + (c.out_ms - c.in_ms), 0) / 1000;
+    const short = studio.o.res || 720, mp = short * short * 16 / 9 / 1e6;
+    let slow = 9; for (let i = 0; i < 200; i++) slow = Math.min(slow, rampSpeed(i / 200, m.ramp));
+    const est = secs * 25 * Math.min(8, Math.max(1, Math.ceil(30 / slow / 25))) * mp * (SERVER.slow_secs_per_mpix_frame || 0.15) + 10;
+    $("#stRampHint").textContent = `The picture speeds up ${m.ramp.direction === "between" ? "between beats and slows on them" : "on every " + m.ramp.every + " and slows between"}, easing along the curve; each ${m.ramp.every} still averages normal speed, so the cut keeps its length. `
+      + `The clips' own sound is muted (the song carries it) and their own slow motion is replaced. Play all previews it. Adds about ${est < 60 ? Math.round(est / 5) * 5 + " s" : Math.round(est / 60) + " min"} to the render.`;
+  }
   const beat = 60 / stBpm();
   $("#stMusicHint").textContent = (m.clips === "duck" ? "The song dips whenever someone speaks and comes back between lines. " : "")
     + (m.joins === "off" ? "" : `Each clip's end moves by up to ${m.joins === "bar" ? Math.min(1, beat * 2).toFixed(2) : (beat / 2).toFixed(2)} s so every cut lands on the ${m.joins}; the previews here play the cuts as they are. `)

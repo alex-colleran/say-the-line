@@ -228,6 +228,15 @@ Design notes: what each part does and why it is built that way. For setup, see t
   join to a whole 30 fps frame. For that to hold in the output, each supercut segment is exactly
   `round(dur x 30)` frames with its audio trimmed and padded to match, and the concat list gives each
   part's duration (AAC pads its last frame, which used to make long supercuts drift by ~50 ms a clip).
+- **Speed ramp (`ramp.py`):** speed within a beat is `slow x (1 + (r - 1) x w(p))`, with
+  `w = ((1 + cos 2πp) / 2)^k` (1 on the beat, 0 halfway; k = 1 smooth, 4 sharp), r = fastest / slowest
+  (2, 4, 8), and `slow` chosen so every beat averages 1x: the cut keeps its length and joins on the beat
+  stay there. Each segment's output frames get source times from the cumulative speed, scaled to land
+  exactly on the segment's end; the source is made k times denser by RIFE (per camera shot, k from the
+  slowest speed, at most 8) and each output frame takes the nearest dense frame. Captions follow by the
+  inverse map; the clips' sound is muted (the song carries it), and a clip's own slow motion is
+  replaced. JS `rampSpeed` = `ramp.speed`; the preview sets the clip's playbackRate from the song's
+  position every frame.
 - **Mix:** the song from the chosen start, loudness-normalised (-27 / -22 / -17 LUFS under the clips,
   -14 alone), faded out over the last 1.5 s; with "Music dips" it goes through a sidechain compressor
   keyed on the clips' own audio, then a limiter.

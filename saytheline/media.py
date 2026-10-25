@@ -440,19 +440,20 @@ def force_style(st):
     return ",".join(parts)
 
 
-def render(src, in_ms, out_ms, opts, cues, out, label=None, uniform=False, slow=None, progress=None, smooth=0):
+def render(src, in_ms, out_ms, opts, cues, out, label=None, uniform=False, slow=None, progress=None, smooth=0, ramp=None):
     """Final clip. x264/AAC MP4 by default; WebM (VP9/Opus) or GIF (palette, no audio).
     Subtitles are burned after scaling, so the style is relative to the output size.
     `uniform` (supercut segments): fixed size, 30 fps, square pixels, 48 kHz stereo always present,
     so the segments concatenate without re-encoding. `label`: small source caption, top-left.
     `slow` (a, b, factor, sound) from slowmo.part_of: that part plays slower (see slowmo.py);
     `smooth` (60, from slowmo.smooth_of): that frame rate, the frames in between made up;
+    `ramp` {"beats", "length", "opts"} (ramp.py): speed easing in and out on the song's beats, silent;
     progress(done, total) while frames are made."""
     with tempfile.TemporaryDirectory(prefix="saytheline-") as tmp:
-        return _render(src, in_ms, out_ms, opts, cues, out, label, uniform, slow, progress, tmp, smooth)
+        return _render(src, in_ms, out_ms, opts, cues, out, label, uniform, slow, progress, tmp, smooth, ramp)
 
 
-def _render(src, in_ms, out_ms, opts, cues, out, label, uniform, slow, progress, tmp, smooth=0):
+def _render(src, in_ms, out_ms, opts, cues, out, label, uniform, slow, progress, tmp, smooth=0, ramp=None):
     info = probe(src)
     if not info["width"]:
         raise RuntimeError("no video stream")
@@ -463,7 +464,14 @@ def _render(src, in_ms, out_ms, opts, cues, out, label, uniform, slow, progress,
                            "pad" if uniform and aspect == "16:9" else opts.get("fit", "crop"),
                            int(opts.get("res") or (720 if uniform else 0)), upscale=uniform)
     fmt = "mp4" if uniform else opts.get("format", "mp4")
-    if slow or (smooth and fmt != "gif"):
+    if ramp:
+        # the speed-ramped segment (silent: the song carries it) becomes the source
+        from . import ramp as rampmod
+        src, times = rampmod.master(src, in_ms, out_ms, ramp["length"], ramp["beats"], ramp["opts"], chain, (w, h), tmp, progress)
+        cues = rampmod.remap_cues(cues, in_ms, times)
+        in_ms, out_ms = 0, round(len(times) * 1000 / rampmod.OUT_FPS)
+        chain, info = [], probe(src)
+    elif slow or (smooth and fmt != "gif"):
         # the slowed / smoothed cut, already at the output size, becomes the source: nothing else changes
         from . import slowmo
         track = audio_track(src) if info["has_audio"] else None
@@ -617,7 +625,8 @@ def supercut(segments, opts, out, progress=None):
             p = os.path.join(tmp, f"{i:04d}.mp4")
             try:
                 render(sg["src"], sg["in_ms"], sg["out_ms"], {**opts, "format": "mp4", "audio": "original"},
-                       sg["cues"], p, label=sg.get("label"), uniform=True, slow=sg.get("slow"))
+                       sg["cues"], p, label=sg.get("label"), uniform=True, slow=sg.get("slow"), ramp=sg.get("ramp"),
+                       progress=(lambda d, t, i=i: progress(i, len(segments), d, t)) if progress and sg.get("ramp") else None)
                 parts.append(p)
             except Exception:
                 continue          # one unreadable file must not sink the whole supercut

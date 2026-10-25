@@ -557,6 +557,29 @@ class Beats(unittest.TestCase):
         self.assertTrue(all(round((b - 0.37) / beat) % 4 == 0 for b in out["downbeats"]), "bars start on the kicks")
 
 
+class SpeedRamp(unittest.TestCase):
+    def test_every_beat_averages_normal_speed(self):
+        from saytheline import ramp
+        for st in ramp.STRENGTH:
+            for sh in ramp.SHAPES:
+                for d in (True, False):
+                    vs = [ramp.speed((i + 0.5) / 500, st, sh, d) for i in range(500)]
+                    self.assertAlmostEqual(sum(vs) / len(vs), 1, places=2)
+        self.assertGreater(ramp.speed(0, "strong"), 1.5, "fast on the beat")
+        self.assertLess(ramp.speed(0.5, "strong"), 0.5, "slow between")
+
+    def test_source_times_cover_the_clip_in_step_with_the_beat(self):
+        from saytheline import ramp
+        beats = [0.5 * k for k in range(12)]
+        t = ramp.source_times(4.0, 4.0, beats, dict(strength="strong", shape="smooth"))
+        self.assertEqual(len(t), 120)
+        self.assertTrue(all(b > a for a, b in zip(t, t[1:])))
+        self.assertAlmostEqual(t[-1], 4.0, delta=0.05)
+        for b in beats[1:8]:              # on each beat the picture is back in step with the song
+            self.assertAlmostEqual(t[int(b * 30)], b, delta=0.04)
+        self.assertAlmostEqual(ramp.map_time(t[45], t), 45.5 / 30, places=3)
+
+
 class AudioTracks(unittest.TestCase):
     def tracks(self, *tags):
         from unittest import mock

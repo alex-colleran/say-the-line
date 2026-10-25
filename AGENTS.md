@@ -27,6 +27,7 @@ saytheline/
   slowmo.py      slow motion: time map, caption re-timing, RIFE per camera shot, the slowed master
   music.py       Studio songs: uploads, beat grid, joins on the beat, the ducked mix
   beat_worker.py tempo, beats and bar starts of a song (numpy only, runs in the speech Python)
+  ramp.py        speed ramps on the beat: the curve, per-frame source times, the ramped segment
   library.py     favourites, tags, drafts (data/library.db; separate from the index)
   web.py         HTTP server (stdlib ThreadingHTTPServer) + JSON API + job queue
   doctor.py      `python -m saytheline doctor`
@@ -91,6 +92,7 @@ sed -n '/<script>/,/<\/script>/p' saytheline/static/index.html | sed '1d;$d' > /
   `snap.py` or `stt_worker.py` timing changes, or old timings keep being served.
 - Say Anything (`sayany.py`): `sayany.cut` = JS `saCut`; a take's measured `cuts` are what both use.
 - Slow motion: `slowmo.timemap` = JS `outLength` / `applySlowRate` (the preview plays the part at 1/factor).
+- Speed ramp: `ramp.speed` = JS `rampSpeed` (Studio preview sets playbackRate from it).
 - A systemd `Type=oneshot` job is capped with `TimeoutStartSec`, not `RuntimeMaxSec`.
 - Input-side `-t` can let one frame past the out point through: renders start their video chain
   with `trim=end=` so a clip ending on a camera cut never shows the next shot.

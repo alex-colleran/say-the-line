@@ -25,6 +25,7 @@ from . import jellyfin
 from . import library
 from . import media
 from . import music
+from . import ramp
 from . import sayany
 from . import search as srch
 from . import shots as shotcuts
@@ -962,8 +963,15 @@ def run_studio(job_id, req):
         song = music.info(mu.get("id")) if mu.get("id") else None
         if mu.get("id") and not (song and music.path(mu["id"])):
             raise ValueError("the song is gone from the server: add it again")
+        rp = mu.get("ramp") if song and (mu.get("ramp") or {}).get("strength") in ramp.STRENGTH else None
+        if rp:
+            if not slowmo.rife():
+                raise ValueError("speed ramps need rife-ncnn-vulkan installed on the server (see README)")
+            clips = [dict(c, slow=None) for c in clips]          # the ramp sets every clip's speed
         if song and mu.get("joins") in ("beat", "bar"):
             clips = studio_snap(clips, song, mu)
+        grid = [b - (mu.get("offset_ms") or 0) / 1000 for b in music.grid(song, float(mu.get("bpm") or song["bpm"]),
+                                                                          (rp or {}).get("every") == "bar")] if rp else []
         segs, total = [], 0
         for i, c in enumerate(clips):
             stop_if_cancelled(job)
@@ -989,8 +997,12 @@ def run_studio(job_id, req):
             cues = clip_captions(row, a, b, creq)
             if not c.get("edited"):
                 cues = lines_mostly_in(cues, a, b)
-            segs.append(dict(item=row["id"], src=row["path"], in_ms=a, out_ms=b, cues=cues,
-                             label=sc_label(row) if req.get("label") else None, slow=slow))
+            seg = dict(item=row["id"], src=row["path"], in_ms=a, out_ms=b, cues=cues,
+                       label=sc_label(row) if req.get("label") else None, slow=slow)
+            if rp:          # this clip's stretch of the cut, and the beats in it on its own timeline
+                t0 = (total - seg_len) / 1000
+                seg["ramp"] = dict(length=seg_len / 1000, opts=rp, beats=[round(x - t0, 4) for x in grid])
+            segs.append(seg)
         if any(s["slow"] for s in segs) and not slowmo.rife():
             raise ValueError("slow motion needs rife-ncnn-vulkan installed on the server (see README)")
         os.makedirs(CLIPS, exist_ok=True)
@@ -998,16 +1010,21 @@ def run_studio(job_id, req):
         name = f"Studio - {title} - {len(segs)} clips ({time.strftime('%m%d-%H%M')}).mp4"
         out = os.path.join(CLIPS, name)
 
-        def progress(i, n):
+        def progress(i, n, frames=None, of=None):
             stop_if_cancelled(job)
-            job.update(state="rendering", done=i, total=n)
+            job.update(state="rendering", done=i, total=n, frames=frames, frames_total=of)
+        if rp:
+            ow, oh = media.output_size(segs[0]["src"], {"aspect": req.get("aspect"), "res": req.get("res"), "fit": req.get("fit")})
+            est = sum(ramp.estimate_s((s["out_ms"] - s["in_ms"]) / 1000, rp, ow, oh, slowmo.frame_rate(s["src"])) for s in segs)
+            if est > 600:
+                raise ValueError(f"a speed ramp that long would take about {round(est / 60)} min to make: pick a smaller Size or fewer clips")
         t = time.time()
         with RENDER_SLOT:
             info = media.supercut(segs, req, out + ".tmp.mp4", progress)
             if song:
                 job.update(state="mixing")
                 music.mix(out + ".tmp.mp4", music.path(mu["id"]), dict(offset_s=(mu.get("offset_ms") or 0) / 1000,
-                          level=mu.get("level"), clips=mu.get("clips")), out + ".mix.mp4")
+                          level=mu.get("level"), clips="mute" if rp else mu.get("clips")), out + ".mix.mp4")
                 os.replace(out + ".mix.mp4", out + ".tmp.mp4")
             os.replace(out + ".tmp.mp4", out)
         with open(out + ".json", "w") as f:
