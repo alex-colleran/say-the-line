@@ -78,6 +78,9 @@ It runs on the machine that has your media, next to Jellyfin, and is used from a
   length. The peak lands just before each beat by default (motion reads a little late, so that
   feels on it), or earlier, or right on it. Spoken lines can stay at normal speed with their sound (the ramp runs between them, timed
   from the words actually said) or be ramped too, under the song alone. Play all previews it.
+  **Timeline**: the cut end to end with the song's beats. The speed ramp is an effect on it: purple
+  stretches you drag by their ends or middle (snapping to the beat), or nudge a beat at a time, so it
+  runs on only part of the cut; outside them the clips play as they are, with their sound.
   **Film sound: Dialogue only** strips the films' own music and effects from the whole cut (demucs).
 - **Time left**: every wait (renders, slow motion, listening, supercuts, Studio) shows how far along
   it is and about how long is left, from the job's own progress and how long the same kind of job

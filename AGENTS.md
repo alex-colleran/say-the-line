@@ -92,7 +92,7 @@ sed -n '/<script>/,/<\/script>/p' saytheline/static/index.html | sed '1d;$d' > /
   `snap.py` or `stt_worker.py` timing changes, or old timings keep being served.
 - Say Anything (`sayany.py`): `sayany.cut` = JS `saCut`; a take's measured `cuts` are what both use.
 - Slow motion: `slowmo.timemap` = JS `outLength` / `applySlowRate` (the preview plays the part at 1/factor).
-- Speed ramp: `ramp.speed` = JS `rampSpeed`, `ramp.keep_spans` = JS `rampKeep` (Studio preview sets
+- Speed ramp: `ramp.speed` = JS `rampSpeed`, `ramp.PEAK_LEAD` = JS `RAMP.lead`, `ramp.fx_spans` = JS `fxTidy`/`fxSpans` (music.ramp.fx; none = whole cut), `ramp.keep_spans` = JS `rampKeep` (Studio preview sets
   playbackRate from them). Change STRENGTH, EDGE or the KEEP_* constants on both sides.
 - Time left: jobs are `web.Job` dicts; keys starting with `_` are internal and never sent. A new job
   kind gets a `web.job_size` entry (its units and phases) or it shows elapsed time only.

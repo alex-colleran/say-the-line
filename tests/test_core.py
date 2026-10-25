@@ -588,6 +588,21 @@ class SpeedRamp(unittest.TestCase):
                 f = max(range(int((b - 0.25) * 30), int((b + 0.25) * 30)), key=lambda f: t[f + 1] - t[f])
                 self.assertAlmostEqual((f + 1) / 30, b - lead, delta=0.04, msg=peak)
 
+    def test_effect_stretches_split_across_clips(self):
+        from saytheline import ramp
+        fx = ramp.fx_spans([[9, 14], [3, 5], [4.5, 6], [20, 20.1]], 16)
+        self.assertEqual(fx, [(3.0, 6.0), (9.0, 14.0)])          # merged, sorted, slivers dropped
+        self.assertEqual(ramp.fx_spans(None, 8), [(0.0, 8.0)])     # none given: the whole cut
+        self.assertEqual(ramp.fx_part(fx, 4.0, 6.0), [(0.0, 2.0), (5.0, 6.0)])   # a clip from 4 to 10 s
+        self.assertEqual(ramp.fx_part(fx, 6.0, 3.0), [])                         # 6-9 s: outside it
+        self.assertEqual(ramp.with_outside([(2.5, 3.0)], [(0.0, 2.0), (5.0, 6.0)], 6.0), [(2.0, 5.0)])
+        # outside the effect a clip plays at normal speed, frame for frame
+        beats = [0.5 * k for k in range(14)]
+        t = ramp.source_times(6.0, 6.0, beats, dict(strength="extreme"), keep=ramp.with_outside([], [(0.0, 3.0)], 6.0))
+        for f in range(91, 180):
+            self.assertAlmostEqual(t[f], (f + 0.5) / 30, places=6)
+        self.assertGreater(max(b - a for a, b in zip(t[:80], t[1:81])) * 30, 3, "ramped inside it")
+
     def test_strengths_are_far_apart(self):
         from saytheline import ramp
         peak = {st: ramp.speed(0, st) for st in ramp.STRENGTH}

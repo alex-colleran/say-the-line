@@ -367,6 +367,29 @@
   input.st-name { width: 100%; height: 44px; min-height: 0; flex: none; font: inherit; font-size: 16px; padding: 0 10px; background: var(--panel);
     color: var(--text); border: 1px solid var(--line); border-radius: 6px; margin-bottom: 10px; }
   .sa-top .st-btns { display: flex; flex-direction: column; gap: 6px; }
+  /* Studio timeline: the cut's clips, the song's beats, and effects (the speed ramp) as bands to drag */
+  .tl2 { position: relative; height: 68px; background: #000; border: 1px solid var(--line); user-select: none;
+    -webkit-user-select: none; overflow: hidden; touch-action: pan-y; }
+  .tl2 .clipb { position: absolute; top: 0; bottom: 0; background: #222 center / cover; border-right: 2px solid var(--bg); opacity: .7; }
+  .tl2 .clipb span { position: absolute; left: 3px; top: 3px; font-size: 11px; font-weight: 700; background: rgba(0,0,0,.65); padding: 0 4px; }
+  .tl2 .tick { position: absolute; bottom: 0; width: 1px; height: 8px; background: rgba(255,255,255,.4); pointer-events: none; }
+  .tl2 .tick.bar { height: 16px; background: rgba(255,255,255,.75); }
+  .tl2 .fx { position: absolute; top: 22px; bottom: 4px; background: rgba(108,99,255,.4); border: 1.5px solid rgba(160,150,255,.95);
+    border-radius: 5px; touch-action: none; cursor: grab; }
+  .tl2 .fx.sel { background: rgba(108,99,255,.6); box-shadow: 0 0 0 2px rgba(160,150,255,.5); }
+  .tl2 .fx b { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); font-size: 11px; color: #fff;
+    white-space: nowrap; pointer-events: none; text-shadow: 0 1px 2px #000; }
+  .tl2 .fx .h { position: absolute; top: 0; bottom: 0; width: 26px; max-width: 45%; touch-action: none; cursor: ew-resize; }
+  .tl2 .fx .h::after { content: ""; position: absolute; top: 6px; bottom: 6px; width: 6px; background: #c3bbff; border-radius: 3px; }
+  .tl2 .fx .h.a { left: 0; } .tl2 .fx .h.a::after { left: 3px; }
+  .tl2 .fx .h.b { right: 0; } .tl2 .fx .h.b::after { right: 3px; }
+  .tl2 .head { position: absolute; top: 0; bottom: 0; width: 2px; margin-left: -1px; background: #fff; pointer-events: none; }
+  .tl2-scale { display: flex; justify-content: space-between; color: var(--dim); font-size: 11.5px; margin-top: 3px; }
+  .fxrow { display: flex; flex-direction: column; gap: 6px; padding: 8px 0; border-top: 1px solid var(--line); }
+  .fxrow .ft { display: flex; align-items: center; gap: 8px; color: var(--dim); }
+  .fxrow .sw { width: 12px; height: 12px; border-radius: 3px; background: rgba(108,99,255,.8); border: 1px solid #c3bbff; flex: none; }
+  .fxrow.sel .ft { color: var(--text); font-weight: 600; }
+  .fxrow .st-ctl span { color: var(--dim); margin: 0 2px 0 4px; }
   .st-ctl { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; }
   .st-ctl .b { min-width: 40px; min-height: 40px; padding: 0 6px; }
   .st-ctl span { color: var(--dim); font-size: 13px; margin: 0 2px 0 8px; }
@@ -768,6 +791,14 @@
       <div class="chips" id="stPickKinds"></div>
       <div class="chips" id="stPickTags"></div>
       <div class="st-plist" id="stPickList"></div>
+    </div>
+    <div class="grp" id="stTL" hidden>
+      <h3>Timeline</h3>
+      <div class="tl2" id="stTrack"></div>
+      <div class="tl2-scale"><span>0:00</span><span id="stTLEnd"></span></div>
+      <div class="opt"><button class="b" id="stFxAdd"><svg class="i" aria-hidden="true"><use href="#i-plus"/></svg>Speed ramp</button></div>
+      <div id="stFxList"></div>
+      <div class="hint" id="stFxHint"></div>
     </div>
     <div class="grp" id="stMusic">
       <h3>Music</h3>
@@ -3230,7 +3261,7 @@ function drawStudio() {
   });
   const n = studio.clips.length, total = studio.clips.reduce((t, c) => t + stLen(c), 0);
   $("#stSum").textContent = studio.busy ? $("#stSum").textContent : n ? `${n} clip${n === 1 ? "" : "s"} · ${(total / 1000).toFixed(1)} s${studio.music ? " · with music" : ""}` : "Add some clips";
-  drawMusic();
+  drawMusic(); drawTL();
   $("#stRender").disabled = !n || studio.busy; $("#stPlay").disabled = !n || studio.busy;
   $("#stStop").hidden = !(studio.busy && studio.job);
   touchDraft("st");
@@ -3299,7 +3330,13 @@ function rampLoop() {
   let i = 0; while (i + 1 < g.length && g[i + 1] <= t) i++;
   const p = i + 1 < g.length && g[i] <= t ? (t - g[i]) / (g[i + 1] - g[i]) : 0;
   let rate = rampSpeed(p, studio.music.ramp), kept = false;
-  if (keepLines() && studio.now) {             // in one of the clip's lines: normal speed, with its sound
+  const fx = studio.music.ramp.fx;
+  if (fx) {                                    // only inside the effect's stretches of the cut
+    const ct = studio.audio.currentTime - studio.music.offset_ms / 1000, on = fx.find(([a, b]) => ct >= a && ct < b);
+    if (!on) { rate = 1; kept = true; }
+    else rate = 1 + (rate - 1) * Math.min(1, Math.min(ct - on[0], on[1] - ct) / RAMP.ease);
+  }
+  if (!kept && keepLines() && studio.now) {    // in one of the clip's lines: normal speed, with its sound
     const x = studio.vid.currentTime, sp = studio.keep || [];
     kept = sp.some(([a, b]) => x >= a && x < b);
     if (kept) rate = 1;
@@ -3313,6 +3350,7 @@ $("#stPlay").onclick = () => {
   if (!studio.clips.length) return;
   studio.queue = studio.clips.slice(1); studio.queueAll = true;
   if (rampOn()) { studio.grid = rampGrid(); requestAnimationFrame(rampLoop); }
+  if (studio.music) requestAnimationFrame(tlLoop);
   if (studio.music) { const a = stAudio(); a.currentTime = studio.music.offset_ms / 1000; a.play().catch(() => {}); }
   stPlayOne(studio.clips[0], true);
 };
@@ -3540,6 +3578,128 @@ async function stSpoken() {
 const rampOn = () => !!(studio.music && studio.music.ramp && studio.music.ramp.strength !== "off");
 const mmss = s => `${Math.floor(s / 60)}:${(s % 60).toFixed(1).padStart(4, "0")}`;
 function flashSt(msg) { const s = $("#stSum"); s.textContent = msg; setTimeout(() => drawStudio(), 2200); }
+/* ---- the Timeline: clips end to end, the song's beats, the speed ramp's stretches (music.ramp.fx: [[a, b]]
+   s on the cut's timeline; none = the whole cut, which web.run_studio and ramp.fx_spans read the same way) ---- */
+const stTotal = () => studio.clips.reduce((t, c) => t + stLen(c), 0) / 1000;
+function fxSpans() { const r = studio.music && studio.music.ramp; return !r || !rampOn() ? [] : r.fx || [[0, stTotal()]]; }
+function fxCover(a, len) { return fxSpans().reduce((t, [p, q]) => t + Math.max(0, Math.min(q, a + len) - Math.max(p, a)), 0); }
+// the song's beats on the cut's timeline: [t, is a bar]
+function tlBeats() {
+  const m = studio.music; if (!m) return [];
+  const off = m.offset_ms / 1000, T = stTotal(), out = [];
+  if (m.set_bpm) {
+    const step = 60 / m.set_bpm, a = (m.downbeats || m.beats || [0])[0];
+    for (let k = Math.ceil((off - a) / step); a + k * step - off <= T; k++) out.push([a + k * step - off, ((k % 4) + 4) % 4 === 0]);
+    return out;
+  }
+  const bars = new Set((m.downbeats || []).map(x => Math.round(x * 1000)));
+  return (m.beats || []).map(b => [b - off, bars.has(Math.round(b * 1000))]).filter(([t]) => t >= 0 && t <= T);
+}
+function fxSnap(t) {
+  const bs = tlBeats(); if (!bs.length) return Math.round(t * 10) / 10;
+  return bs.reduce((best, [b]) => Math.abs(b - t) < Math.abs(best - t) ? b : best, bs[0][0]);
+}
+function fxTidy() {                       // sorted and merged, inside the cut; none left = the ramp off
+  const r = studio.music.ramp, T = stTotal();
+  const sp = (r.fx || []).map(([a, b]) => [Math.max(0, Math.min(a, b)), Math.min(T, Math.max(a, b))]).filter(([a, b]) => b - a >= 0.2).sort((x, y) => x[0] - y[0]);
+  const out = [];
+  for (const [a, b] of sp) { if (out.length && a <= out[out.length - 1][1] + 0.01) out[out.length - 1][1] = Math.max(out[out.length - 1][1], b); else out.push([a, b]); }
+  r.fx = out.map(([a, b]) => [Math.round(a * 1000) / 1000, Math.round(b * 1000) / 1000]);
+  if (!r.fx.length) { r.strength = "off"; delete r.fx; studio.fxSel = null; }
+}
+function drawTL() {
+  const g = $("#stTL"), n = studio.clips.length; g.hidden = !n; if (!n) return;
+  const T = stTotal(), W = 100 / Math.max(0.1, T), tr = $("#stTrack");
+  let at = 0, html = "";
+  studio.clips.forEach((c, i) => {
+    const L = stLen(c) / 1000;
+    html += `<div class="clipb" style="left:${at * W}%;width:${L * W}%;background-image:url('${c.thumb}')"><span>${i + 1}</span></div>`;
+    at += L;
+  });
+  const bs = tlBeats(), px = tr.clientWidth || 360, dense = bs.length > 1 && (bs[1][0] - bs[0][0]) * px / T < 5;
+  bs.forEach(([t, bar]) => { if (bar || !dense) html += `<div class="tick${bar ? " bar" : ""}" style="left:${t * W}%"></div>`; });
+  fxSpans().forEach(([a, b], i) => {
+    html += `<div class="fx${studio.fxSel === i ? " sel" : ""}" data-i="${i}" style="left:${a * W}%;width:${(b - a) * W}%">
+      <div class="h a"></div><b>${b - a > T / 6 ? "Speed ramp" : ""}</b><div class="h b"></div></div>`;
+  });
+  tr.innerHTML = html + `<div class="head" hidden></div>`;
+  $("#stTLEnd").textContent = mmss(T);
+  const on = rampOn(), sp = fxSpans();
+  $("#stFxList").innerHTML = sp.map(([a, b], i) => `<div class="fxrow${studio.fxSel === i ? " sel" : ""}" data-i="${i}">
+      <div class="ft"><i class="sw"></i><span>Speed ramp ${mmss(a)} → ${mmss(b)}</span></div>
+      <div class="st-ctl"><span>Start</span><button class="b" data-fx="${i},0,-1" aria-label="Start a beat earlier">‹</button><button class="b" data-fx="${i},0,1" aria-label="Start a beat later">›</button>
+      <span>End</span><button class="b" data-fx="${i},1,-1" aria-label="End a beat earlier">‹</button><button class="b" data-fx="${i},1,1" aria-label="End a beat later">›</button>
+      <button class="b" data-fx="${i},x" aria-label="Take this speed ramp out">${ic("x")}</button></div></div>`).join("");
+  $("#stFxHint").textContent = !studio.music ? "Add a song to put a speed ramp on part of the cut: it follows the song's beat."
+    : !on ? "Tap Speed ramp to add one, then drag its ends (or the middle) along the timeline; they snap to the beat."
+    : "Drag a purple stretch's ends or middle to move it (they snap to the beat), or nudge it a beat with ‹ ›. Outside it the clips play as they are, with their sound. The style (Subtle to Extreme, curve, peak) is under Music.";
+}
+$("#stFxAdd").onclick = () => {
+  if (studio.busy) return;
+  const m = studio.music;
+  if (!m) return flashSt("Add a song first: the speed ramp follows its beat");
+  if (!SERVER.slowmo) return flashSt("Needs rife-ncnn-vulkan installed on the server (see README)");
+  // (the cut's length counted once the ramp is on: it replaces the clips' own slow motion)
+  if (!rampOn()) { m.ramp.strength = m.ramp.strength && m.ramp.strength !== "off" ? m.ramp.strength : "strong"; m.ramp.fx = [[0, stTotal()]]; studio.fxSel = 0; return drawStudio(); }
+  const T = stTotal();
+  const sp = fxSpans(); let gap = [0, 0], t = 0;                 // into the longest stretch without one
+  for (const [a, b] of [...sp, [T, T]]) { if (a - t > gap[1] - gap[0]) gap = [t, a]; t = Math.max(t, b); }
+  if (gap[1] - gap[0] < 1) return flashSt("The ramp covers the whole cut: drag its ends in to make room");
+  const beat = 60 / stBpm(), want = Math.min(gap[1] - gap[0], 8 * beat), mid = (gap[0] + gap[1]) / 2;
+  let a = Math.max(gap[0], fxSnap(mid - want / 2)), b = Math.min(gap[1], fxSnap(a + want));
+  if (b - a < 0.5) [a, b] = gap;
+  m.ramp.fx = [...sp, [a, b]]; fxTidy();
+  studio.fxSel = m.ramp.fx.findIndex(([p]) => p === Math.round(a * 1000) / 1000);
+  drawStudio();
+};
+$("#stFxList").addEventListener("click", e => {
+  const b = e.target.closest("[data-fx]"); if (!b || studio.busy) return;
+  const [i, k, d] = b.dataset.fx.split(","), r = studio.music.ramp;
+  r.fx = fxSpans().map(x => [...x]);
+  if (k === "x") r.fx.splice(+i, 1);
+  else {
+    const bs = tlBeats().map(([t]) => t), cur = r.fx[+i][+k];
+    const next = +d > 0 ? bs.find(t => t > cur + 0.02) : [...bs].reverse().find(t => t < cur - 0.02);
+    r.fx[+i][+k] = next ?? (cur + +d * 60 / stBpm());
+  }
+  studio.fxSel = k === "x" ? null : +i; fxTidy(); drawStudio();
+});
+// dragging a stretch: an end handle moves that end, the middle moves the whole stretch; ends snap to the beat
+let fxDrag = null;
+$("#stTrack").addEventListener("pointerdown", e => {
+  const f = e.target.closest(".fx"); if (!f || studio.busy) return;
+  const i = +f.dataset.i, h = e.target.closest(".h");
+  fxDrag = { i, f, mode: h ? (h.classList.contains("a") ? 0 : 1) : "move", x0: e.clientX, span: [...fxSpans()[i]], moved: false,
+             T: stTotal(), W: $("#stTrack").clientWidth };
+  studio.fxSel = i; $$("#stTrack .fx").forEach(x => x.classList.toggle("sel", x === f));
+  f.setPointerCapture(e.pointerId); e.preventDefault();
+});
+$("#stTrack").addEventListener("pointermove", e => {
+  const d = fxDrag; if (!d) return;
+  if (!d.moved && Math.abs(e.clientX - d.x0) < 4) return;     // a tap only picks it
+  if (!d.moved) { d.moved = true; studio.music.ramp.fx = fxSpans().map(x => [...x]); }     // "the whole cut" made explicit
+  const dt = (e.clientX - d.x0) / d.W * d.T, [a0, b0] = d.span, min = Math.min(0.5, b0 - a0);
+  let a = a0, b = b0;
+  if (d.mode === "move") { const L = b0 - a0; a = Math.max(0, Math.min(d.T - L, a0 + dt)); const s = fxSnap(a); if (s >= 0 && s + L <= d.T + 0.01) a = s; b = a + L; }
+  else if (d.mode === 0) a = Math.max(0, Math.min(b0 - min, fxSnap(a0 + dt)));
+  else b = Math.min(d.T, Math.max(a0 + min, fxSnap(b0 + dt)));
+  if (a0 + dt <= 0.05 && d.mode === 0) a = 0;
+  if (b0 + dt >= d.T - 0.05 && d.mode === 1) b = d.T;
+  studio.music.ramp.fx[d.i] = [a, b];
+  d.f.style.left = a / d.T * 100 + "%"; d.f.style.width = (b - a) / d.T * 100 + "%";
+  const row = $(`#stFxList .fxrow[data-i="${d.i}"] .ft span`); if (row) row.textContent = `Speed ramp ${mmss(a)} → ${mmss(b)}`;
+});
+const fxDrop = () => { const d = fxDrag; if (!d) return; fxDrag = null; if (d.moved) fxTidy(); drawStudio(); };
+$("#stTrack").addEventListener("pointerup", fxDrop);
+$("#stTrack").addEventListener("pointercancel", fxDrop);
+// Play all: a playhead along the timeline, from the song's position
+function tlLoop() {
+  const h = $("#stTrack .head"), a = studio.audio;
+  if (!studio.queueAll || !a || a.paused || !studio.music) { if (h) h.hidden = true; return; }
+  const ct = a.currentTime - studio.music.offset_ms / 1000, T = stTotal();
+  if (h) { h.hidden = ct < 0 || ct > T; h.style.left = Math.max(0, Math.min(100, ct / T * 100)) + "%"; }
+  requestAnimationFrame(tlLoop);
+}
 function stBpm() { const m = studio.music; return m ? (m.set_bpm || m.bpm) : 0; }
 function drawMusic() {
   const m = studio.music;
@@ -3589,7 +3749,11 @@ function drawMusic() {
   if (keepLines() && studio.clips.some(c => !(c.spoken && c.spoken_for && c.spoken_for[0] <= c.in_ms && c.spoken_for[1] >= c.out_ms))) stSpoken();
   if (rampOn()) {
     const keep = keepLines();
-    const secs = studio.clips.reduce((t, c) => t + (c.out_ms - c.in_ms) / 1000 - (keep ? rampKeep(c).reduce((k, [a, b]) => k + b - a, 0) : 0), 0);
+    let at = 0;
+    const secs = studio.clips.reduce((t, c) => {
+      const dur = (c.out_ms - c.in_ms) / 1000, cov = fxCover(at, dur); at += stLen(c) / 1000;
+      return t + cov * (1 - (keep ? rampKeep(c).reduce((k, [a, b]) => k + b - a, 0) / Math.max(0.1, dur) : 0));
+    }, 0);
     const short = studio.o.res || 720, mp = short * short * 16 / 9 / 1e6, cv = rampCurve(m.ramp), slow = cv.lo / cv.mean;
     const hi = (RAMP.strength[m.ramp.strength] || RAMP.strength.strong)[0];
     // how long this strength took per second of clip here before (web.RATES, mostly at 720), else the RIFE cost
@@ -3599,6 +3763,7 @@ function drawMusic() {
       + (m.ramp.peak === "on" ? "The peak lands right on the beat. "
          : `The curve runs ${Math.round(1000 * RAMP.lead[m.ramp.peak || "before"])} ms ahead of the song: motion reads a little late, so this feels on the beat. `)
       + (keep ? "Spoken lines ease back to normal speed and keep their sound; the ramp runs between them. " : "Lines are ramped too, so the clips' own sound is muted (the song carries it). ")
+      + (m.ramp.fx ? "It runs only in the purple stretches on the Timeline. " : "It runs through the whole cut: drag its ends on the Timeline to keep it to part of it. ")
       + `Each clip's own slow motion is replaced. Play all previews it. Adds about ${est < 60 ? Math.round(est / 5) * 5 + " s" : Math.round(est / 60) + " min"} to the render.`;
   }
   const beat = 60 / stBpm();

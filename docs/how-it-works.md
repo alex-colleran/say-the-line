@@ -243,6 +243,12 @@ Design notes: what each part does and why it is built that way. For setup, see t
   **Peak:** the curve is read `PEAK_LEAD` ahead of the song (Just before 80 ms, the default; Earlier
   160 ms; On the beat 0), so the fastest moment lands a little before each beat. Motion is perceived
   late, so a peak right on the beat feels behind it. Joins between clips stay on the beat itself.
+- **Effect stretches:** `music.ramp.fx` is a list of [start, end] seconds on the cut's own timeline
+  (none = the whole cut). `ramp.fx_spans` tidies them, `ramp.fx_part` cuts out each clip's share, and
+  `ramp.with_outside` adds the rest of the clip to its kept spans: outside the effect a clip is shown
+  frame for frame with its sound, exactly like a kept line, and the ramp eases in and out over 0.25 s
+  at each edge. A clip with no share renders as a plain clip (no RIFE). The clips' sound is muted in
+  the mix only when every clip is ramped through its lines.
 - **Kept lines:** with Lines at normal speed, `ramp.keep_spans` takes each word actually said
   (Whisper, `web.studio_spoken`; subtitles stay up well past the speech and would leave nothing to
   ramp), pads it (80 ms before, 150 ms after) and joins gaps under 0.6 s. Those frames show the

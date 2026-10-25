@@ -118,6 +118,48 @@ def phase(t, beats):
     return (t - beats[i]) / (beats[i + 1] - beats[i])
 
 
+def fx_spans(fx, total):
+    """The speed ramp's stretches of the cut (s on the cut's timeline), clipped, sorted and merged;
+    none given = the whole cut. Stretches under 0.2 s are dropped."""
+    if fx is None:
+        return [(0.0, float(total))]
+    out = []
+    for a, b in sorted((max(0.0, float(a)), min(float(total), float(b))) for a, b in fx):
+        if b - a < 0.2:
+            continue
+        if out and a <= out[-1][1]:
+            out[-1] = (out[-1][0], max(out[-1][1], b))
+        else:
+            out.append((a, b))
+    return out
+
+
+def fx_part(fx, t0, length):
+    """The effect's stretches that fall in one clip (starting at t0 on the cut, `length` s long), on
+    the clip's own timeline."""
+    return [(round(max(a, t0) - t0, 4), round(min(b, t0 + length) - t0, 4)) for a, b in fx
+            if min(b, t0 + length) - max(a, t0) > 0.05]
+
+
+def with_outside(keep, part, length):
+    """keep spans plus everything in the clip outside the effect (both shown at normal speed, with
+    their sound), merged."""
+    spans, t = list(keep), 0.0
+    for a, b in part:
+        if a > t:
+            spans.append((t, a))
+        t = max(t, b)
+    if t < length:
+        spans.append((t, length))
+    out = []
+    for a, b in sorted(spans):
+        if out and a <= out[-1][1] + 1e-6:
+            out[-1] = (out[-1][0], max(out[-1][1], b))
+        else:
+            out.append((a, b))
+    return [(round(a, 3), round(b, 3)) for a, b in out if b - a > 0.01]
+
+
 def _kept(t, keep):
     return any(a <= t < b for a, b in keep)
 

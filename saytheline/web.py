@@ -487,6 +487,9 @@ def job_size(kind, req):
     if kind == "studio":
         ramped = bool(((req.get("music") or {}).get("ramp") or {}).get("strength"))
         units = sum(max(0, int(c.get("out_ms", 0)) - int(c.get("in_ms", 0))) for c in req.get("clips") or []) / 1000
+        fx = req["music"]["ramp"].get("fx") if ramped else None
+        if fx is not None:          # most of a ramp's time goes on the stretches it covers
+            units = min(units, sum(max(0, float(b) - float(a)) for a, b in fx)) + 0.15 * units
         stems = req.get("audio") == "dialogue"
         key = "studio" + (":ramp:" + req["music"]["ramp"]["strength"] if ramped else "") + (":stems" if stems else "")
         phases = PHASES["studio:ramp" if ramped else "studio"]
@@ -1166,6 +1169,8 @@ def run_studio(job_id, req):
             clips = studio_snap(clips, song, mu)
         grid = [b - (mu.get("offset_ms") or 0) / 1000 for b in music.grid(song, float(mu.get("bpm") or song["bpm"]),
                                                                           (rp or {}).get("every") == "bar")] if rp else []
+        # the ramp's stretches of the cut (ramp.fx, s); a clip outside all of them plays as it is
+        fx = ramp.fx_spans(rp.get("fx"), sum(c["out_ms"] - c["in_ms"] for c in clips) / 1000 + 5) if rp else []
         segs, total = [], 0
         for i, c in enumerate(clips):
             stop_if_cancelled(job)
@@ -1189,17 +1194,19 @@ def run_studio(job_id, req):
                 raise ValueError(f"a Studio can run up to {SUPERCUT_MAX_SECONDS // 60} min: take some clips out")
             total += seg_len
             cues = clip_captions(row, a, b, creq)
+            part = ramp.fx_part(fx, (total - seg_len) / 1000, seg_len / 1000) if rp else []
             spoken = None
-            if rp and rp.get("lines", "keep") == "keep":
+            if part and rp.get("lines", "keep") == "keep":
                 spoken = studio_spoken(job, row, c, a, b, i, len(clips))
             if not c.get("edited"):
                 cues = lines_mostly_in(cues, a, b)
             seg = dict(item=row["id"], src=row["path"], in_ms=a, out_ms=b, cues=cues,
                        label=sc_label(row) if req.get("label") else None, slow=slow)
-            if rp:          # this clip's stretch of the cut, and the beats in it on its own timeline
+            if part:        # this clip's stretch of the cut, and the beats in it on its own timeline
                 t0 = (total - seg_len) / 1000
+                lines = ramp.keep_spans(spoken, a, b) if spoken is not None else []
                 seg["ramp"] = dict(length=seg_len / 1000, opts=rp, beats=[round(x - t0, 4) for x in grid],
-                                   keep=ramp.keep_spans(spoken, a, b) if spoken is not None else [])
+                                   keep=ramp.with_outside(lines, part, seg_len / 1000))
             segs.append(seg)
         if any(s["slow"] for s in segs) and not slowmo.rife():
             raise ValueError("slow motion needs rife-ncnn-vulkan installed on the server (see README)")
@@ -1211,10 +1218,12 @@ def run_studio(job_id, req):
         def progress(i, n, frames=None, of=None):
             stop_if_cancelled(job)
             job.update(state="rendering", done=i, total=n, frames=frames, frames_total=of)
+        # the clips' sound is gone only when every clip is ramped through its lines: then the song alone
+        mute_all = "mute" if all("ramp" in s and not s["ramp"]["keep"] for s in segs) else mu.get("clips")
         if rp:
             ow, oh = media.output_size(segs[0]["src"], {"aspect": req.get("aspect"), "res": req.get("res"), "fit": req.get("fit")})
             est = sum(ramp.estimate_s((s["out_ms"] - s["in_ms"]) / 1000, rp, ow, oh, slowmo.frame_rate(s["src"]),
-                                      sum(q - p for p, q in s["ramp"]["keep"])) for s in segs)
+                                      sum(q - p for p, q in s["ramp"]["keep"])) for s in segs if "ramp" in s)
             if est > RAMP_MAX_WORK_S:
                 raise ValueError(f"a speed ramp that long would take about {round(est / 60)} min to make: pick a smaller Size or fewer clips")
         t = time.time()
@@ -1226,7 +1235,7 @@ def run_studio(job_id, req):
             if song:
                 job.update(state="mixing")
                 music.mix(out + ".tmp.mp4", music.path(mu["id"]), dict(offset_s=(mu.get("offset_ms") or 0) / 1000,
-                          level=mu.get("level"), clips="mute" if rp and rp.get("lines") == "ramp" else mu.get("clips")), out + ".mix.mp4")
+                          level=mu.get("level"), clips=mute_all if rp else mu.get("clips")), out + ".mix.mp4")
                 os.replace(out + ".mix.mp4", out + ".tmp.mp4")
             os.replace(out + ".tmp.mp4", out)
         with open(out + ".json", "w") as f:
