@@ -11,6 +11,7 @@ import functools
 import hashlib
 import json
 import os
+import random
 import re
 import sqlite3
 import subprocess
@@ -1004,6 +1005,36 @@ def script_lines(item_id):
     return dict(item=item, lines=lines, prev=prev and prev[0], next=nxt and nxt[0]), "max-age=60"
 
 
+def _frame(item_id, runtime_s):         # a frame a third of the way in: past the titles
+    return f"/thumb/{item_id}/{int((runtime_s or 900) * 1000 * 0.33)}.jpg"
+
+
+def series_card(c, name, n, seasons):
+    """A show as the title picker shows it: its poster (/cover/ of its first episode), years, size."""
+    first = c.execute("SELECT id, runtime_s FROM items WHERE kind = 'episode' AND series = ? "
+                      "ORDER BY ifnull(season, 0) = 0, season, episode LIMIT 1", (name,)).fetchone()
+    y0, y1 = c.execute("SELECT min(year), max(year) FROM items WHERE kind = 'episode' AND series = ?", (name,)).fetchone()
+    return dict(kind="series", name=name, n=n, seasons=seasons, thumb=_frame(*first), cover=f"/cover/{first[0]}.jpg",
+                year=y0, years=(f"{y0}" if y0 == y1 else f"{y0}–{y1}") if y0 else "")
+
+
+def movie_card(i, title, year, rt):
+    return dict(kind="movie", id=i, title=title, year=year, thumb=_frame(i, rt), cover=f"/cover/{i}.jpg",
+                label=f"{title} ({year})" if year and not title.endswith(f"({year})") else title)
+
+
+def suggest(n=18):
+    """Titles to browse before typing: a random half shows, half movies."""
+    c = db()
+    shows = c.execute("SELECT series, COUNT(*), COUNT(DISTINCT ifnull(season, 0)) FROM items WHERE kind = 'episode' "
+                      "AND series IS NOT NULL GROUP BY series ORDER BY random() LIMIT ?", (n - n // 2,)).fetchall()
+    movies = c.execute("SELECT id, title, year, runtime_s FROM items WHERE kind = 'movie' ORDER BY random() LIMIT ?",
+                       (n // 2,)).fetchall()
+    out = [series_card(c, *r) for r in shows] + [movie_card(*r) for r in movies]
+    random.shuffle(out)
+    return out
+
+
 def browse(text, series=None, kind=None):
     """Titles that have a script: shows and movies whose name matches `text` (for main search,
     above the matching lines), or one show's episodes. Each title gets a frame to show."""
@@ -1016,20 +1047,14 @@ def browse(text, series=None, kind=None):
         return []
     like = f"%{text}%"
     out = []
-
-    def frame(item_id, runtime_s):         # a frame a third of the way in: past the titles
-        return f"/thumb/{item_id}/{int((runtime_s or 900) * 1000 * 0.33)}.jpg"
     if kind != "movie":
         for name, n, seasons in c.execute("SELECT series, COUNT(*), COUNT(DISTINCT ifnull(season, 0)) FROM items "
                                           "WHERE kind = 'episode' AND series LIKE ? GROUP BY series LIMIT 30", (like,)).fetchall():
-            first = c.execute("SELECT id, runtime_s FROM items WHERE kind = 'episode' AND series = ? "
-                              "ORDER BY ifnull(season, 0) = 0, season, episode LIMIT 1", (name,)).fetchone()
-            out.append(dict(kind="series", name=name, n=n, seasons=seasons, thumb=frame(*first)))
+            out.append(series_card(c, name, n, seasons))
     if kind != "episode":
-        for i, title, year, rt in c.execute("SELECT id, title, year, runtime_s FROM items WHERE kind = 'movie' AND title LIKE ? "
-                                            "LIMIT 30", (like,)).fetchall():
-            out.append(dict(kind="movie", id=i, label=f"{title} ({year})" if year and not title.endswith(f"({year})") else title,
-                            year=year, thumb=frame(i, rt)))
+        for row in c.execute("SELECT id, title, year, runtime_s FROM items WHERE kind = 'movie' AND title LIKE ? "
+                             "LIMIT 30", (like,)).fetchall():
+            out.append(movie_card(*row))
     # names that start with the text first ("Friends" before "Friends with Benefits" before "Best Friends")
     low = text.lower()
 
@@ -1275,6 +1300,8 @@ class Handler(BaseHTTPRequestHandler):
             if u.path == "/api/lines":            # a title's whole subtitle, for the script view
                 body, cache = script_lines(int(q["item"]))
                 return self.send(404 if "error" in body else 200, body, cache=cache)
+            if u.path == "/api/suggest":          # the script picker before anything is typed
+                return self.send(200, suggest(min(48, int(q.get("n") or 18))))
             if u.path == "/api/browse":           # the script view's title picker
                 return self.send(200, browse(q.get("q", ""), q.get("series"), q.get("kind")))
             if u.path == "/api/titles":           # every show and movie, for the title filter's "no hits" note

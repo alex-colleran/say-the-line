@@ -331,6 +331,18 @@
     border: 1px solid var(--line); color: var(--text); font: inherit; cursor: pointer; margin-bottom: 6px; }
   .sp-pick .res small { color: var(--dim); }
   .sp-pick h4 { margin: 10px 0 4px; color: var(--dim); font-weight: 600; font-size: 13px; }
+  /* the picker's poster cards: Recent, Suggestions, and what a typed name finds */
+  .sp-sec { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin: 12px 0 8px; }
+  .sp-sec h4 { margin: 0; }
+  .sp-pick .res .sp-sec button { width: auto; min-height: 40px; padding: 0 12px; display: inline-flex; align-items: center; gap: 6px; }
+  .pgrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(104px, 1fr)); gap: 14px 10px; }
+  .sp-pick .res .pgrid button { display: flex; flex-direction: column; gap: 3px; min-height: 0; padding: 0; background: none;
+    border: 0; border-radius: 6px; text-align: left; color: var(--text); }
+  .pgrid .pp { display: block; aspect-ratio: 2 / 3; border-radius: 6px; overflow: hidden; background: var(--panel); margin-bottom: 3px; }
+  .pgrid .pp img { display: block; width: 100%; height: 100%; object-fit: cover; }
+  .pgrid b { font-size: 13px; font-weight: 600; line-height: 1.25; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+  .pgrid small { font-size: 12px; line-height: 1.3; }
+  .pgrid button:focus-visible .pp { outline: 2px solid var(--accent); outline-offset: 2px; }
   /* one card per piece: ‹ thumbnail + source › on top (the chevrons swap takes), then the trim */
   .sa-row { position: relative; display: flex; flex-direction: column; gap: 10px; padding: 10px 10px 12px;
     background: var(--panel); border: 1px solid var(--line); }
@@ -396,6 +408,7 @@
 <symbol id="i-right" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 6l6 6l-6 6"/></g></symbol>
 <symbol id="i-movie" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 4m0 2a2 2 0 0 1 2 -2h12a2 2 0 0 1 2 2v12a2 2 0 0 1 -2 2h-12a2 2 0 0 1 -2 -2z"/> <path d="M8 4l0 16"/> <path d="M16 4l0 16"/> <path d="M4 8l4 0"/> <path d="M4 16l4 0"/> <path d="M4 12l16 0"/> <path d="M16 8l4 0"/> <path d="M16 16l4 0"/></g></symbol>
 <symbol id="i-camera" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 7h1a2 2 0 0 0 2 -2a1 1 0 0 1 1 -1h6a1 1 0 0 1 1 1a2 2 0 0 0 2 2h1a2 2 0 0 1 2 2v9a2 2 0 0 1 -2 2h-14a2 2 0 0 1 -2 -2v-9a2 2 0 0 1 2 -2"/> <path d="M9 13a3 3 0 1 0 6 0a3 3 0 0 0 -6 0"/></g></symbol>
+<symbol id="i-shuffle" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 4l3 3l-3 3"/> <path d="M18 20l3 -3l-3 -3"/> <path d="M3 7h3a5 5 0 0 1 5 5a5 5 0 0 0 5 5h5"/> <path d="M21 7h-5a4.978 4.978 0 0 0 -3 1m-4 8a4.984 4.984 0 0 1 -3 1h-3"/></g></symbol>
 <symbol id="i-repeat" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12v-3a3 3 0 0 1 3 -3h13m-3 -3l3 3l-3 3"/> <path d="M20 12v3a3 3 0 0 1 -3 3h-13m3 3l-3 -3l3 -3"/></g></symbol>
 <symbol id="i-volume" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 8a5 5 0 0 1 0 8"/> <path d="M17.7 5a9 9 0 0 1 0 14"/> <path d="M6 15h-2a1 1 0 0 1 -1 -1v-4a1 1 0 0 1 1 -1h2l3.5 -4.5a.8 .8 0 0 1 1.5 .5v14a.8 .8 0 0 1 -1.5 .5l-3.5 -4.5"/></g></symbol>
 <symbol id="i-volume-off" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 8a5 5 0 0 1 1.912 4.934m-1.377 2.602a5 5 0 0 1 -.535 .464"/> <path d="M17.7 5a9 9 0 0 1 2.362 11.086m-1.676 2.299a9 9 0 0 1 -.686 .615"/> <path d="M9.069 5.054l.431 -.554a.8 .8 0 0 1 1.5 .5v2m0 4v8a.8 .8 0 0 1 -1.5 .5l-3.5 -4.5h-2a1 1 0 0 1 -1 -1v-4a1 1 0 0 1 1 -1h2l1.294 -1.664"/> <path d="M3 3l18 18"/></g></symbol>
@@ -2910,6 +2923,7 @@ async function openScript(itemId, idx) {
   Object.assign(sp, { item: d.item, lines: d.lines, prev: d.prev, next: d.next, matches: [], cur: -1, marked: new Set(), sel: null });
   sp.tok = d.lines.map(l => spTokens(l[3]));
   const it = d.item;
+  if (it.kind === "movie") spRemember({ kind: "movie", id: it.id, title: it.title, year: it.year, cover: `/cover/${it.id}.jpg` });
   $("#spTitle").innerHTML = it.kind === "episode"
     ? `${esc(it.series)} · S${String(it.season ?? 0).padStart(2, "0")}E${String(it.episode ?? 0).padStart(2, "0")}<small>${esc(it.title)} · ${d.lines.length} lines</small>`
     : `${esc(it.label)}<small>${d.lines.length} lines</small>`;
@@ -3033,16 +3047,45 @@ function spPicker() {
 }
 let spPickTimer;
 $("#spPickQ").addEventListener("input", e => { clearTimeout(spPickTimer); spPickTimer = setTimeout(() => spPickFind(e.target.value), 200); });
+// poster cards: a show opens its seasons, a movie its script; a missing poster falls back to a frame
+const SP_RECENT = "saytheline.scripts.recent";
+function spCard(x) {
+  const title = x.kind === "series" ? x.name : (x.title || x.label);
+  const meta = x.kind === "series"
+    ? [x.years, x.n ? `${x.n} episode${x.n === 1 ? "" : "s"}` : "show"].filter(Boolean).join(" · ")
+    : [x.year, "movie"].filter(Boolean).join(" · ");
+  const key = x.kind === "series" ? `data-series="${esc(x.name)}"` : `data-id="${x.id}"`;
+  const fb = x.thumb ? `this.onerror=null;this.src='${x.thumb}'` : "this.remove()";
+  return `<button ${key} aria-label="${esc(title)}${meta ? ", " + esc(meta) : ""}"><span class="pp"><img loading="lazy" alt="" src="${x.cover || x.thumb}" onerror="${fb}"></span>`
+    + `<b>${esc(title)}</b><small>${esc(meta)}</small></button>`;
+}
+function spRecentList() { try { return JSON.parse(localStorage.getItem(SP_RECENT) || "[]"); } catch (e) { return []; } }
+function spRemember(x) {
+  const k = c => c.kind === "series" ? "s:" + c.name : "m:" + c.id;
+  const list = [x, ...spRecentList().filter(c => k(c) !== k(x))].slice(0, 12);
+  try { localStorage.setItem(SP_RECENT, JSON.stringify(list)); } catch (e) {}
+}
 async function spPickFind(q) {
   const res = $("#spPickRes");
-  if (!q.trim()) { res.innerHTML = `<div class="hint">Type part of a name. Only titles with subtitles have a script.</div>`; return; }
+  if (!q.trim()) return spSuggest();
   const list = await (await fetch("/api/browse?q=" + encodeURIComponent(q))).json();
-  res.innerHTML = list.length ? list.map(x => x.kind === "series"
-    ? `<button data-series="${esc(x.name)}">${esc(x.name)} <small>· ${x.n} episodes</small></button>`
-    : `<button data-id="${x.id}">${esc(x.label)} <small>· movie</small></button>`).join("") : `<div class="hint">No title with subtitles matches.</div>`;
+  if ($("#spPickQ").value !== q) return;            // typed on meanwhile
+  res.innerHTML = list.length ? `<div class="pgrid">${list.map(spCard).join("")}</div>` : `<div class="hint">No title with subtitles matches.</div>`;
+}
+// before anything is typed: titles opened lately, then a shuffled handful of shows and movies
+async function spSuggest() {
+  const res = $("#spPickRes"), recent = spRecentList();
+  const head = (recent.length ? `<div class="sp-sec"><h4>Recent</h4></div><div class="pgrid">${recent.slice(0, 6).map(spCard).join("")}</div>` : "")
+    + `<div class="sp-sec"><h4>Suggestions</h4><button class="b" data-shuffle>${ic("shuffle")}Shuffle</button></div>`;
+  res.innerHTML = head + `<div class="pgrid" id="spSuggest"><div class="hint">Loading…</div></div>`;
+  let list = [];
+  try { list = await (await fetch("/api/suggest?n=18")).json(); } catch (e) {}
+  const g = $("#spSuggest"); if (!g || $("#spPickQ").value.trim()) return;
+  g.innerHTML = list.length ? list.map(spCard).join("") : `<div class="hint">Type part of a name. Only titles with subtitles have a script.</div>`;
 }
 $("#spPickRes").addEventListener("click", e => {
   const b = e.target.closest("button"); if (!b) return;
+  if (b.dataset.shuffle !== undefined) return spSuggest();
   if (b.dataset.id) return openScript(Number(b.dataset.id));
   if (b.dataset.series) return openSeries(b.dataset.series);
   if (b.dataset.season !== undefined) return spSeason(Number(b.dataset.season));
@@ -3056,6 +3099,7 @@ async function openSeries(name) {
   $("#spLines").innerHTML = ""; $("#spTicks").innerHTML = "";
   if (sp.series !== name || !sp.eps) { sp.series = name; sp.eps = await (await fetch("/api/browse?series=" + encodeURIComponent(name))).json(); }
   const seasons = [...new Set(sp.eps.map(x => x.season || 0))];
+  if (sp.eps.length) spRemember({ kind: "series", name, n: sp.eps.length, cover: `/cover/${sp.eps[0].id}.jpg`, thumb: null });
   if (seasons.length === 1) return spSeason(seasons[0], true);
   $("#spTitle").innerHTML = `${esc(name)}<small>${seasons.length} seasons · ${sp.eps.length} episodes</small>`;
   $("#spPickRes").innerHTML = seasons.map(n => {
