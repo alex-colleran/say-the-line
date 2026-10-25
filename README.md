@@ -75,7 +75,8 @@ It runs on the machine that has your media, next to Jellyfin, and is used from a
   **Speed ramp**: the picture speeds up on every beat (or bar) and slows between, easing along a
   smooth or sharp curve, with the slow stretches made smooth by RIFE: Subtle (1.8x to 0.55x), Strong
   (3.5x to 0.3x) or Extreme (6x to 0.15x). Each beat averages normal speed, so the cut keeps its
-  length. Spoken lines can stay at normal speed with their sound (the ramp runs between them, timed
+  length. The peak lands just before each beat by default (motion reads a little late, so that
+  feels on it), or earlier, or right on it. Spoken lines can stay at normal speed with their sound (the ramp runs between them, timed
   from the words actually said) or be ramped too, under the song alone. Play all previews it.
   **Film sound: Dialogue only** strips the films' own music and effects from the whole cut (demucs).
 - **Time left**: every wait (renders, slow motion, listening, supercuts, Studio) shows how far along

@@ -25,6 +25,9 @@ from . import config, slowmo
 
 STRENGTH = {"subtle": (1.8, 0.55), "strong": (3.5, 0.3), "extreme": (6.0, 0.15)}   # (fastest, slowest)
 SHAPES = ("smooth", "sharp")
+# how far ahead of the beat the curve's peak lands (s): motion reads as late, so a peak a little
+# before the beat feels on it
+PEAK_LEAD = {"on": 0.0, "before": 0.08, "earlier": 0.16}
 EDGE = 0.08                    # Sharp: each switch between slow and fast takes this share of a beat
 OUT_FPS = 30
 STEPS = 2000                   # samples per beat for the mean
@@ -127,10 +130,11 @@ def source_times(length_out, length_src, beats, opts, fps=OUT_FPS, keep=()):
     n = max(1, round(length_out * fps))
     scale = length_src / length_out if length_out else 1.0
     fast = opts.get("direction", "beat") == "beat"
+    lead = PEAK_LEAD.get(opts.get("peak"), PEAK_LEAD["before"])
     mids = [(i + 0.5) / fps for i in range(n)]
     v = []
     for t in mids:
-        x = speed(phase(t, beats), opts.get("strength"), opts.get("shape"), fast)
+        x = speed(phase(t + lead, beats), opts.get("strength"), opts.get("shape"), fast)
         if keep:
             d = min(min(abs(t - a), abs(t - b)) for a, b in keep)
             x = 1.0 if _kept(t, keep) else 1 + (x - 1) * min(1.0, d / EASE_S)

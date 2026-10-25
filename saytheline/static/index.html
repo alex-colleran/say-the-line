@@ -794,6 +794,7 @@
           <div class="opt"><span>Curve</span><div class="chips" data-str="shape"></div></div>
           <div class="opt"><span>Fast</span><div class="chips" data-str="direction"></div></div>
           <div class="opt"><span>Every</span><div class="chips" data-str="every"></div></div>
+          <div class="opt"><span>Peak</span><div class="chips" data-str="peak"></div></div>
           <div class="opt"><span>Lines</span><div class="chips" data-str="lines"></div></div>
           <div class="hint" id="stRampHint"></div>
         </div>
@@ -3294,7 +3295,7 @@ function rampGrid() {
 }
 function rampLoop() {
   if (!studio.queueAll || !rampOn() || !studio.audio || studio.audio.paused || !studio.vid) return;
-  const g = studio.grid, t = studio.audio.currentTime;
+  const g = studio.grid, t = studio.audio.currentTime + (RAMP.lead[studio.music.ramp.peak] ?? RAMP.lead.before);
   let i = 0; while (i + 1 < g.length && g[i + 1] <= t) i++;
   const p = i + 1 < g.length && g[i] <= t ? (t - g[i]) / (g[i + 1] - g[i]) : 0;
   let rate = rampSpeed(p, studio.music.ramp), kept = false;
@@ -3469,13 +3470,15 @@ const STM_CHOICES = {
 };
 // = ramp.py: speed within a beat (phase 0 = on the beat), averaging 1 over the beat. A strength is
 // the fastest and slowest speed; the bump's shape is solved so the beat averages normal speed.
-const RAMP = { strength: { subtle: [1.8, 0.55], strong: [3.5, 0.3], extreme: [6, 0.15] }, edge: 0.08, steps: 2000, keep: [0.08, 0.15, 0.6], ease: 0.25 };
+const RAMP = { strength: { subtle: [1.8, 0.55], strong: [3.5, 0.3], extreme: [6, 0.15] }, edge: 0.08, steps: 2000, keep: [0.08, 0.15, 0.6], ease: 0.25,
+  lead: { on: 0, before: 0.08, earlier: 0.16 } };   // = ramp.PEAK_LEAD
 const STR_CHOICES = {
   strength: [["off", "Off"], ["subtle", "Subtle"], ["strong", "Strong"], ["extreme", "Extreme"]],
   shape: [["smooth", "Smooth"], ["sharp", "Sharp"]],
   direction: [["beat", "On the beat"], ["between", "Between beats"]],
   every: [["beat", "Beat"], ["bar", "Bar"]],
   lines: [["keep", "Normal speed"], ["ramp", "Ramped too"]],
+  peak: [["before", "Just before"], ["earlier", "Earlier"], ["on", "On the beat"]],
 };
 function rampBump(p, shape, c) {
   if (shape === "sharp") {
@@ -3564,7 +3567,7 @@ function drawMusic() {
       box.appendChild(c);
     });
   });
-  m.ramp = { strength: "off", shape: "smooth", direction: "beat", every: "beat", lines: "keep", ...(m.ramp || {}) };
+  m.ramp = { strength: "off", shape: "smooth", direction: "beat", every: "beat", lines: "keep", peak: "before", ...(m.ramp || {}) };
   $$("[data-str]").forEach(box => {
     const key = box.dataset.str; box.innerHTML = "";
     STR_CHOICES[key].forEach(([v, label]) => {
@@ -3593,6 +3596,8 @@ function drawMusic() {
     const rate = (SERVER.rates || {})["studio:ramp:" + m.ramp.strength];
     const est = rate ? rate * secs * mp / (720 * 1280 / 1e6) : secs * 24 * Math.min(10, Math.max(1, Math.ceil(30 / slow / 24))) * mp * (SERVER.slow_secs_per_mpix_frame || 0.15) + 10;
     $("#stRampHint").textContent = `The picture runs up to ${hi}× fast ${m.ramp.direction === "between" ? "between beats and slows to " + Math.round(slow * 100) / 100 + "× on them" : "on every " + m.ramp.every + " and slows to " + Math.round(slow * 100) / 100 + "× between"}, ${m.ramp.shape === "sharp" ? "snapping" : "easing"} from one to the other; each ${m.ramp.every} still averages normal speed, so the cut keeps its length. `
+      + (m.ramp.peak === "on" ? "The peak lands right on the beat. "
+         : `The curve runs ${Math.round(1000 * RAMP.lead[m.ramp.peak || "before"])} ms ahead of the song: motion reads a little late, so this feels on the beat. `)
       + (keep ? "Spoken lines ease back to normal speed and keep their sound; the ramp runs between them. " : "Lines are ramped too, so the clips' own sound is muted (the song carries it). ")
       + `Each clip's own slow motion is replaced. Play all previews it. Adds about ${est < 60 ? Math.round(est / 5) * 5 + " s" : Math.round(est / 60) + " min"} to the render.`;
   }

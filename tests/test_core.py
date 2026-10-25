@@ -571,13 +571,22 @@ class SpeedRamp(unittest.TestCase):
     def test_source_times_cover_the_clip_in_step_with_the_beat(self):
         from saytheline import ramp
         beats = [0.5 * k for k in range(12)]
-        t = ramp.source_times(4.0, 4.0, beats, dict(strength="strong", shape="smooth"))
+        t = ramp.source_times(4.0, 4.0, beats, dict(strength="strong", shape="smooth", peak="on"))
         self.assertEqual(len(t), 120)
         self.assertTrue(all(b > a for a, b in zip(t, t[1:])))
         self.assertAlmostEqual(t[-1], 4.0, delta=0.1)          # the middle of a fast last frame
         for b in beats[1:8]:              # on each beat the picture is back in step with the song
             self.assertAlmostEqual(t[int(b * 30)], b, delta=0.07)     # half a 3.5x frame past it
         self.assertAlmostEqual(ramp.map_time(t[45], t), 45.5 / 30, places=3)
+
+    def test_peak_lands_just_before_the_beat(self):
+        from saytheline import ramp
+        beats = [0.5 * k for k in range(12)]
+        for peak, lead in ramp.PEAK_LEAD.items():
+            t = ramp.source_times(4.0, 4.0, beats, dict(strength="strong", peak=peak))
+            for b in beats[2:7]:          # the fastest frame around each beat
+                f = max(range(int((b - 0.25) * 30), int((b + 0.25) * 30)), key=lambda f: t[f + 1] - t[f])
+                self.assertAlmostEqual((f + 1) / 30, b - lead, delta=0.04, msg=peak)
 
     def test_strengths_are_far_apart(self):
         from saytheline import ramp

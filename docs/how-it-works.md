@@ -240,6 +240,9 @@ Design notes: what each part does and why it is built that way. For setup, see t
   speed, at most 10) and each output frame takes the nearest dense frame. Captions follow by the
   inverse map, and a clip's own slow motion is replaced. JS `rampSpeed` = `ramp.speed`; the preview
   sets the clip's playbackRate from the song's position every frame.
+  **Peak:** the curve is read `PEAK_LEAD` ahead of the song (Just before 80 ms, the default; Earlier
+  160 ms; On the beat 0), so the fastest moment lands a little before each beat. Motion is perceived
+  late, so a peak right on the beat feels behind it. Joins between clips stay on the beat itself.
 - **Kept lines:** with Lines at normal speed, `ramp.keep_spans` takes each word actually said
   (Whisper, `web.studio_spoken`; subtitles stay up well past the speech and would leave nothing to
   ramp), pads it (80 ms before, 150 ms after) and joins gaps under 0.6 s. Those frames show the
