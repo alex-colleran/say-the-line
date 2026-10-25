@@ -184,7 +184,14 @@ Design notes: what each part does and why it is built that way. For setup, see t
 - **Cost:** about 0.15 s per megapixel of each frame RIFE writes on a Radeon 680M (47 s to slow
   2 s of 1920×800 to 4×; 13 s at 1152×480). A part estimated at over 5 minutes is refused. It runs in
   `RENDER_SLOT` like any render, and the job reports `slowing` with frames done / total.
-- **Preview:** the editor plays the part at `1/factor` speed (`preservesPitch` off for Deep, muted
+- **60 fps (`smooth`):** the same machinery at normal speed: every span of the cut is made of RIFE
+  frames, n × 60 / source fps of them (2.5× for 24 fps), played at 60 fps; with slow motion too, the
+  slow span gets factor × that. A source already within 15 % of 60 fps is left alone, and GIFs (12 fps)
+  never use it. Cost is the whole clip's frames: about 80 s for 10 s at 720p.
+- **Preview button:** a render with `preview: true`: at most 360p, just the slow part ±0.7 s (or the
+  first 3 s at 60 fps), written to `previews/interp/` (pruned with the other previews), never to
+  All rendered.
+- **Live preview:** the editor plays the part at `1/factor` speed (`preservesPitch` off for Deep, muted
   for Silent), so the timing matches the render; only the extra frames are missing.
 
 ## Supercut

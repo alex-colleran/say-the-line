@@ -1,5 +1,6 @@
-"""Slow motion: one part of a cut played 2x or 4x slower, with the missing frames made up by RIFE
-(rife-ncnn-vulkan, on the GPU through Vulkan) rather than repeated or blended.
+"""Slow motion and smooth playback: one part of a cut played 2x or 4x slower, and/or the whole cut at
+60 fps, with the missing frames made up by RIFE (rife-ncnn-vulkan, on the GPU through Vulkan)
+rather than repeated or blended.
 
 The slowed cut is built first as an intermediate video (`master`): the part before at normal
 speed, the slow part from RIFE's frames, the part after, already cropped and scaled to the output
@@ -24,6 +25,8 @@ MIN_PART_MS = 200
 # (Vulkan): 0.24 s a 1920x800 frame, 0.07 s a 1152x480 one. Used for the estimate and the limit.
 SECS_PER_MPIX_FRAME = 0.15
 MAX_WORK_S = 300                     # a slow part estimated to take longer than this is refused
+SMOOTH_FPS = (60,)                   # "smooth": every frame in between made up, at normal speed
+SMOOTH_MIN_GAIN = 1.15               # a source within this of the target (50 fps for 60) is left alone
 
 
 def rife():
@@ -142,90 +145,112 @@ def _interpolate(tool, frames_in, frames_out, want, tmp, progress):
         raise RuntimeError(f"frame interpolation failed ({made} of {want} frames): " + err.strip()[-300:])
 
 
-def master(src, in_ms, out_ms, part, chain, size, audio, tmp, progress=None):
-    """The slowed cut as tmp/master.mkv: the source from in_ms to out_ms through the geometry chain
-    (crop/scale/pad to the output size), with part = (a, b, factor, sound) slowed. `audio` is the
-    source's audio track index, or None. Returns (path, fps). progress(done, total) while RIFE runs."""
-    a, b, factor, sound = part
+def smooth_of(req, src_fps=None):
+    """The output frame rate asked for (`smooth`: 60), or 0 for the source's own. A source already
+    near it (a 50 or 60 fps file) is left as it is."""
+    want = int(req.get("smooth") or 0)
+    if want not in (0,) + SMOOTH_FPS:
+        raise ValueError(f"smooth playback is {' or '.join(map(str, SMOOTH_FPS))} fps")
+    if want and src_fps and src_fps * SMOOTH_MIN_GAIN >= want:
+        return 0
+    return want
+
+
+def work_s(parts, fps, out_fps, w, h):
+    """Seconds RIFE should take for these parts [(a, b, factor)] at an output size and frame rate."""
+    return sum(estimate_s(b - a, f * out_fps / fps, w, h, fps) for a, b, f in parts if f * out_fps / fps > 1.001)
+
+
+def master(src, in_ms, out_ms, part, chain, size, audio, tmp, progress=None, smooth=0):
+    """The cut as tmp/master.mkv, ready for media.render: the source from in_ms to out_ms through the
+    geometry chain (crop/scale/pad to the output size), with part = (a, b, factor, sound) slowed
+    (or None), at `smooth` fps when that is set (0: the source's rate). Every part that needs frames
+    the source doesn't have goes through RIFE. `audio` is the source's audio track index, or None.
+    Returns (path, fps). progress(done, total) while RIFE runs."""
     tool = rife()
     if not tool:
-        raise RuntimeError("slow motion needs rife-ncnn-vulkan (see README)")
+        raise RuntimeError("slow motion and smooth playback need rife-ncnn-vulkan (see README)")
     fps = frame_rate(src)
+    out_fps = smooth or fps
     w, h = size
-    if estimate_s(b - a, factor, w, h, fps) > MAX_WORK_S:
-        raise ValueError("that slow part would take over 5 minutes to make: pick a smaller Size or a shorter part")
-    dur = (out_ms - in_ms) / 1000
+    dur_ms = out_ms - in_ms
+    a, b, factor, sound = part or (0, dur_ms, 1, "deep")
+    spans = [x for x in ((0, a, 1), (a, b, factor), (b, dur_ms, 1)) if x[1] - x[0] > 0]
+    if work_s(spans, fps, out_fps, w, h) > MAX_WORK_S:
+        raise ValueError("that would take over 5 minutes to make: pick a smaller Size, a shorter clip or a shorter slow part")
     geo = ",".join(chain) if chain else "null"
-    src_in = ["-ss", f"{in_ms / 1000:.3f}", "-t", f"{dur:.3f}", "-i", src]
-    # 1. the slow part's frames at the output size, one folder per shot: RIFE interpolating across a
-    #    camera cut morphs one shot into the next, so each shot is slowed on its own. Trimmed from
-    #    the same -ss point as the master below, so the frames either side of each join are the ones
-    #    the trims leave out.
-    bounds = [a] + [c - in_ms for c in camera_cuts(src, in_ms + a, in_ms + b, fps)] + [b]
-    shots = []
-    for k, (x, y) in enumerate(zip(bounds, bounds[1:])):
-        d = os.path.join(tmp, f"in{k}")
-        os.makedirs(d)
-        r = subprocess.run([*config.nice(), "ffmpeg", "-v", "error", "-nostdin", "-y", *src_in, "-map", "0:v:0",
-                            "-vf", f"trim=start={x / 1000:.3f}:end={y / 1000:.3f},setpts=PTS-STARTPTS,{geo},setsar=1",
-                            "-fps_mode", "passthrough", os.path.join(d, "%06d.png")], capture_output=True, timeout=300)
-        if r.returncode != 0:
-            raise RuntimeError("could not read the slow part's frames: " + r.stderr.decode(errors="replace").strip()[-300:])
-        if os.listdir(d):
-            shots.append(d)
-    if not shots:
-        raise RuntimeError("the slow part has no frames")
-    # 2. RIFE: each shot's n frames in, n x factor out, evenly spaced in time; then all of them in
-    #    order in one folder for the master
-    frames_out = os.path.join(tmp, "out")
-    os.makedirs(frames_out)
-    total, done = sum(len(os.listdir(d)) for d in shots) * factor, 0
-    for k, d in enumerate(shots):
+    src_in = ["-ss", f"{in_ms / 1000:.3f}", "-t", f"{dur_ms / 1000:.3f}", "-i", src]
+    # Each span is either trimmed straight from the source (normal speed at its own rate) or made of
+    # frames: read at the output size, one folder per camera shot (RIFE across a cut morphs one shot
+    # into the next), then RIFE makes n x factor x out_fps / fps of them, played at out_fps. All are
+    # trimmed from the same -ss point, so the frames either side of each join are the ones the trims
+    # leave out.
+    made, jobs = [], []          # made: (span index, frames folder); jobs: (shot folder, frames wanted, span index)
+    for i, (x, y, f) in enumerate(spans):
+        k = f * out_fps / fps
+        if k <= 1.001:
+            continue
+        bounds = [x] + [c - in_ms for c in camera_cuts(src, in_ms + x, in_ms + y, fps)] + [y]
+        for j, (p, q) in enumerate(zip(bounds, bounds[1:])):
+            d = os.path.join(tmp, f"in{i}_{j}")
+            os.makedirs(d)
+            r = subprocess.run([*config.nice(), "ffmpeg", "-v", "error", "-nostdin", "-y", *src_in, "-map", "0:v:0",
+                                "-vf", f"trim=start={p / 1000:.3f}:end={q / 1000:.3f},setpts=PTS-STARTPTS,{geo},setsar=1",
+                                "-fps_mode", "passthrough", os.path.join(d, "%06d.png")], capture_output=True, timeout=300)
+            if r.returncode != 0:
+                raise RuntimeError("could not read the frames: " + r.stderr.decode(errors="replace").strip()[-300:])
+            n = len(os.listdir(d))
+            if n:
+                jobs.append((d, max(1, round(n * k)), i))
+        made.append(i)
+    if not jobs and made:
+        raise RuntimeError("no frames to slow down")
+    total, done = sum(want for _, want, _ in jobs), 0
+    folders = {}
+    for k, (d, want, i) in enumerate(jobs):
         out_k = os.path.join(tmp, f"out{k}")
         os.makedirs(out_k)
-        want = len(os.listdir(d)) * factor
         _interpolate(tool, d, out_k, want, tmp, lambda n: progress and progress(done + n, total))
-        for f in sorted(os.listdir(out_k)):
+        dest = folders.setdefault(i, os.path.join(tmp, f"span{i}"))
+        os.makedirs(dest, exist_ok=True)
+        for fname in sorted(os.listdir(out_k)):
             done += 1
-            os.replace(os.path.join(out_k, f), os.path.join(frames_out, f"{done:08d}.jpg"))
-    if progress:
+            os.replace(os.path.join(out_k, fname), os.path.join(dest, f"{len(os.listdir(dest)) + 1:08d}.jpg"))
+    if progress and total:
         progress(total, total)
-    # 3. the master: before | RIFE frames (played at the source rate, so `factor` times slower) | after.
-    #    Only the parts there are: a slow part can start at the in point or end at the out point.
-    sa, sb = a / 1000, b / 1000
-    norm = f"setsar=1,fps={fps:.5f},format=yuv420p"
-    parts = [("pre", f"trim=end={sa:.3f}", f"atrim=end={sa:.3f}")] if a > 0 else []
-    parts.append(("slow", None, f"atrim=start={sa:.3f}:end={sb:.3f}"))
-    if b < out_ms - in_ms:
-        parts.append(("post", f"trim=start={sb:.3f}", f"atrim=start={sb:.3f}"))
-    src_parts = [x for x in parts if x[0] != "slow"]
-    graph = []
-    if src_parts:
-        graph.append("[0:v:0]" + (f"split={len(src_parts)}" if len(src_parts) > 1 else "null")
-                     + "".join(f"[s{k}]" for k in range(len(src_parts))))
-    for k, (name, trim, _) in enumerate(src_parts):
-        graph.append(f"[s{k}]{trim},setpts=PTS-STARTPTS,{geo},{norm}[v{name}]")
-    graph.append(f"[1:v]{norm}[vslow]")
+    # the master: the spans in order, each from the source or from its frames, at out_fps
+    norm = f"setsar=1,fps={out_fps:.5f},format=yuv420p"
+    inputs, graph = [], []
+    straight = [i for i in range(len(spans)) if i not in folders]
+    if straight:
+        graph.append("[0:v:0]" + (f"split={len(straight)}" if len(straight) > 1 else "null")
+                     + "".join(f"[s{i}]" for i in straight))
+    for i, (x, y, f) in enumerate(spans):
+        if i in folders:
+            inputs += ["-framerate", f"{out_fps:.5f}", "-i", os.path.join(folders[i], "%08d.jpg")]
+            graph.append(f"[{len(inputs) // 4}:v]{norm}[v{i}]")
+        else:
+            graph.append(f"[s{i}]trim=start={x / 1000:.3f}:end={y / 1000:.3f},setpts=PTS-STARTPTS,{geo},{norm}[v{i}]")
     if audio is not None:
-        slow_a = {"deep": f"asetrate={48000 // factor},aresample=48000",
-                  "pitch": ",".join(["atempo=0.5"] * (2 if factor == 4 else 1)),
-                  "mute": f"asetrate={48000 // factor},aresample=48000,volume=0"}[sound]
+        slow_a = {"deep": f"asetrate={48000 // max(1, factor)},aresample=48000",
+                  "pitch": ",".join(["atempo=0.5"] * (2 if factor == 4 else 1)) or "anull",
+                  "mute": f"asetrate={48000 // max(1, factor)},aresample=48000,volume=0"}[sound]
         fade = "afade=t=in:d=0.01,areverse,afade=t=in:d=0.01,areverse"       # no click at the joins
         graph.append(f"[0:a:{audio}]aresample=48000,aformat=channel_layouts=stereo,"
-                     + (f"asplit={len(parts)}" if len(parts) > 1 else "anull") + "".join(f"[x{k}]" for k in range(len(parts))))
-        for k, (name, _, atrim) in enumerate(parts):
-            graph.append(f"[x{k}]{atrim},asetpts=PTS-STARTPTS,{slow_a + ',' if name == 'slow' else ''}{fade}[a{name}]")
-        graph.append("".join(f"[v{n}][a{n}]" for n, _, _ in parts) + f"concat=n={len(parts)}:v=1:a=1[v][a]")
+                     + (f"asplit={len(spans)}" if len(spans) > 1 else "anull") + "".join(f"[x{i}]" for i in range(len(spans))))
+        for i, (x, y, f) in enumerate(spans):
+            graph.append(f"[x{i}]atrim=start={x / 1000:.3f}:end={y / 1000:.3f},asetpts=PTS-STARTPTS,"
+                         f"{slow_a + ',' if f > 1 else ''}{fade}[a{i}]")
+        graph.append("".join(f"[v{i}][a{i}]" for i in range(len(spans))) + f"concat=n={len(spans)}:v=1:a=1[v][a]")
         maps = ["-map", "[v]", "-map", "[a]", "-c:a", "pcm_s16le"]
     else:
-        graph.append("".join(f"[v{n}]" for n, _, _ in parts) + f"concat=n={len(parts)}:v=1:a=0[v]")
+        graph.append("".join(f"[v{i}]" for i in range(len(spans))) + f"concat=n={len(spans)}:v=1:a=0[v]")
         maps = ["-map", "[v]"]
     out = os.path.join(tmp, "master.mkv")
-    r = subprocess.run([*config.nice(), "ffmpeg", "-v", "error", "-nostdin", "-y", *src_in,
-                        "-framerate", f"{fps:.5f}", "-i", os.path.join(frames_out, "%08d.jpg"),
+    r = subprocess.run([*config.nice(), "ffmpeg", "-v", "error", "-nostdin", "-y", *src_in, *inputs,
                         "-filter_complex", ";".join(graph), *maps,
                         "-c:v", "libx264", "-preset", "veryfast", "-crf", "12", "-pix_fmt", "yuv420p", out],
-                       capture_output=True, timeout=600)
+                       capture_output=True, timeout=900)
     if r.returncode != 0:
         raise RuntimeError(r.stderr.decode(errors="replace").strip()[-500:])
-    return out, fps
+    return out, out_fps

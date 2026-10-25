@@ -38,6 +38,7 @@ PORT = int(os.environ.get("SAYTHELINE_PORT", "8765"))
 COVERS = os.path.join(os.path.dirname(INDEX), "covers")
 PREVIEWS = os.environ.get("SAYTHELINE_PREVIEWS", os.path.join(os.path.dirname(INDEX), "previews"))
 CLIPS = os.environ.get("SAYTHELINE_CLIPS", os.path.join(os.path.dirname(INDEX), "clips"))
+INTERP = os.path.join(PREVIEWS, "interp")   # interpolation previews (slow motion / 60 fps), pruned with the rest
 
 # Thumbnails are one ffmpeg seek each. Keyframe-only (-noaccurate_seek, -skip_frame nokey): a
 # preview frame a second or two early is fine, and decoding up to the exact frame was taking
@@ -297,7 +298,7 @@ def preview_file(item_id, start_ms, end_ms):
     return out
 
 
-def clip_name(row, in_ms, text, fmt, aspect="original", audio="original", slow=None):
+def clip_name(row, in_ms, text, fmt, aspect="original", audio="original", slow=None, smooth=0):
     if row["kind"] == "episode":
         who = f"{row['series']} - S{row['season'] or 0:02d}E{row['episode'] or 0:02d}"
     else:
@@ -310,6 +311,8 @@ def clip_name(row, in_ms, text, fmt, aspect="original", audio="original", slow=N
     shape += {"dialogue": " [dialogue]", "nodialogue": " [no dialogue]"}.get(audio, "")
     if slow:
         shape += f" [slow {slow[2]}x]"
+    if smooth:
+        shape += f" [{smooth}fps]"
     return f"{base}{shape}.{fmt}"
 
 
@@ -334,24 +337,37 @@ def run_render(job_id, req):
         if not row or out_ms <= in_ms or out_ms - in_ms > 180_000:
             raise ValueError("clip must be between 0 and 180 seconds")
         slow = slowmo.part_of(req, in_ms, out_ms)
-        if slow and not slowmo.rife():
-            raise ValueError("slow motion needs rife-ncnn-vulkan installed on the server (see README)")
-        cues = clip_captions(row, in_ms, out_ms, req)
         fmt = req.get("format") if req.get("format") in ("mp4", "webm", "gif") else "mp4"
-        os.makedirs(CLIPS, exist_ok=True)
-        name = version_name(clip_name(row, in_ms, " ".join(c["text"] for c in cues) or "clip", fmt, req.get("aspect"),
-                                      req.get("audio"), slow), req)
-        out = os.path.join(CLIPS, name)
+        smooth = slowmo.smooth_of(req, slowmo.frame_rate(row["path"])) if req.get("smooth") and fmt != "gif" else 0
+        if (slow or smooth) and not slowmo.rife():
+            raise ValueError("slow motion and smooth playback need rife-ncnn-vulkan installed on the server (see README)")
+        cues = clip_captions(row, in_ms, out_ms, req)
+        if req.get("preview"):
+            # a quick look at the interpolation before the real render: small, with the previews
+            # (pruned like them), never in All rendered
+            if not (slow or smooth):
+                raise ValueError("a preview is for slow motion or 60 fps")
+            fmt, req = "mp4", {**req, "res": min(int(req.get("res") or 360), 360), "audio": "original"}
+            os.makedirs(INTERP, exist_ok=True)
+            name, out = f"{job_id}.mp4", os.path.join(INTERP, f"{job_id}.mp4")
+        else:
+            os.makedirs(CLIPS, exist_ok=True)
+            name = version_name(clip_name(row, in_ms, " ".join(c["text"] for c in cues) or "clip", fmt, req.get("aspect"),
+                                          req.get("audio"), slow, smooth), req)
+            out = os.path.join(CLIPS, name)
         job["state"] = "queued"
 
         def progress(done, total):           # RIFE making the slow part's frames
             job.update(state="slowing" if done < total else "rendering", done=done, total=total)
         with RENDER_SLOT:
-            job["state"] = "slowing" if slow else "rendering"
+            job["state"] = "slowing" if slow or smooth else "rendering"
             t = time.time()
             info = media.render(row["path"], in_ms, out_ms, {**req, "format": fmt}, cues, out + ".tmp." + fmt,
-                                slow=slow, progress=progress)
+                                slow=slow, progress=progress, smooth=smooth)
             os.replace(out + ".tmp." + fmt, out)
+        if req.get("preview"):
+            threading.Thread(target=prune_previews, daemon=True).start()
+            return job.update(state="done", file=name, url="/interp/" + name, secs=round(time.time() - t, 1), **info)
         with open(out + ".json", "w") as f:       # sidecar: re-render later with other options
             json.dump({"item": dict(row), "request": req, "result": info}, f, indent=1)
         job.update(state="done", file=name, url="/clips/" + name, secs=round(time.time() - t, 1),
@@ -1078,7 +1094,7 @@ class Handler(BaseHTTPRequestHandler):
     server_version = "saytheline"
 
     def log_message(self, fmt, *args):  # quiet: the journal does not need every thumbnail
-        if not self.path.startswith(("/thumb/", "/cover/", "/preview/", "/api/job/")):
+        if not self.path.startswith(("/thumb/", "/cover/", "/preview/", "/interp/", "/api/job/")):
             super().log_message(fmt, *args)
 
     def send(self, code, body, ctype="application/json", cache=None):
@@ -1259,6 +1275,9 @@ class Handler(BaseHTTPRequestHandler):
                     return self.send_file(contact_sheet(item_frames(frames)), "image/jpeg")
                 except (ValueError, RuntimeError) as e:
                     return self.send(400, {"error": str(e)})
+            m = re.fullmatch(r"/interp/([0-9a-f]{6,40})\.mp4", u.path)     # an interpolation preview
+            if m and os.path.isfile(os.path.join(INTERP, m.group(1) + ".mp4")):
+                return self.send_file(os.path.join(INTERP, m.group(1) + ".mp4"), "video/mp4")
             m = re.fullmatch(r"/preview/(\d+)/(\d+)-(\d+)\.mp4", u.path)
             if m:
                 a, b = int(m.group(2)), int(m.group(3))

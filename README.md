@@ -53,10 +53,13 @@ It runs on the machine that has your media, next to Jellyfin, and is used from a
 - **Output**: MP4, WebM, GIF or a **still** (JPEG); original / 16:9 / 4:3 / 1:1 / 9:16 with
   crop or bars; 480–1080 or source size.
 - **Audio** (optional): *Dialogue only* or *No dialogue* via demucs stem separation.
-- **Slow motion** (optional): mark part of a clip (up to 5 s) to play at ½× or ¼×. The missing
+- **Slow motion and 60 fps** (optional, Cut > Interpolation): mark part of a clip (up to 5 s) to play at ½× or ¼×. The missing
   frames are made by [RIFE](https://github.com/nihui/rife-ncnn-vulkan) on the GPU, so it stays smooth,
   and each camera shot is slowed on its own so shots never blend. Sound pitched down, stretched at the
   same pitch, or silent; captions follow the slowed picture. The editor previews it at the slower speed.
+  **60 fps** (same Interpolation section) does the same for the whole clip at normal speed: smooth
+  motion from a 24 or 30 fps source. **Preview** renders just that part small, in a few seconds, to
+  check the motion before the real render.
 - **Supercut**: every hit for a search in one video. It checks each hit against the audio,
   skips lines that are never actually heard, can cut to just the phrase, trims each clip to its
   shot, hides repeats, evens out loudness and adds labels and captions. Each clip previews in its

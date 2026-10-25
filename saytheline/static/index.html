@@ -150,6 +150,7 @@
   .timeline .cue { position: absolute; top: 33px; height: 8px; background: #3e4554; }
   .timeline .selbox { position: absolute; top: 0; bottom: 0; background: var(--sel); border-left: 3px solid var(--accent);
     border-right: 3px solid var(--accent); }
+  .interp-vid { width: 100%; max-height: 50vh; background: #000; border-radius: 6px; }
   .timeline .slow { position: absolute; top: 0; height: 29px; pointer-events: none;
     background: repeating-linear-gradient(135deg, rgba(90, 170, 255, .5) 0 6px, rgba(90, 170, 255, .22) 6px 12px); }
   .timeline .ph { position: absolute; top: 0; bottom: 0; width: 2px; background: #fff; }
@@ -548,7 +549,7 @@
         <div class="note" id="snapNote" hidden></div>
       </div>
       <div class="grp" id="slowGrp">
-        <h3>Slow motion</h3>
+        <h3>Interpolation</h3>
         <div class="opt"><span>Speed</span><div class="chips" data-opt="slow"></div></div>
         <div id="slowPart" hidden style="display:flex;flex-direction:column;gap:10px">
           <div class="nudge"><span>From</span>
@@ -563,6 +564,12 @@
           <div class="opt"><span>Sound</span><div class="chips" data-opt="slowSound"></div></div>
           <div class="hint" id="slowHint"></div>
         </div>
+        <div class="opt"><span>FPS</span><div class="chips" data-opt="smooth"></div></div>
+        <div class="hint" id="smoothHint" hidden></div>
+        <div class="opt" id="interpPrevRow" hidden><button class="b" id="interpPrev"><svg class="i" aria-hidden="true"><use href="#i-play"/></svg>Preview</button>
+          <span class="hint">A quick, small render of just this part, to see the motion before the real one.</span></div>
+        <video id="interpVid" class="interp-vid" playsinline controls loop hidden></video>
+        <div class="err" id="interpErr" hidden></div>
       </div>
       <div class="hint">Lines: tap text to play from it · <b>Only</b> = clip just that line · <b>+</b> grow the clip to include it · <b>−</b> trim it off</div>
       <div class="lines" id="lines"></div>
@@ -1110,7 +1117,7 @@ async function showEmpty() {
 
 /* ================= options + their rules ================= */
 const opts = { format: "mp4", aspect: "original", fit: "crop", res: 720, audio: "original",
-  slow: 1, slowSound: "deep",
+  slow: 1, slowSound: "deep", smooth: 0,
   subsOn: true, captionSrc: "subs", look: "classic", fontClassic: "Inter", fontWord: "Inter Black",
   size: "m", colour: "white", hl: "yellow", caps: false, box: false, position: "bottom", tab: "cut", loop: false };
 const CHOICES = {
@@ -1120,6 +1127,7 @@ const CHOICES = {
   res: [[0, "Source"], [1080, "1080"], [720, "720"], [480, "480"]],
   audio: [["original", "Original"], ["dialogue", "Dialogue only"], ["nodialogue", "No dialogue"]],
   slow: [[1, "Off"], [2, "½×"], [4, "¼×"]],
+  smooth: [[0, "Source"], [60, "60 fps"]],
   slowSound: [["deep", "Deep"], ["pitch", "Same pitch"], ["mute", "Silent"]],
   subsOn: [[true, "On"], [false, "Off"]],
   captionSrc: [["subs", "Subtitles"], ["speech", "Speech"]],
@@ -1147,6 +1155,8 @@ function disabledReason(key, v) {
   if (key === "res" && opts.format === "gif" && v === 1080) return "GIFs are capped at 480 px";
   if (key === "slow" && v !== 1 && !SERVER.slowmo) return "Needs rife-ncnn-vulkan installed on the server (see README)";
   if (key === "slowSound" && opts.format === "gif") return "GIFs have no sound";
+  if (key === "smooth" && v && !SERVER.slowmo) return "Needs rife-ncnn-vulkan installed on the server (see README)";
+  if (key === "smooth" && v && opts.format === "gif") return "GIFs play at 12 fps";
   return null;
 }
 function setOpt(key, v) {
@@ -1203,7 +1213,7 @@ function applyRules() {
   $("#gifHint").hidden = opts.format !== "gif";
   $("#audioGrp").classList.toggle("off", opts.format === "gif");
   $("#audioHint").hidden = opts.audio === "original" || opts.format === "gif";
-  drawSlow();
+  drawSlow(); drawSmooth();
 }
 function refreshAll() { buildOptions(); applyRules(); drawCapShift(); drawStt(); drawSubText(); drawOverlay(); drawSummary(); schedulePoster(); autosave(); }
 function drawSummary() {
@@ -1211,7 +1221,7 @@ function drawSummary() {
   const cap = !capsOn() ? "no captions" : `${CHOICES.look.find(l => l[0] === opts.look)[1]} captions from ${speechMode() ? "speech" : "subtitles"}`;
   const shape = opts.aspect === "original" ? "original shape" : opts.aspect + (opts.fit === "pad" ? " bars" : "");
   const audio = opts.format === "gif" ? " · silent" : opts.audio === "original" ? "" : opts.audio === "dialogue" ? " · dialogue only" : " · no dialogue";
-  const slow = slowOn() ? ` · ${opts.slow === 2 ? "½" : "¼"}× slow` : "";
+  const slow = (slowOn() ? ` · ${opts.slow === 2 ? "½" : "¼"}× slow` : "") + (smoothOn() ? ` · ${opts.smooth} fps` : "");
   $("#summary").textContent = `${(outLength() / 1000).toFixed(1)} s · ${opts.format.toUpperCase()} · ${shape} · ${cap}${slow}${audio}`;
   $("#capDot").hidden = !(needWords() && !sttCovers());
 }
@@ -1244,7 +1254,7 @@ function captionDefaults() { opts.subsOn = true; opts.captionSrc = "subs"; opts.
 
 /* drafts: every edited clip is kept (Library > Recent edits); a hearted moment keeps the same state */
 const DRAFT_OPTS = ["subsOn", "captionSrc", "look", "fontClassic", "fontWord", "size", "colour", "hl", "caps", "box", "position",
-  "format", "aspect", "fit", "res", "audio", "slow", "slowSound"];
+  "format", "aspect", "fit", "res", "audio", "slow", "slowSound", "smooth"];
 function edState() {
   const o = {}; DRAFT_OPTS.forEach(k => o[k] = opts[k]);
   return { v: 1, in_ms: Math.round(ed.inMs), out_ms: Math.round(ed.outMs), offset_ms: ed.offset, opts: o,
@@ -1447,7 +1457,7 @@ function setSel(inMs, outMs, { seek, auto } = {}) {
   drawAll();
   if (seek === "in") showIn(); else if (seek === "out") showOut();
 }
-function drawAll() { fitSlow(); drawTimeline(); drawShotRow(); drawLines(); drawSubText(); drawReadout(); drawOverlay(); drawSttHint(); drawSummary(); schedulePoster(); autosave(); }
+function drawAll() { fitSlow(); drawSlow(); drawSmooth(); drawTimeline(); drawShotRow(); drawLines(); drawSubText(); drawReadout(); drawOverlay(); drawSttHint(); drawSummary(); schedulePoster(); autosave(); }
 /* slow motion: one part of the cut, 2× or 4× slower (frames made up by RIFE on the server) */
 const slowOn = () => opts.slow > 1 && ed.slowA !== null && ed.slowB !== null;
 const SLOW_MAX = () => SERVER.slow_max_ms || 5000;
@@ -1473,14 +1483,55 @@ function drawSlow() {
   if (!slowOn()) return;
   const part = ed.slowB - ed.slowA, whole = ed.slowA <= ed.inMs + 1 && ed.slowB >= ed.outMs - 1;
   $("#slowRead").textContent = whole ? `the whole clip · ${(part / 1000).toFixed(1)} s` : `${fmtp(ed.slowA)} → ${fmtp(ed.slowB)} · ${(part / 1000).toFixed(1)} s`;
-  // RIFE's cost grows with the frames it makes and their size (~25 fps sources assumed)
-  const short = opts.res || 1080, mp = short * short * 16 / 9 / 1e6;
-  const est = part / 1000 * 25 * opts.slow * mp * (SERVER.slow_secs_per_mpix_frame || 0.15) + 5;
   $("#slowHint").textContent = `Plays ${(part / 1000).toFixed(1)} s over ${(part * opts.slow / 1000).toFixed(1)} s, with the in-between frames made up so it stays smooth. `
-    + `Adds up to about ${est < 60 ? Math.max(5, Math.round(est / 5) * 5) + " s" : Math.round(est / 60) + " min"} to the render`
-    + (opts.res === 0 || opts.res === 1080 ? " (a smaller Size is quicker)." : ".")
+    + (smoothOn() ? "" : extraTime())
     + (part >= SLOW_MAX() - 1 ? ` At most ${SLOW_MAX() / 1000} s can be slowed.` : "");
 }
+const smoothOn = () => opts.smooth > 0 && opts.format !== "gif";
+// RIFE's cost grows with the frames it makes and their size (a full-HD 16:9 source assumed, ~25 fps)
+function rifeSeconds() {
+  const short = opts.res || 1080, mp = short * short * 16 / 9 / 1e6, k = SERVER.slow_secs_per_mpix_frame || 0.15;
+  if (smoothOn()) return outLength() / 1000 * opts.smooth * mp * k + 5;
+  return slowOn() ? (ed.slowB - ed.slowA) / 1000 * 25 * opts.slow * mp * k + 5 : 0;
+}
+function extraTime() {
+  const est = rifeSeconds();
+  if (est > 300) return `That's about ${Math.round(est / 60)} min of work, over the 5 min limit: pick a smaller Size or a shorter clip.`;
+  return `Adds up to about ${est < 60 ? Math.max(5, Math.round(est / 5) * 5) + " s" : Math.round(est / 60) + " min"} to the render`
+    + (opts.res === 0 || opts.res === 1080 ? " (a smaller Size is quicker)." : ".");
+}
+function drawSmooth() {
+  $("#interpPrevRow").hidden = !(slowOn() || smoothOn());
+  const key = JSON.stringify(interpBody());
+  if (interpShown && interpShown !== key) { $("#interpVid").hidden = true; $("#interpVid").removeAttribute("src"); interpShown = null; }
+  const h = $("#smoothHint");
+  h.hidden = !smoothOn();
+  if (smoothOn()) h.textContent = `Makes up the frames in between for smooth ${opts.smooth} fps motion at normal speed (a source already near ${opts.smooth} fps is kept as it is). ` + extraTime();
+}
+// Preview: the real interpolation on a small render of just the part that changes (the slow part
+// and a little either side, or the first 3 s at 60 fps), played here before the real render
+let interpShown = null;
+function interpBody() {
+  if (!ed.hit || !(slowOn() || smoothOn())) return null;
+  const b = renderBody();
+  const [a, z] = slowOn() ? [Math.max(ed.inMs, ed.slowA - 700), Math.min(ed.outMs, ed.slowB + 700)] : [ed.inMs, Math.min(ed.outMs, ed.inMs + 3000)];
+  return { ...b, in_ms: Math.round(a), out_ms: Math.round(z), format: "mp4", audio: "original", preview: true };
+}
+$("#interpPrev").onclick = async () => {
+  const btn = $("#interpPrev"), body = interpBody(); if (!body) return;
+  if (!await ensureWords(btn)) return;
+  btn.disabled = true; $("#interpErr").hidden = true; $("#vid").pause();
+  try {
+    const job = await postJob("/api/render", interpBody(), j => btn.textContent = j.state === "queued" ? "Waiting…"
+      : j.state === "slowing" && j.total ? `Making ${Math.round(100 * (j.done || 0) / j.total)}%…` : "Making…");
+    const v = $("#interpVid");
+    v.src = job.url; v.hidden = false; interpShown = JSON.stringify(interpBody());
+    v.play().catch(() => {});
+    v.scrollIntoView({ block: "nearest", behavior: "smooth" });
+  } catch (e) {
+    $("#interpErr").textContent = e.message; $("#interpErr").hidden = false;
+  } finally { btn.disabled = false; btn.innerHTML = ic("play") + "Preview"; }
+};
 // the preview plays the slow part at the slower rate: close to the render, minus the extra frames
 let slowRateOn = false;
 function applySlowRate() {
@@ -2192,6 +2243,7 @@ function renderBody() {
     format: opts.format, aspect: opts.aspect, fit: opts.fit, res: opts.res, audio: opts.format === "gif" ? "original" : opts.audio,
     caption_source: speechMode() ? "speech" : "subs", offset_ms: ed.offset, caption_shift_ms: ed.capShift || undefined,
     sub_text: needWords() ? undefined : ed.subText,
+    smooth: smoothOn() ? opts.smooth : undefined,
     slow: slowOn() ? { factor: opts.slow, a_ms: Math.round(ed.slowA), b_ms: Math.round(ed.slowB), sound: opts.slowSound } : undefined,
     caption_cues: needWords() ? ed.stt.cues.map(c => ({ start_ms: c.start_ms, end_ms: c.end_ms, text: c.text, words: c.words || [] })) : undefined,
     subs: { on: capsOn(), font: curFont(), size: opts.size, colour: opts.colour, box: opts.box, position: opts.position,

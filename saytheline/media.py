@@ -416,18 +416,19 @@ def force_style(st):
     return ",".join(parts)
 
 
-def render(src, in_ms, out_ms, opts, cues, out, label=None, uniform=False, slow=None, progress=None):
+def render(src, in_ms, out_ms, opts, cues, out, label=None, uniform=False, slow=None, progress=None, smooth=0):
     """Final clip. x264/AAC MP4 by default; WebM (VP9/Opus) or GIF (palette, no audio).
     Subtitles are burned after scaling, so the style is relative to the output size.
     `uniform` (supercut segments): fixed size, 30 fps, square pixels, 48 kHz stereo always present,
     so the segments concatenate without re-encoding. `label`: small source caption, top-left.
     `slow` (a, b, factor, sound) from slowmo.part_of: that part plays slower (see slowmo.py);
-    progress(done, total) while its frames are made."""
+    `smooth` (60, from slowmo.smooth_of): that frame rate, the frames in between made up;
+    progress(done, total) while frames are made."""
     with tempfile.TemporaryDirectory(prefix="saytheline-") as tmp:
-        return _render(src, in_ms, out_ms, opts, cues, out, label, uniform, slow, progress, tmp)
+        return _render(src, in_ms, out_ms, opts, cues, out, label, uniform, slow, progress, tmp, smooth)
 
 
-def _render(src, in_ms, out_ms, opts, cues, out, label, uniform, slow, progress, tmp):
+def _render(src, in_ms, out_ms, opts, cues, out, label, uniform, slow, progress, tmp, smooth=0):
     info = probe(src)
     if not info["width"]:
         raise RuntimeError("no video stream")
@@ -438,13 +439,15 @@ def _render(src, in_ms, out_ms, opts, cues, out, label, uniform, slow, progress,
                            "pad" if uniform and aspect == "16:9" else opts.get("fit", "crop"),
                            int(opts.get("res") or (720 if uniform else 0)), upscale=uniform)
     fmt = "mp4" if uniform else opts.get("format", "mp4")
-    if slow:
-        # the slowed cut, already at the output size, becomes the source: nothing else changes
+    if slow or (smooth and fmt != "gif"):
+        # the slowed / smoothed cut, already at the output size, becomes the source: nothing else changes
         from . import slowmo
         track = audio_track(src) if info["has_audio"] else None
-        src, _ = slowmo.master(src, in_ms, out_ms, slow, chain, (w, h), track, tmp, progress)
-        cues = slowmo.remap_cues(cues, in_ms, *slow[:3])
-        in_ms, out_ms = 0, round(slowmo.timemap(out_ms - in_ms, *slow[:3]))
+        src, _ = slowmo.master(src, in_ms, out_ms, slow, chain, (w, h), track, tmp, progress,
+                               smooth=smooth if fmt != "gif" else 0)
+        part = slow[:3] if slow else (0, 0, 1)
+        cues = slowmo.remap_cues(cues, in_ms, *part)
+        in_ms, out_ms = 0, round(slowmo.timemap(out_ms - in_ms, *part))
         chain, info = [], probe(src)
     dur = (out_ms - in_ms) / 1000
     # The input -t below is not exact: depending on where the start falls between frames it lets one

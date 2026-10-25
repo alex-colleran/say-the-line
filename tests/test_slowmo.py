@@ -20,8 +20,8 @@ from saytheline import media, slowmo  # noqa: E402
 # rife-ncnn-vulkan -i IN -o OUT -m MODEL -n N -f jpg: N frames, each input frame repeated
 FAKE_RIFE = """#!/bin/sh
 while [ $# -gt 0 ]; do case "$1" in -i) i=$2;; -o) o=$2;; -n) n=$2;; esac; shift; done
-k=$(( n / $(ls "$i" | wc -l) ))
-exec ffmpeg -v error -nostdin -y -framerate 1 -i "$i/%06d.png" -vf fps=$k -frames:v "$n" "$o/%08d.jpg"
+c=$(ls "$i" | wc -l)
+exec ffmpeg -v error -nostdin -y -framerate 1 -i "$i/%06d.png" -vf "fps=$n/$c" -frames:v "$n" "$o/%08d.jpg"
 """
 
 
@@ -76,12 +76,35 @@ class Render(unittest.TestCase):
         cls.env.stop()
         shutil.rmtree(cls.tmp, ignore_errors=True)
 
-    def render(self, src, req, in_ms=500, out_ms=2500, fmt="mp4"):
+    def render(self, src, req, in_ms=500, out_ms=2500, fmt="mp4", smooth=0):
         out = os.path.join(self.tmp, f"out.{fmt}")
         seen = []
         info = media.render(src, in_ms, out_ms, {"format": fmt, "res": 240}, [], out,
-                            slow=slowmo.part_of({"slow": req}, in_ms, out_ms), progress=lambda d, t: seen.append(t))
+                            slow=slowmo.part_of({"slow": req}, in_ms, out_ms), progress=lambda d, t: seen.append(t),
+                            smooth=smooth)
         return info, media.probe(out), seen
+
+    def fps(self, path):
+        r = subprocess.run(["ffprobe", "-v", "error", "-select_streams", "v:0", "-count_frames", "-show_entries",
+                            "stream=nb_read_frames", "-of", "csv=p=0", path], capture_output=True, text=True)
+        return int(r.stdout.strip())
+
+    def test_smooth_at_normal_speed(self):
+        info, got, seen = self.render(self.src, {}, smooth=60)
+        self.assertAlmostEqual(got["duration"], 2.0, delta=0.1)
+        self.assertAlmostEqual(self.fps(os.path.join(self.tmp, "out.mp4")), 120, delta=3)   # 2 s at 60 fps
+        self.assertEqual(seen[-1], 120, "48 source frames, 2.5x as many")
+
+    def test_slow_and_smooth(self):
+        _, got, _ = self.render(self.src, {"factor": 2, "a_ms": 1000, "b_ms": 1500}, smooth=60)
+        self.assertAlmostEqual(got["duration"], 2.5, delta=0.12)
+        self.assertAlmostEqual(self.fps(os.path.join(self.tmp, "out.mp4")), 150, delta=4)
+
+    def test_smooth_leaves_a_60_fps_source_alone(self):
+        self.assertEqual(slowmo.smooth_of({"smooth": 60}, 59.94), 0)
+        self.assertEqual(slowmo.smooth_of({"smooth": 60}, 23.976), 60)
+        with self.assertRaises(ValueError):
+            slowmo.smooth_of({"smooth": 45}, 24)
 
     def test_part_slowed_in_the_middle(self):
         info, got, seen = self.render(self.src, {"factor": 4, "a_ms": 1000, "b_ms": 1500})

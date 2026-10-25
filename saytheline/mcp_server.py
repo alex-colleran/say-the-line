@@ -447,7 +447,7 @@ async def saytheline_make_clip(ctx: Context, moment_id: str, format: str = "gif"
                              start_ms: int = 0, end_ms: int = 0, caption_size: str = "m",
                              caption_position: str = "", hide_lines: list[int] | None = None,
                              line_text: dict[str, str] | None = None, slow_motion: str = "off",
-                             slow_sound: str = "deep") -> CallToolResult:
+                             slow_sound: str = "deep", frame_rate: int = 0) -> CallToolResult:
     """Render a moment as a reaction GIF (default), an MP4/WebM clip, or a captioned still.
 
     moment_id: from saytheline_search ("51:99").
@@ -471,6 +471,8 @@ async def saytheline_make_clip(ctx: Context, moment_id: str, format: str = "gif"
     slow_motion: "off" (default), "2x" or "4x" slower, smooth (the in-between frames are made up). The
       whole clip when it is up to 5 s, else 5 s from the line's first word. slow_sound: "deep"
       (pitched down, the classic), "pitch" (same pitch) or "mute". Adds seconds to a minute or two.
+    frame_rate: 0 = the source's (default); 60 = smooth 60 fps motion, the frames in between made up
+      (not for GIFs; a source already near 60 fps is kept). Adds about as long as slow motion.
     Takes a few seconds (longer the first time a show's audio is checked). Returns the clip id for
     saytheline_refine_clip, the file path to send, a link, and an image of the result to check."""
     fmt = format.lower()
@@ -489,6 +491,10 @@ async def saytheline_make_clip(ctx: Context, moment_id: str, format: str = "gif"
         raise ToolError('slow_sound must be "deep", "pitch" or "mute"')
     if slow > 1 and fmt == "still":
         raise ToolError("a still can't be slowed: use mp4, webm or gif")
+    if frame_rate not in (0, 60):
+        raise ToolError("frame_rate must be 0 (the source's) or 60")
+    if frame_rate and fmt in ("gif", "still"):
+        raise ToolError("frame_rate 60 is for mp4 or webm (GIFs play at 12 fps)")
     m = await _moment(moment_id)
     lines = sorted(m["lines"], key=lambda c: c["idx"])
     first = next(c for c in lines if c["idx"] >= m["idx"] - max(0, min(lines_before, 4)))
@@ -537,6 +543,8 @@ async def saytheline_make_clip(ctx: Context, moment_id: str, format: str = "gif"
         a = in_ms if out_ms - in_ms <= 5000 else max(in_ms, min(int(keep[0]), out_ms - 5000))
         req["slow"] = dict(factor=slow, a_ms=int(a), b_ms=int(min(out_ms, a + 5000)), sound=slow_sound)
         notes.append(f"{slow_motion} slow motion over {(min(out_ms, a + 5000) - a) / 1000:.1f} s")
+    if frame_rate:
+        req["smooth"] = frame_rate
     req["mcp"] = dict(captions=captions, look=look, caption_text=caption_text)
     await _captions_for(ctx, req, captions, look, caption_text)
     lines = await _lines_on_screen(req)
