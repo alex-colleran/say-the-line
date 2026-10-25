@@ -778,14 +778,15 @@
         <div class="opt" id="stClipSound"><span>Clip sound</span><div class="chips" data-stm="clips"></div></div>
         <div class="opt"><span>Joins</span><div class="chips" data-stm="joins"></div></div>
         <div class="hint" id="stMusicHint"></div>
-        <div class="opt"><span>Speed ramp</span><div class="chips" data-str="strength"></div></div>
+      </div>
+        <div class="opt" id="stRampRow"><span>Speed ramp</span><div class="chips" data-str="strength"></div></div>
         <div id="stRampMore" hidden style="display:flex;flex-direction:column;gap:10px">
           <div class="opt"><span>Curve</span><div class="chips" data-str="shape"></div></div>
           <div class="opt"><span>Fast</span><div class="chips" data-str="direction"></div></div>
           <div class="opt"><span>Every</span><div class="chips" data-str="every"></div></div>
           <div class="hint" id="stRampHint"></div>
         </div>
-      </div>
+        <div class="hint" id="stRampNeed">Speed ramp makes the picture speed up on every beat and slow between: add a song first, it follows the song's beat.</div>
     </div>
     <details class="grp" id="stSettings">
       <summary>Settings</summary>
@@ -3335,7 +3336,16 @@ function stBpm() { const m = studio.music; return m ? (m.set_bpm || m.bpm) : 0; 
 function drawMusic() {
   const m = studio.music;
   $("#stSongNone").hidden = !!m; $("#stSongSet").hidden = !m;
-  if (!m) return;
+  $("#stRampRow").classList.toggle("disabled", !m); $("#stRampNeed").hidden = !!m;
+  if (!m) {                      // the choices show, greyed, so they can be found before there's a song
+    $("#stRampMore").hidden = true;
+    $$("[data-str=strength]").forEach(box => {
+      box.innerHTML = STR_CHOICES.strength.map(([v, l]) => `<button type="button" class="chip" aria-pressed="${v === "off"}">${l}</button>`).join("");
+      box.onclick = () => flashSt("Add a song first: the speed ramp follows its beat");
+    });
+    return;
+  }
+  $$("[data-str=strength]").forEach(box => { box.onclick = null; });
   const title = m.name.replace(/\.[^.]+$/, "").replace(/^\d{1,3}[\s.\-_]+/, "");   // "01 - Song.flac" -> "Song"
   $("#stSongName").innerHTML = `${esc(title)}<small>${mmss(m.duration)} · ${m.bpm} BPM found</small>`;
   $("#stOffRead").textContent = mmss(m.offset_ms / 1000);
