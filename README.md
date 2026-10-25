@@ -65,7 +65,9 @@ It runs on the machine that has your media, next to Jellyfin, and is used from a
 - **Studio**: put any saved clips together, from any mix of shows and movies, in your own order.
   Add them from the Library (by tag), reorder, nudge each start and end, preview each clip in place,
   then render one video with one caption look and shape. Each clip keeps its own cut, caption edits
-  and slow motion from the editor. Saved as a draft like the rest.
+  and slow motion from the editor. Saved as a draft like the rest; **New** starts another cut and
+  keeps the current one under Drafts. A rendered Studio cut opens again in the Studio (Library →
+  Open in Studio) as a new draft with its clips, song and settings; the render stays as it is.
   **Music**: upload a song to go under it. Its tempo and beats are found on upload (tap or type to
   correct the BPM); the song dips whenever someone speaks, and each join can land on the beat or the
   bar. Play all plays the song with the clips before you render.
@@ -90,6 +92,8 @@ It runs on the machine that has your media, next to Jellyfin, and is used from a
 - **Library**: heart moments and clips, tag them for projects; every edited clip is kept as a
   draft (Library → Recent edits) with its captions, transcript and settings. Heart a supercut or Say
   Anything that isn't rendered yet to keep it under Library → Drafts and finish it later.
+  **Start fresh** on a saved moment goes back to the plain line without touching the saved version;
+  tap the heart to save the new one over it.
 
 ## What you need
 

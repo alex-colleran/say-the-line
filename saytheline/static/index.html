@@ -745,8 +745,10 @@
 <div class="sheet" id="stSheet" hidden>
   <div class="sheet-in">
     <div class="sheet-head"><div class="t">Studio<small>saved clips, in your order</small></div>
+      <button class="b" id="stNew" title="Start a new cut (this one is kept in Library › Drafts)"><svg class="i" aria-hidden="true"><use href="#i-plus"/></svg>New</button>
       <button class="hbtn2" id="stHeart" aria-label="Save as a draft"><svg class="i" aria-hidden="true"><use href="#i-heart"/></svg></button><button class="x" id="stClose" aria-label="Close"><svg class="i" aria-hidden="true"><use href="#i-x"/></svg></button></div>
     <div class="tagrow" id="stDraftTags" hidden></div>
+    <div class="note" id="stNote" hidden></div>
     <input id="stName" class="st-name" type="text" placeholder="Name this cut (optional)" aria-label="Name" autocomplete="off" enterkeyhint="done">
     <div id="stResult"></div>
     <div class="sclist" id="stList"></div>
@@ -1375,6 +1377,7 @@ function resetEd(h) {
     speech: null,        // the heard words' span after a snap: {a, b, offset}
     seekOnLoad: false, session: (ed.session || 0) + 1,
     slowA: null, slowB: null,   // the slowed part (media ms) while opts.slow is 2 or 4
+    detached: false,      // edits don't go into the hearted moment (after Start fresh, or opened from a render)
     baseState: null });   // the state as opened: a draft is only written once something differs
 }
 // A new clip always opens with plain subtitles, so there is text on screen straight away; looks that
@@ -1418,7 +1421,7 @@ function flushDraft() {
   const post = (url, body) => fetch(url, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body), keepalive: true }).catch(() => {});
   post("/api/library", { ...momentFromHit(ed.hit, cut), kind: "recent" });
   const e = savedMoment(ed.hit.item_id, ed.hit.start_ms);
-  if (e) { Object.assign(e, cut); post("/api/library/" + e.id, cut); }
+  if (e && !ed.detached) { Object.assign(e, cut); post("/api/library/" + e.id, cut); }
 }
 window.addEventListener("pagehide", flushDraft);
 document.addEventListener("visibilitychange", () => { if (document.hidden) flushDraft(); });
@@ -1450,6 +1453,7 @@ async function openEditor(h, cut, entryId, preset) {
   ed.knownOffset = Math.abs(known) >= 250 ? known : 0;
   let st = preset || null;
   try { if (!st) st = draft && draft.state ? JSON.parse(draft.state) : null; } catch (e) {}
+  ed.detached = !!preset || (draft && draft.kind === "clip");      // a render's recipe never rewrites the saved moment
   if (st) applyState(st);
   else if (cut && cut.in_ms != null) { ed.inMs = cut.in_ms; ed.outMs = cut.out_ms; ed.offset = cut.offset_ms || 0; }
   else defaultCut();                           // an offset learnt earlier for this episode applies straight away
@@ -1483,7 +1487,11 @@ function drawDraftNote(d) {
     ed.stt = null; ed.poster = null; ed.lastFile = null; ed.subText = {}; ed.speech = null; ed.capShift = 0;
     defaultCut();
     ed.winA = Math.max(0, ed.inMs - WIN); ed.winB = ed.outMs + WIN;
-    n.hidden = true; offsetNote();
+    const kept = !!savedMoment(ed.hit.item_id, ed.hit.start_ms);
+    ed.detached = true;
+    n.innerHTML = `<span>${ic("check")} Starting fresh. ${kept ? `Your saved version stays as it was: tap ${ic("heart")} to save this one over it.`
+      : "This goes in Library › Recent edits."}</span>`;
+    offsetNote(); drawEdHeart();
     refreshAll(); loadWindow(); autosave();
   };
 }
@@ -1839,17 +1847,20 @@ $("#vid").addEventListener("seeked", () => {
 window.addEventListener("resize", drawOverlay);
 
 function drawEdHeart() {
-  const e = ed.hit && savedMoment(ed.hit.item_id, ed.hit.start_ms), b = $("#edHeart");
-  b.className = "hbtn2" + (e ? " on" : ""); b.innerHTML = ic(e ? "heart-f" : "heart");
-  b.title = e ? "Saved — keeps following your edits · tap to remove" : "Save this clip as it is now (cut, captions, transcript, output) to the library";
-  $("#edTags").hidden = !e;
-  if (e) tagEditor($("#edTags"), e, () => drawEdHeart());
+  const e = ed.hit && savedMoment(ed.hit.item_id, ed.hit.start_ms), on = e && !ed.detached, b = $("#edHeart");
+  b.className = "hbtn2" + (on ? " on" : ""); b.innerHTML = ic(on ? "heart-f" : "heart");
+  b.title = on ? "Saved — keeps following your edits · tap to remove"
+    : e ? "Your saved version is kept as it was · tap to save this one over it"
+    : "Save this clip as it is now (cut, captions, transcript, output) to the library";
+  $("#edTags").hidden = !on;
+  if (on) tagEditor($("#edTags"), e, () => drawEdHeart());
 }
 $("#edHeart").onclick = async () => {
   const e = savedMoment(ed.hit.item_id, ed.hit.start_ms);
-  if (e) await libDelete(e.id);
-  else await libSave(momentFromHit(ed.hit, { in_ms: Math.round(ed.inMs), out_ms: Math.round(ed.outMs), offset_ms: ed.offset,
-    state: JSON.stringify(edState()) }));
+  const cut = { in_ms: Math.round(ed.inMs), out_ms: Math.round(ed.outMs), offset_ms: ed.offset, state: JSON.stringify(edState()) };
+  if (e && ed.detached) { await libUpdate(e.id, cut); ed.detached = false; $("#draftNote").hidden = true; }   // this version over the saved one
+  else if (e) await libDelete(e.id);
+  else { await libSave(momentFromHit(ed.hit, cut)); ed.detached = false; }
   drawEdHeart(); refreshCardHearts();
 };
 // (a hearted moment then follows every edit: see flushDraft)
@@ -2425,7 +2436,7 @@ function renderBody() {
     sub_text: needWords() ? undefined : ed.subText,
     smooth: smoothOn() ? opts.smooth : undefined,
     slow: slowOn() ? { factor: opts.slow, a_ms: Math.round(ed.slowA), b_ms: Math.round(ed.slowB), sound: opts.slowSound } : undefined,
-    caption_cues: needWords() ? ed.stt.cues.map(c => ({ start_ms: c.start_ms, end_ms: c.end_ms, text: c.text, words: c.words || [] })) : undefined,
+    caption_cues: needWords() && sttCovers() ? ed.stt.cues.map(c => ({ start_ms: c.start_ms, end_ms: c.end_ms, text: c.text, words: c.words || [] })) : undefined,
     subs: { on: capsOn(), font: curFont(), size: opts.size, colour: opts.colour, box: opts.box, position: opts.position,
             style: isWordLook() ? opts.look : "classic", hl: opts.hl, caps: opts.caps } };
 }
@@ -3082,11 +3093,8 @@ async function openDraft(id) {
     openSayAnything();
   } else if (st.type === "studio") {
     if (studio.busy) { openStudio(); $("#stSum").textContent = "Let this render finish, then open the draft again"; return; }
-    draftFlush("st"); stStopPlay();
-    Object.assign(studio, { title: st.title || "", clips: st.clips || [], music: st.music || null, draftId: d.id });
-    Object.assign(studio.o, st.o || {}); DRAFT.st.last = d.state;
-    $("#stResult").innerHTML = "";
-    openStudio();
+    const kept = await stReplace({ ...st, draftId: d.id }); DRAFT.st.last = d.state;
+    openStudio(); stNote(kept);
   } else if (st.type === "supercut") {
     if (sc.busy) { $("#scSheet").hidden = false; document.body.style.overflow = "hidden"; history.pushState({ sheet: 3 }, "");
       $("#scSum").textContent = "Stop this or let it finish, then open the draft again"; return; }
@@ -3118,7 +3126,7 @@ function saveStudio() { try { localStorage.setItem("saytheline.studio", JSON.str
 const stLen = c => c.out_ms - c.in_ms + (c.slow && !rampOn() ? (c.slow.b_ms - c.slow.a_ms) * (c.slow.factor - 1) : 0);
 function openStudio() {
   $("#stSheet").hidden = false; document.body.style.overflow = "hidden"; history.pushState({ sheet: 6 }, "");
-  $("#stName").value = studio.title; drawStudio();
+  $("#stName").value = studio.title; $("#stNote").hidden = true; drawStudio();
 }
 function drawStudio() {
   $("#stSoundHint").hidden = studio.o.audio !== "dialogue";
@@ -3326,7 +3334,8 @@ $("#stRender").onclick = async () => {
       <div class="tagrow" id="stTags" hidden></div></div>`;
     const c0 = studio.clips[0];
     const entry = { kind: "clip", file: job.file, item_id: c0.item, in_ms: c0.in_ms, out_ms: c0.out_ms, start_ms: c0.in_ms, end_ms: c0.out_ms,
-      label: `Studio · ${job.segments} clips`, text: studio.title.trim() || studio.clips.map(c => c.text).filter(Boolean).slice(0, 2).join(" / "), media_kind: "episode" };
+      label: `Studio · ${job.segments} clips`, media_kind: "episode",
+      text: (studio.title.trim() || studio.clips.map(c => c.text).filter(Boolean).slice(0, 2).join(" / ")) + (m ? ` · ♪ ${m.name}` : "") };
     const paint = () => { const e = savedClip(job.file); $("#stSave").innerHTML = e ? ic("heart-f") + "Saved" : ic("heart") + "Save to library";
       $("#stTags").hidden = !e; if (e) tagEditor($("#stTags"), e, paint); };
     $("#stSave").onclick = async () => { const e = savedClip(job.file); if (e) await libDelete(e.id); else await libSave({ ...entry, tags: ["studio"] }); paint(); };
@@ -3341,9 +3350,53 @@ $("#stClose").onclick = () => history.back();
 DRAFT.st = { st: () => studio, heart: "#stHeart", tags: "#stDraftTags", ready: () => studio.clips.length > 0,
   snap: () => ({ type: "studio", title: studio.title, clips: studio.clips, o: studio.o, music: studio.music }),
   meta: () => { const c = studio.clips[0], n = studio.clips.length;
-    return { label: "Studio", text: (studio.title.trim() ? `“${studio.title.trim()}” · ` : "") + `${n} clip${n === 1 ? "" : "s"}`,
+    return { label: "Studio", text: (studio.title.trim() ? `“${studio.title.trim()}” · ` : "") + `${n} clip${n === 1 ? "" : "s"}`
+                                    + (studio.music ? ` · ♪ ${studio.music.name}` : ""),
              item_id: c ? c.item : null, start_ms: c ? c.in_ms : null, end_ms: c ? c.out_ms : null }; } };
 $("#stHeart").onclick = () => toggleDraft("st");
+// Put another cut in the Studio. The one there now is kept first: written to its draft, or, when it has
+// clips and isn't one yet, saved as a new draft (Library › Drafts). Returns true when that new draft was made.
+async function stReplace(st) {
+  stStopPlay(); if (studio.audio) studio.audio.pause();
+  let kept = false;
+  if (studio.draftId) draftFlush("st");
+  else if (studio.clips.length) { await libSave({ kind: "draft", ...DRAFT.st.meta(), state: JSON.stringify(DRAFT.st.snap()) }); kept = true; }
+  Object.assign(studio, { title: st.title || "", clips: st.clips || [], music: st.music || null, draftId: st.draftId || null });
+  if (st.o) Object.assign(studio.o, st.o);
+  DRAFT.st.last = null; $("#stResult").innerHTML = ""; $("#stName").value = studio.title;
+  return kept;
+}
+function stNote(kept, msg) {
+  const n = $("#stNote"), t = [msg, kept ? "Your last cut is kept in Library › Drafts." : ""].filter(Boolean).join(" ");
+  n.hidden = !t; n.innerHTML = t ? `<span>${t}</span>` : "";
+}
+$("#stNew").onclick = async () => {
+  if (studio.busy) return flashSt("Let this render finish first");
+  if (!studio.clips.length && !studio.music) return stNote(false, "This one's empty already: add clips to start.");
+  const kept = await stReplace({});
+  drawStudio(); stNote(kept, "New cut.");
+};
+// a rendered Studio cut's recipe (its .json) as Studio state
+function studioFromRecipe(r, song) {
+  const subs = r.subs || {}, mu = r.music;
+  return { title: r.title || "", clips: r.clips || [],
+    music: mu && song ? { ...song, set_bpm: mu.bpm || null, offset_ms: mu.offset_ms || 0, level: mu.level || "medium",
+                          clips: mu.clips || "duck", joins: mu.joins || "beat", ...(mu.ramp ? { ramp: mu.ramp } : {}) } : null,
+    o: { audio: r.audio || "original", captions: subs.on ? subs.style || "classic" : "off", transition: r.transition || "cut",
+         label: !!r.label, loudnorm: r.loudnorm !== false, aspect: r.aspect || "16:9", fit: r.fit || "crop", res: r.res ?? 720 } };
+}
+// Edit on a rendered Studio cut: it opens in the Studio as a new draft, with its clips, song and settings
+async function openStudioRender(cid) {
+  const c = await (await fetch("/api/clip/" + encodeURIComponent(cid))).json().catch(() => ({}));
+  if (!c.studio) return flash(c.error || "That cut's recipe wasn't kept");
+  if (studio.busy) { openStudio(); $("#stSum").textContent = "Let this render finish, then open it again"; return; }
+  const st = studioFromRecipe(c.studio, c.song);
+  const kept = await stReplace(st);
+  const n = await libSave({ kind: "draft", ...DRAFT.st.meta(), state: JSON.stringify(DRAFT.st.snap()) });
+  studio.draftId = n.id; DRAFT.st.last = JSON.stringify(DRAFT.st.snap());
+  openStudio();
+  stNote(kept, `${ic("pencil")} A new draft from “${esc(c.file)}”${c.studio.music && !c.song ? ": its song is no longer on the server, add it again" : ""}. The render itself stays as it is.`);
+}
 /* Studio music: one song under the cut, its beats found on upload (music.py / beat_worker.py) */
 const STM_CHOICES = {
   level: [["low", "Low"], ["medium", "Medium"], ["high", "High"]],
@@ -3817,6 +3870,7 @@ async function openClipLink(cid) {
   try {
     const c = await (await fetch("/api/clip/" + encodeURIComponent(cid))).json();
     const r = c.request;
+    if (c.studio) return openStudioRender(cid);
     if (!r || c.supercut) return flash(c.error || "That clip can't be opened in the editor");
     const it = c.item || {}, mo = r.moment || {}, off = r.offset_ms || 0;
     openEditor({ item_id: r.item, idx: mo.idx ?? -1, kind: it.kind || "episode", label: c.label || c.file, title: it.title || "",
@@ -3843,7 +3897,11 @@ async function drawLibrary() {
       const row = document.createElement("div"); row.className = "li";
       row.innerHTML = `<div class="lt">${/\.(gif|jpg)$/.test(f.file) ? `<img src="${f.url}" alt="" style="width:100%;height:100%;object-fit:cover">` : `<video src="${f.url}#t=0.5" preload="metadata" muted playsinline style="width:100%;height:100%;object-fit:cover"></video>`}<span class="kind">${f.file.split(".").pop().toUpperCase()}</span></div>
         <div class="lm"><div class="x2">${esc(f.file)}</div><div class="hint">${bytes(f.bytes)}${e ? " · saved" : ""}</div>
-        <div class="acts"><a class="b" href="${f.url}" target="_blank">${ic("play")}Play</a><a class="b" href="${f.url}?dl=1" download>${ic("download")}Download</a></div></div>`;
+        ${f.song != null ? `<div class="hint">Studio cut${f.song ? " · ♪ " + esc(f.song) : ""}</div>` : ""}
+        <div class="acts"><a class="b" href="${f.url}" target="_blank">${ic("play")}Play</a><a class="b" href="${f.url}?dl=1" download>${ic("download")}Download</a>
+          ${f.song != null ? `<button class="b" data-a="studio">${ic("movie")}Open in Studio</button>` : ""}</div></div>`;
+      const sb = row.querySelector("[data-a=studio]");
+      if (sb) sb.onclick = () => { history.back(); setTimeout(() => openStudioRender(f.id), 50); };
       list.appendChild(row);
     });
     return;
@@ -3861,12 +3919,14 @@ async function drawLibrary() {
     const len = e.in_ms != null ? ` · ${((e.out_ms - e.in_ms) / 1000).toFixed(1)} s cut` : "";
     const clipUrl = e.kind === "clip" ? "/clips/" + encodeURIComponent(e.file) : null;
     const kept = recent && savedMoment(e.item_id, e.start_ms);
+    const stf = e.kind === "clip" ? files.find(f => f.file === e.file && f.song != null) : null;   // a Studio cut: Edit opens the Studio
+    const song = stf && stf.song && !(e.text || "").includes("♪") ? ` · ♪ ${stf.song}` : "";
     row.innerHTML = `<div class="lt"><img loading="lazy" src="/thumb/${e.item_id}/${mid}.jpg" alt=""><span class="kind">${recent ? "Draft" : e.kind === "clip" ? "Clip" : "Moment"}</span></div>
       <div class="lm"><div class="t">${esc(e.label || "")} <small>${e.title ? esc(e.title) + " · " : ""}${fmt(e.start_ms)}${len}${recent ? " · edited " + ago(e.updated) : ""}</small></div>
-        <div class="x2">${esc(e.text || e.file || "")}</div>
+        <div class="x2">${esc((e.text || e.file || "") + song)}</div>
         ${recent ? "" : `<div class="tagrow"></div>`}
         <div class="acts">
-          <button class="b" data-a="open">${ic("scissors")}${recent ? "Continue" : "Edit"}</button>
+          <button class="b" data-a="open">${ic(stf ? "movie" : "scissors")}${recent ? "Continue" : stf ? "Open in Studio" : "Edit"}</button>
           ${clipUrl ? `<a class="b" href="${clipUrl}" target="_blank">${ic("play")}Play</a><a class="b" href="${clipUrl}?dl=1" download>${ic("download")}Download</a>` : ""}
           ${recent ? `<button class="b" data-a="keep" ${kept ? "disabled" : ""}>${kept ? ic("heart-f") + "Saved" : ic("heart") + "Save"}</button>
                       <button class="b" data-a="del" title="Forget this draft">${ic("x")}Forget</button>`
@@ -3875,6 +3935,7 @@ async function drawLibrary() {
     if (!recent) tagEditor(row.querySelector(".tagrow"), e, () => drawLibrary());
     const open = () => {
       history.back();          // close the library sheet first
+      if (stf) return setTimeout(() => openStudioRender(stf.id), 50);
       setTimeout(() => openEditor({ item_id: e.item_id, idx: e.idx, kind: e.media_kind || "episode", label: e.label || "", title: e.title || "",
         text: e.text || "", start_ms: e.start_ms, end_ms: e.end_ms }, { in_ms: e.in_ms, out_ms: e.out_ms, offset_ms: e.offset_ms }, e.id), 50);
     };

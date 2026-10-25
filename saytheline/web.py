@@ -107,10 +107,27 @@ def find_clip(cid):
         except (OSError, ValueError):
             pass
         item = side.get("item") or {}
+        st = side.get("studio")
+        mu = (st or {}).get("music") or {}
         return dict(id=cid, file=f, url="/clips/" + quote(f), path=os.path.abspath(p), bytes=os.path.getsize(p),
                     item=item, label=srch.label(item) if item.get("kind") else None,
                     request=side.get("request"), result=side.get("result"),
-                    supercut="supercut" in side or "sayanything" in side or "studio" in side)  # many sources: not one editor cut
+                    supercut="supercut" in side or "sayanything" in side or "studio" in side,  # many sources: not one editor cut
+                    studio=st, song=music.info(mu.get("id")) if mu else None)   # a Studio cut's recipe, to open it again
+    return None
+
+
+def studio_song(f):
+    """The name of the song under a rendered Studio cut, or None (for the Library's list of renders)."""
+    try:
+        with open(os.path.join(CLIPS, f + ".json")) as fh:
+            side = json.load(fh)
+    except (OSError, ValueError):
+        return None
+    if "studio" not in side:
+        return None
+    s = music.info(((side["studio"] or {}).get("music") or {}).get("id"))
+    return (s or {}).get("name") or ""
     return None
 
 
@@ -1618,7 +1635,8 @@ class Handler(BaseHTTPRequestHandler):
                                key=lambda f: -os.path.getmtime(os.path.join(CLIPS, f)))[:50]
                 return self.send(200, [dict(id=clip_id(f), file=f, url="/clips/" + quote(f),
                                             bytes=os.path.getsize(os.path.join(CLIPS, f)),
-                                            mtime=int(os.path.getmtime(os.path.join(CLIPS, f)))) for f in files])
+                                            mtime=int(os.path.getmtime(os.path.join(CLIPS, f))),
+                                            song=studio_song(f)) for f in files])   # song: "" for a Studio cut with none
             m = re.fullmatch(r"/api/clip/(c[0-9a-f]{8})/sheet", u.path)
             if m:
                 c = find_clip(m.group(1))
