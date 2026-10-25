@@ -405,11 +405,165 @@ def run_still(job_id, req):
         job.update(state="error", error=str(e)[:500])
 
 
-def new_job(kind):
+class Job(dict):
+    """A job's state dict; notes when it leaves the queue (the clock for its time left)."""
+    def __init__(self, *a, **kw):
+        super().__init__(*a, **kw)
+        self._seen()
+
+    def _seen(self):
+        if "_t0" not in self and self.get("state") not in (None, "queued"):
+            dict.__setitem__(self, "_t0", time.time())
+
+    def __setitem__(self, k, v):
+        dict.__setitem__(self, k, v)
+        if k == "state":
+            self._seen()
+
+    def update(self, *a, **kw):
+        dict.update(self, *a, **kw)
+        self._seen()
+
+
+def new_job(kind, req=None):
     job_id = os.urandom(6).hex()
+    key, units, phases = job_size(kind, req or {})
     with JOBS_LOCK:
-        JOBS[job_id] = {"id": job_id, "kind": kind, "state": "queued"}
+        JOBS[job_id] = Job(id=job_id, kind=kind, state="queued", _key=key, _units=units, _phases=phases)
     return job_id
+
+
+# ---- time left ---------------------------------------------------------------------------------
+# Every wait shows how far along it is and about how long is left. Two sources, blended: the job's
+# own counters (frames made, clips rendered), weighted by phase, and how long the same kind of job
+# took per unit of work (a second of clip, a word) the last few times, kept in data/eta.json.
+ETA_FILE = os.path.join(config.data_dir(), "eta.json")
+ETA_LOCK = threading.Lock()
+RATES = {}
+try:
+    with open(ETA_FILE) as f:
+        RATES.update(json.load(f))
+except (OSError, ValueError):
+    pass
+# share of the work each state stands for, in order (a state not listed has no counters)
+PHASES = {
+    "render": [("rendering", 1)], "render:interp": [("slowing", 0.92), ("rendering", 0.08)],
+    "studio": [("timing", 0.1), ("rendering", 0.85), ("mixing", 0.05)],
+    "studio:ramp": [("timing", 0.05), ("rendering", 0.93), ("mixing", 0.02)],
+    "supercut": [("checking", 0.4), ("shots", 0.1), ("rendering", 0.5)],
+    "check": [("checking", 1)], "sa-render": [("rendering", 1)],
+}
+
+
+def job_size(kind, req):
+    """(rate key, units of work, phases) for a new job: units are seconds of clip, or clips, or words."""
+    def secs(a, b):
+        try:
+            return max(0.5, (int(req.get(b)) - int(req.get(a))) / 1000)
+        except (TypeError, ValueError):
+            return 1.0
+    if kind == "render":
+        interp = (req.get("slow") or {}).get("factor", 1) > 1 if isinstance(req.get("slow"), dict) else bool(req.get("smooth"))
+        key = "render" + (":interp" if interp else "") + (":stems" if req.get("audio") in ("dialogue", "nodialogue") else "") \
+            + (":preview" if req.get("preview") else "")
+        return key, secs("in_ms", "out_ms"), PHASES["render:interp" if interp else "render"]
+    if kind == "studio":
+        ramped = bool(((req.get("music") or {}).get("ramp") or {}).get("strength"))
+        units = sum(max(0, int(c.get("out_ms", 0)) - int(c.get("in_ms", 0))) for c in req.get("clips") or []) / 1000
+        stems = req.get("audio") == "dialogue"
+        key = "studio" + (":ramp:" + req["music"]["ramp"]["strength"] if ramped else "") + (":stems" if stems else "")
+        phases = PHASES["studio:ramp" if ramped else "studio"]
+        if stems:          # separating the voices takes about twice the cut's length
+            phases = [(n, w * (0.75 if ramped else 0.6)) for n, w in phases[:2]] + \
+                     [("separating", 0.25 if ramped else 0.35), ("mixing", 0.05)]
+        return key, max(0.5, units), phases
+    if kind in ("supercut", "check"):
+        return kind + (":check" if req.get("check") else ""), max(1, len(req.get("hits") or [])), PHASES[kind]
+    if kind == "sa-plan":
+        return kind, max(1, len((req.get("sentence") or "").split())), []
+    if kind == "sa-render":
+        return kind, max(1, len([p for p in req.get("pieces") or [] if p.get("take")])), PHASES[kind]
+    if kind in ("snap", "transcribe"):
+        return kind, secs("from_ms", "to_ms") if req.get("from_ms") is not None else secs("in_ms", "out_ms"), []
+    return kind, 1.0, []
+
+
+def job_frac(job):
+    """How far along the job's own counters say it is (0..1), or None without any."""
+    phases, st = job.get("_phases") or [], job.get("state")
+    names = [n for n, _ in phases]
+    if st not in names:
+        return None
+    i = names.index(st)
+    base, w = sum(x for _, x in phases[:i]), phases[i][1]
+    done, total = job.get("done") or 0, job.get("total") or 0
+    within = 0.0
+    if total:
+        within = done / total
+        if job.get("frames_total"):        # frames made inside the current clip
+            within = (done + min(1, (job.get("frames") or 0) / job["frames_total"])) / total
+    return min(1.0, base + w * min(1.0, within))
+
+
+def eta_view(job, now=None):
+    """The job as the page sees it: with pct (0-99) and eta_s (seconds left) when they can be told,
+    and elapsed_s. Queued jobs get eta_s for the wait: the time left on what's ahead of them."""
+    now = now or time.time()
+    out = {k: v for k, v in job.items() if not k.startswith("_")}
+    st = job.get("state")
+    if st in ("done", "error", "cancelled"):
+        return out
+    rate = RATES.get(job.get("_key"))
+    prior = rate * job["_units"] if rate and job.get("_units") else None
+    if st == "queued":
+        with JOBS_LOCK:
+            ahead = [j.get("_eta") for j in JOBS.values() if j is not job and j.get("_t0") and j.get("_eta") is not None
+                     and j.get("state") not in ("queued", "done", "error", "cancelled")]
+        if ahead:
+            out["eta_s"] = round(max(ahead) + (prior or 0))
+        return out
+    el = now - job.setdefault("_t0", now)
+    f = job_frac(job)
+    est = None
+    if f is not None and f >= 0.03 and el >= 2:
+        from_counters = el / f - el
+        est = from_counters
+        if prior is not None:                    # trust the counters more as they go
+            w = min(1.0, f / 0.3)
+            est = w * from_counters + (1 - w) * max(0.0, prior - el)
+    elif prior is not None:
+        est = max(0.0, prior - el)
+    if est is not None:
+        if job.get("_eta") is not None:          # smooth: count down, and only drift towards the new reading
+            est = 0.6 * max(0.0, job["_eta"] - (now - job["_eta_t"])) + 0.4 * est
+        job["_eta"], job["_eta_t"] = est, now
+        out["eta_s"] = round(est)
+    pct = f if f is not None else (el / prior if prior else None)
+    if pct is not None:
+        out["pct"] = int(min(99, 100 * pct))
+    out["elapsed_s"] = round(el)
+    return out
+
+
+def learn_rate(job):
+    """After a job finishes: remember its time per unit (a running average of the last few)."""
+    if job.get("state") != "done" or not job.get("_t0") or not job.get("_units"):
+        return
+    r = (time.time() - job["_t0"]) / job["_units"]
+    with ETA_LOCK:
+        old = RATES.get(job["_key"])
+        RATES[job["_key"]] = round(r if old is None else 0.5 * old + 0.5 * r, 4)
+        try:
+            with open(ETA_FILE + ".tmp", "w") as f:
+                json.dump(RATES, f, indent=1)
+            os.replace(ETA_FILE + ".tmp", ETA_FILE)
+        except OSError:
+            pass
+
+
+def run_job(runner, job_id, req):
+    runner(job_id, req)
+    learn_rate(JOBS[job_id])
 
 
 def item_shots(item_id, a_ms, b_ms):
@@ -871,7 +1025,7 @@ STUDIO_PAD_IN, STUDIO_PAD_OUT = 400, 600        # a saved line with no cut of it
 
 def studio_clip(entry_id):
     """A Library entry as a Studio clip: {entry, item, label, text, in_ms, out_ms, offset_ms,
-    sub_text, caption_shift_ms, caption_cues, slow, thumb}. A moment or recent edit gives its editor
+    sub_text, caption_shift_ms, caption_cues, slow, thumb, lines}. A moment or recent edit gives its editor
     state; a rendered clip the recipe it was made with. A supercut or Say Anything (many sources) can't
     be one clip."""
     e = LIB.get(int(entry_id))
@@ -915,9 +1069,12 @@ def studio_clip(entry_id):
     if not row:
         raise ValueError("that title is no longer in the library")
     text = e.get("text") or ""
-    return dict(entry=e["id"], item=item, label=srch.label(row), text=text, in_ms=max(0, a), out_ms=b, offset_ms=off,
+    clip = dict(entry=e["id"], item=item, label=srch.label(row), text=text, in_ms=max(0, a), out_ms=b, offset_ms=off,
                 sub_text=sub_text, caption_shift_ms=shift, caption_cues=cues, slow=slow, edited=edited,
                 thumb=f"/thumb/{item}/{(a + b) // 2}.jpg")
+    # when its lines are (for the preview of a speed ramp that keeps them at normal speed)
+    clip["lines"] = [[c["start_ms"], c["end_ms"]] for c in clip_captions(row, max(0, a), b, {**clip, "caption_source": "subs"})]
+    return clip
 
 
 def lines_mostly_in(cues, a, b):
@@ -948,10 +1105,30 @@ def studio_snap(clips, song, mu):
     return out
 
 
+def studio_spoken(job, row, c, a, b, i, n):
+    """When words are actually said in a clip ([{"start_ms", "end_ms"}] per word), for a speed ramp
+    that keeps the lines at normal speed: from the speech, not the subtitles, which stay up longer
+    than the words and would leave the ramp nothing between lines. The page sends the times it
+    already fetched for its preview (`spoken`, for the stretch `spoken_for`); otherwise listen now."""
+    got, span = c.get("spoken"), c.get("spoken_for") or [0, 0]
+    if isinstance(got, list) and span[0] <= a and span[1] >= b:
+        return [dict(start_ms=int(x[0]), end_ms=int(x[1])) for x in got if len(x) == 2]
+    job.update(state="timing", done=i, total=n)
+    try:
+        with RENDER_SLOT:
+            return [dict(start_ms=w["s"], end_ms=w["e"]) for w in snapper.transcribe(row["path"], a, b)]
+    except Exception:          # no speech model: fall back on the subtitles
+        return clip_captions(row, a, b, {**c, "caption_source": "subs"})
+
+
+RAMP_MAX_WORK_S = 900          # refuse a speed ramp that would keep the GPU busy longer than this
+
+
 def run_studio(job_id, req):
     """req: {"title", "clips": [studio_clip() dicts, in order, cuts maybe trimmed], "subs": {...},
     "aspect", "res", "transition", "loudnorm", "label", "music": {"id", "offset_ms", "bpm" (set by
-    hand, else the detected one), "level": low|medium|high, "clips": duck|mute|keep, "joins": off|beat|bar}}"""
+    hand, else the detected one), "level": low|medium|high, "clips": duck|mute|keep, "joins": off|beat|bar,
+    "ramp": {"strength", "shape", "direction", "every", "lines": keep|ramp}}, "audio": original|dialogue}"""
     job = JOBS[job_id]
     try:
         clips = (req.get("clips") or [])[:SUPERCUT_MAX_SEGMENTS]
@@ -995,13 +1172,17 @@ def run_studio(job_id, req):
                 raise ValueError(f"a Studio can run up to {SUPERCUT_MAX_SECONDS // 60} min: take some clips out")
             total += seg_len
             cues = clip_captions(row, a, b, creq)
+            spoken = None
+            if rp and rp.get("lines", "keep") == "keep":
+                spoken = studio_spoken(job, row, c, a, b, i, len(clips))
             if not c.get("edited"):
                 cues = lines_mostly_in(cues, a, b)
             seg = dict(item=row["id"], src=row["path"], in_ms=a, out_ms=b, cues=cues,
                        label=sc_label(row) if req.get("label") else None, slow=slow)
             if rp:          # this clip's stretch of the cut, and the beats in it on its own timeline
                 t0 = (total - seg_len) / 1000
-                seg["ramp"] = dict(length=seg_len / 1000, opts=rp, beats=[round(x - t0, 4) for x in grid])
+                seg["ramp"] = dict(length=seg_len / 1000, opts=rp, beats=[round(x - t0, 4) for x in grid],
+                                   keep=ramp.keep_spans(spoken, a, b) if spoken is not None else [])
             segs.append(seg)
         if any(s["slow"] for s in segs) and not slowmo.rife():
             raise ValueError("slow motion needs rife-ncnn-vulkan installed on the server (see README)")
@@ -1015,16 +1196,20 @@ def run_studio(job_id, req):
             job.update(state="rendering", done=i, total=n, frames=frames, frames_total=of)
         if rp:
             ow, oh = media.output_size(segs[0]["src"], {"aspect": req.get("aspect"), "res": req.get("res"), "fit": req.get("fit")})
-            est = sum(ramp.estimate_s((s["out_ms"] - s["in_ms"]) / 1000, rp, ow, oh, slowmo.frame_rate(s["src"])) for s in segs)
-            if est > 600:
+            est = sum(ramp.estimate_s((s["out_ms"] - s["in_ms"]) / 1000, rp, ow, oh, slowmo.frame_rate(s["src"]),
+                                      sum(q - p for p, q in s["ramp"]["keep"])) for s in segs)
+            if est > RAMP_MAX_WORK_S:
                 raise ValueError(f"a speed ramp that long would take about {round(est / 60)} min to make: pick a smaller Size or fewer clips")
         t = time.time()
         with RENDER_SLOT:
-            info = media.supercut(segs, req, out + ".tmp.mp4", progress)
+            info = media.supercut(segs, {**req, "audio": "original"}, out + ".tmp.mp4", progress)
+            if req.get("audio") == "dialogue":
+                job.update(state="separating")
+                media.separate(out + ".tmp.mp4", "dialogue", "mp4")
             if song:
                 job.update(state="mixing")
                 music.mix(out + ".tmp.mp4", music.path(mu["id"]), dict(offset_s=(mu.get("offset_ms") or 0) / 1000,
-                          level=mu.get("level"), clips="mute" if rp else mu.get("clips")), out + ".mix.mp4")
+                          level=mu.get("level"), clips="mute" if rp and rp.get("lines") == "ramp" else mu.get("clips")), out + ".mix.mp4")
                 os.replace(out + ".mix.mp4", out + ".tmp.mp4")
             os.replace(out + ".tmp.mp4", out)
         with open(out + ".json", "w") as f:
@@ -1356,9 +1541,9 @@ class Handler(BaseHTTPRequestHandler):
                        "/api/studio/render": run_studio}
             if u.path in runners:
                 job_id = new_job("studio" if u.path.startswith("/api/studio/") else
-                                 ("sa-" if u.path.startswith("/api/sayany/") else "") + u.path.rsplit("/", 1)[-1])
-                threading.Thread(target=runners[u.path], args=(job_id, req), daemon=True).start()
-                return self.send(202, JOBS[job_id])
+                                 ("sa-" if u.path.startswith("/api/sayany/") else "") + u.path.rsplit("/", 1)[-1], req)
+                threading.Thread(target=run_job, args=(runners[u.path], job_id, req), daemon=True).start()
+                return self.send(202, eta_view(JOBS[job_id]))
             return self.send(404, {"error": "not found"})
         except (BrokenPipeError, ConnectionResetError):
             pass
@@ -1421,12 +1606,12 @@ class Handler(BaseHTTPRequestHandler):
             if u.path == "/api/options":
                 return self.send(200, dict(fonts=media.FONTS, sizes=list(media.SIZES), stems=bool(config.demucs()),
                                            slowmo=bool(slowmo.rife()), slow_max_ms=slowmo.MAX_PART_MS,
-                                           slow_secs_per_mpix_frame=slowmo.SECS_PER_MPIX_FRAME,
+                                           slow_secs_per_mpix_frame=slowmo.SECS_PER_MPIX_FRAME, rates=dict(RATES),
                                            colours=list(media.COLOURS), aspects=["original", *media.ASPECTS]),
                                  cache="max-age=300")
             if u.path.startswith("/api/job/"):
                 job = JOBS.get(u.path.rsplit("/", 1)[-1])
-                return self.send(200 if job else 404, job or {"error": "unknown job"})
+                return self.send(200 if job else 404, eta_view(job) if job else {"error": "unknown job"})
             if u.path == "/api/clips":
                 os.makedirs(CLIPS, exist_ok=True)
                 files = sorted((f for f in os.listdir(CLIPS) if not f.endswith(".json") and ".tmp." not in f),

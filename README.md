@@ -70,8 +70,14 @@ It runs on the machine that has your media, next to Jellyfin, and is used from a
   correct the BPM); the song dips whenever someone speaks, and each join can land on the beat or the
   bar. Play all plays the song with the clips before you render.
   **Speed ramp**: the picture speeds up on every beat (or bar) and slows between, easing along a
-  smooth or sharp curve (Subtle, Strong or Extreme), with the slow stretches made smooth by RIFE.
-  Each beat averages normal speed, so the cut keeps its length; Play all previews it.
+  smooth or sharp curve, with the slow stretches made smooth by RIFE: Subtle (1.8x to 0.55x), Strong
+  (3.5x to 0.3x) or Extreme (6x to 0.15x). Each beat averages normal speed, so the cut keeps its
+  length. Spoken lines can stay at normal speed with their sound (the ramp runs between them, timed
+  from the words actually said) or be ramped too, under the song alone. Play all previews it.
+  **Film sound: Dialogue only** strips the films' own music and effects from the whole cut (demucs).
+- **Time left**: every wait (renders, slow motion, listening, supercuts, Studio) shows how far along
+  it is and about how long is left, from the job's own progress and how long the same kind of job
+  took before (`data/eta.json`); a job waiting its turn shows how long until it starts.
 - **Supercut**: every hit for a search in one video. It checks each hit against the audio,
   skips lines that are never actually heard, can cut to just the phrase, trims each clip to its
   shot, hides repeats, evens out loudness and adds labels and captions. Each clip previews in its

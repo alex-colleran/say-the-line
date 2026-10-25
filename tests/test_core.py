@@ -574,10 +574,61 @@ class SpeedRamp(unittest.TestCase):
         t = ramp.source_times(4.0, 4.0, beats, dict(strength="strong", shape="smooth"))
         self.assertEqual(len(t), 120)
         self.assertTrue(all(b > a for a, b in zip(t, t[1:])))
-        self.assertAlmostEqual(t[-1], 4.0, delta=0.05)
+        self.assertAlmostEqual(t[-1], 4.0, delta=0.1)          # the middle of a fast last frame
         for b in beats[1:8]:              # on each beat the picture is back in step with the song
-            self.assertAlmostEqual(t[int(b * 30)], b, delta=0.04)
+            self.assertAlmostEqual(t[int(b * 30)], b, delta=0.07)     # half a 3.5x frame past it
         self.assertAlmostEqual(ramp.map_time(t[45], t), 45.5 / 30, places=3)
+
+    def test_strengths_are_far_apart(self):
+        from saytheline import ramp
+        peak = {st: ramp.speed(0, st) for st in ramp.STRENGTH}
+        dip = {st: ramp.speed(0.5, st) for st in ramp.STRENGTH}
+        self.assertLess(peak["subtle"] * 1.5, peak["strong"])
+        self.assertLess(peak["strong"] * 1.5, peak["extreme"])
+        self.assertGreaterEqual(peak["extreme"], 5.9)
+        self.assertLessEqual(dip["extreme"], 0.16)
+
+    def test_kept_lines_play_at_normal_speed_in_step(self):
+        from saytheline import ramp
+        cues = [{"start_ms": 11000, "end_ms": 12000}, {"start_ms": 12300, "end_ms": 12800}, {"start_ms": 14500, "end_ms": 14900}]
+        keep = ramp.keep_spans(cues, 10000, 16000)
+        self.assertEqual(keep, [(0.92, 2.95), (4.42, 5.05)])   # the near two joined
+        beats = [0.5 * k for k in range(14)]
+        t = ramp.source_times(6.0, 6.0, beats, dict(strength="extreme"), keep=keep)
+        self.assertEqual(len(t), 180)
+        self.assertTrue(all(b > a for a, b in zip(t, t[1:])))
+        for f in range(29, 88):                     # inside the kept line: shown as it was
+            self.assertAlmostEqual(t[f], (f + 0.5) / 30, places=6)
+        self.assertGreater(max(b - a for a, b in zip(t[:27], t[1:28])) * 30, 2, "ramped before the line")
+        self.assertAlmostEqual(t[-1], 6.0, delta=0.11)          # the middle of a 6x last frame
+
+
+class TimeLeft(unittest.TestCase):
+    def test_counters_and_history_give_time_left(self):
+        from saytheline import web
+        from unittest import mock
+        job = web.Job(id="x", kind="studio", state="queued", _key="studio:t", _units=10.0,
+                      _phases=web.PHASES["studio:ramp"])
+        self.assertNotIn("pct", web.eta_view(job))
+        job.update(state="rendering", done=0, total=2, frames=50, frames_total=100)
+        t0 = job["_t0"]
+        v = web.eta_view(job, now=t0 + 10)            # 5% + 93% x 25% done after 10 s
+        self.assertEqual(v["pct"], 28)
+        self.assertAlmostEqual(v["eta_s"], 10 / 0.2825 - 10, delta=1)
+        self.assertFalse(any(k.startswith("_") for k in v))
+        with mock.patch.dict(web.RATES, {"studio:t": 3.0}):      # 30 s expected, early on: mostly history
+            j2 = web.Job(id="y", kind="studio", state="timing", done=0, total=2, _key="studio:t", _units=10.0,
+                         _phases=web.PHASES["studio:ramp"])
+            self.assertEqual(web.eta_view(j2, now=j2["_t0"] + 3)["eta_s"], 27)
+
+    def test_queued_waits_for_whats_ahead(self):
+        from saytheline import web
+        from unittest import mock
+        run = web.Job(id="a", kind="render", state="rendering", _key="render", _units=1, _phases=[])
+        run.update(_eta=40.0, _eta_t=0)
+        q = web.Job(id="b", kind="render", state="queued", _key="render", _units=1, _phases=[])
+        with mock.patch.dict(web.JOBS, {"a": run, "b": q}, clear=True), mock.patch.dict(web.RATES, {"render": 5.0}):
+            self.assertEqual(web.eta_view(q)["eta_s"], 45)
 
 
 class AudioTracks(unittest.TestCase):

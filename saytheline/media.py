@@ -447,7 +447,8 @@ def render(src, in_ms, out_ms, opts, cues, out, label=None, uniform=False, slow=
     so the segments concatenate without re-encoding. `label`: small source caption, top-left.
     `slow` (a, b, factor, sound) from slowmo.part_of: that part plays slower (see slowmo.py);
     `smooth` (60, from slowmo.smooth_of): that frame rate, the frames in between made up;
-    `ramp` {"beats", "length", "opts"} (ramp.py): speed easing in and out on the song's beats, silent;
+    `ramp` {"beats", "length", "opts", "keep"?} (ramp.py): speed easing in and out on the song's beats,
+    silent but for the lines it keeps at normal speed;
     progress(done, total) while frames are made."""
     with tempfile.TemporaryDirectory(prefix="saytheline-") as tmp:
         return _render(src, in_ms, out_ms, opts, cues, out, label, uniform, slow, progress, tmp, smooth, ramp)
@@ -465,9 +466,12 @@ def _render(src, in_ms, out_ms, opts, cues, out, label, uniform, slow, progress,
                            int(opts.get("res") or (720 if uniform else 0)), upscale=uniform)
     fmt = "mp4" if uniform else opts.get("format", "mp4")
     if ramp:
-        # the speed-ramped segment (silent: the song carries it) becomes the source
+        # the speed-ramped segment becomes the source: silent (the song carries it), or with the
+        # sound of the lines it kept at normal speed
         from . import ramp as rampmod
-        src, times = rampmod.master(src, in_ms, out_ms, ramp["length"], ramp["beats"], ramp["opts"], chain, (w, h), tmp, progress)
+        keep = ramp.get("keep") or ()
+        src, times = rampmod.master(src, in_ms, out_ms, ramp["length"], ramp["beats"], ramp["opts"], chain, (w, h), tmp, progress,
+                                    keep=keep, track=audio_track(src) if keep and info["has_audio"] else None)
         cues = rampmod.remap_cues(cues, in_ms, times)
         in_ms, out_ms = 0, round(len(times) * 1000 / rampmod.OUT_FPS)
         chain, info = [], probe(src)

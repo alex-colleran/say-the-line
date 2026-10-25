@@ -784,12 +784,15 @@
           <div class="opt"><span>Curve</span><div class="chips" data-str="shape"></div></div>
           <div class="opt"><span>Fast</span><div class="chips" data-str="direction"></div></div>
           <div class="opt"><span>Every</span><div class="chips" data-str="every"></div></div>
+          <div class="opt"><span>Lines</span><div class="chips" data-str="lines"></div></div>
           <div class="hint" id="stRampHint"></div>
         </div>
         <div class="hint" id="stRampNeed">Speed ramp makes the picture speed up on every beat and slow between: add a song first, it follows the song's beat.</div>
     </div>
     <details class="grp" id="stSettings">
       <summary>Settings</summary>
+      <div class="opt"><span>Film sound</span><div class="chips" data-st="audio"></div></div>
+      <div class="hint" id="stSoundHint" hidden>Takes out the films' own music and effects and keeps the voices: good under a song. Adds about twice the cut's length to the render.</div>
       <div class="opt"><span>Captions</span><div class="chips" data-st="captions"></div></div>
       <div class="opt"><span>Joins</span><div class="chips" data-st="transition"></div></div>
       <div class="opt"><span>Labels</span><div class="chips" data-st="label"></div></div>
@@ -894,6 +897,27 @@ function fmt(ms) { const s = Math.max(0, Math.floor(ms / 1000)); const h = Math.
   return (h ? h + ":" + String(m).padStart(2, "0") : m) + ":" + String(x).padStart(2, "0"); }
 function fmtp(ms) { return fmt(ms) + "." + String(Math.floor((Math.max(0, ms) % 1000) / 100)); }
 function bytes(n) { return n > 1e6 ? (n / 1e6).toFixed(1) + " MB" : Math.round(n / 1e3) + " KB"; }
+// how far along a job is (the server's pct and eta_s: web.eta_view), for the line under the buttons:
+// "42% · about 1 min left"; jobShort is the same for a button: "42% · 1 min"
+function leftTxt(s) { return s < 60 ? `${Math.max(5, Math.round(s / 5) * 5)} s` : s < 5400 ? `${Math.round(s / 60)} min` : `${(s / 3600).toFixed(1)} h`; }
+function jobLeft(j) {
+  if (!j) return "";
+  if (j.state === "queued") return j.eta_s != null ? `about ${leftTxt(j.eta_s)} to wait` : "";
+  const b = [];
+  if (j.pct != null) b.push(j.pct + "%");
+  if (j.eta_s != null) b.push(j.eta_s < 4 ? "almost done" : `about ${leftTxt(j.eta_s)} left`);
+  else if (j.elapsed_s >= 5) b.push(`${leftTxt(j.elapsed_s)} so far`);
+  return b.join(" · ");
+}
+function jobShort(j) {
+  if (!j) return "";
+  const b = [];
+  if (j.pct != null && j.state !== "queued") b.push(j.pct + "%");
+  if (j.eta_s != null && j.eta_s >= 4) b.push(leftTxt(j.eta_s));
+  return b.join(" · ");
+}
+const withLeft = (txt, j) => { const l = jobLeft(j); return l ? `${txt} · ${l}` : txt + "…"; };
+const btnLeft = (txt, j) => { const l = jobShort(j); return l ? `${txt} ${l}` : txt + "…"; };
 async function postJob(url, body, onState) {
   let job = await (await fetch(url, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) })).json();
   for (let misses = 0; job.state && !["done", "error", "cancelled"].includes(job.state); ) {
@@ -1628,8 +1652,7 @@ $("#interpPrev").onclick = async () => {
   if (!await ensureWords(btn)) return;
   btn.disabled = true; $("#interpErr").hidden = true; $("#vid").pause();
   try {
-    const job = await postJob("/api/render", interpBody(), j => btn.textContent = j.state === "queued" ? "Waiting…"
-      : j.state === "slowing" && j.total ? `Making ${Math.round(100 * (j.done || 0) / j.total)}%…` : "Making…");
+    const job = await postJob("/api/render", interpBody(), j => btn.textContent = btnLeft(j.state === "queued" ? "Waiting" : "Making", j));
     const v = $("#interpVid");
     v.src = job.url; v.hidden = false; interpShown = JSON.stringify(interpBody());
     v.play().catch(() => {});
@@ -1948,7 +1971,7 @@ $("#snap").onclick = async () => {
   btn.disabled = true; note.hidden = true;
   try {
     const job = await postJob("/api/snap", { item: ed.hit.item_id, in_ms: Math.round(ed.inMs), out_ms: Math.round(ed.outMs), offset_ms: ed.offset },
-      j => btn.innerHTML = j.state === "queued" ? ic("hourglass") + "Waiting…" : ic("headphones") + "Listening…");
+      j => btn.innerHTML = j.state === "queued" ? ic("hourglass") + btnLeft("Waiting", j) : ic("headphones") + btnLeft("Listening", j));
     note.hidden = false;
     if (!job.found) { note.innerHTML = `Couldn't hear the subtitle words here (${esc(job.reason || "")}). Cut unchanged.`; return; }
     if (Math.abs(job.offset_ms) >= 250) ed.offset += job.offset_ms;
@@ -2052,7 +2075,7 @@ async function transcribe() {
   const item = ed.hit.item_id, from = Math.round(ed.inMs), to = Math.round(ed.outMs), source = wordSource(), offset = ed.offset;
   try {
     const job = await postJob("/api/transcribe", { item, from_ms: from, to_ms: to, source, offset_ms: offset },
-      j => btn.innerHTML = j.state === "queued" ? ic("hourglass") + "Waiting…" : ic("headphones") + "Listening…");
+      j => btn.innerHTML = j.state === "queued" ? ic("hourglass") + btnLeft("Waiting", j) : ic("headphones") + btnLeft("Listening", j));
     if (!ed.hit || ed.hit.item_id !== item) return;           // the user moved on to another clip
     ed.stt = { item, from, to, source, offset, cues: job.cues, secs: job.secs };
     if (!job.cues.length) flash("No speech heard in this cut");
@@ -2421,8 +2444,7 @@ $("#render").onclick = async () => {
   btn.disabled = true; btn.textContent = "Rendering…";
   $("#result").innerHTML = "";
   try {
-    const job = await postJob("/api/render", renderBody(), j => btn.textContent = j.state === "queued" ? "Waiting…"
-      : j.state === "slowing" && j.total ? `Slowing ${Math.round(100 * (j.done || 0) / j.total)}%…` : "Rendering…");
+    const job = await postJob("/api/render", renderBody(), j => btn.textContent = btnLeft(j.state === "queued" ? "Waiting" : j.state === "slowing" ? "Slowing" : "Rendering", j));
     ed.lastFile = job.file; autosave();
     showResult(job, `${job.width}×${job.height} · ${job.seconds} s · ${bytes(job.bytes)} · rendered in ${job.secs} s`);
   } catch (e) {
@@ -2705,7 +2727,7 @@ async function scRunCheck() {
       if (r.status === 404) throw new Error("Say the Line restarted and the check was lost. The clips checked so far are kept; tap Check first again for the rest.");
       job = await r.json();
       Object.assign(sc.checks, job.results || {}); sc.current = job.current;
-      $("#scSum").textContent = job.state === "queued" ? "Waiting for the renderer…" : `Listening ${Math.min((job.done || 0) + 1, job.total || 1)} of ${job.total || hits.length}…`;
+      $("#scSum").textContent = withLeft(job.state === "queued" ? "Waiting for the renderer" : `Listening ${Math.min((job.done || 0) + 1, job.total || 1)} of ${job.total || hits.length}`, job);
       drawSc();
     }
     if (job.state === "error") throw new Error(job.error);
@@ -2732,10 +2754,9 @@ $("#scRender").onclick = async () => {
   try {
     const job = await postJob("/api/supercut", body, j => {
       if (sc.job !== j.id) { sc.job = j.id; sc.kind = "render"; drawSc(); }
-      if (j.state === "checking") $("#scSum").textContent = `Listening ${(j.done || 0) + 1} of ${j.total}…`;
-      else if (j.state === "shots") $("#scSum").textContent = `Finding camera cuts ${(j.done || 0) + 1} of ${j.total}…`;
-      else if (j.state === "rendering") $("#scSum").textContent = `Rendering clip ${(j.done || 0) + 1} of ${j.total}…`;
-      else $("#scSum").textContent = "Waiting for the renderer…";
+      $("#scSum").textContent = withLeft(j.state === "checking" ? `Listening ${(j.done || 0) + 1} of ${j.total}`
+        : j.state === "shots" ? `Finding camera cuts ${(j.done || 0) + 1} of ${j.total}`
+        : j.state === "rendering" ? `Rendering clip ${(j.done || 0) + 1} of ${j.total}` : "Waiting for the renderer", j);
     });
     Object.assign(sc.checks, job.checks || {});
     const url = "/clips/" + encodeURIComponent(job.file);
@@ -2917,8 +2938,8 @@ async function saFind() {
   try {
     const job = await postJob("/api/sayany/plan", { sentence: text, kind: state.kind }, j => {
       if (sa.job !== j.id) { sa.job = j.id; drawSa(); }
-      $("#saSum").textContent = j.state === "queued" ? "Waiting for the renderer…"
-        : `Listening for “${j.current || "…"}” · ${j.listened || 0} take${j.listened === 1 ? "" : "s"} heard so far`;
+      $("#saSum").textContent = j.state === "queued" ? withLeft("Waiting for the renderer", j)
+        : `Listening for “${j.current || "…"}” · ${j.listened || 0} take${j.listened === 1 ? "" : "s"} heard so far` + (jobLeft(j) ? " · " + jobLeft(j) : "");
     });
     sa.pieces = job.pieces; sa.sentence = job.sentence;
   } catch (e) {
@@ -2962,7 +2983,7 @@ $("#saRender").onclick = async () => {
   try {
     const job = await postJob("/api/sayany/render", body, j => {
       if (sa.job !== j.id) { sa.job = j.id; $("#saStop").hidden = false; }
-      $("#saSum").textContent = j.state === "rendering" ? `Rendering piece ${(j.done || 0) + 1} of ${j.total}…` : "Waiting for the renderer…";
+      $("#saSum").textContent = withLeft(j.state === "rendering" ? `Rendering piece ${(j.done || 0) + 1} of ${j.total}` : "Waiting for the renderer", j);
     });
     const url = "/clips/" + encodeURIComponent(job.file);
     saStopPlay();
@@ -3085,11 +3106,12 @@ const ST_CHOICES = {
   captions: [["off", "Off"], ["classic", "Subtitles"], ["tiktok", "TikTok"], ["popin", "Pop-in"], ["bigword", "Big word"],
              ["poster", "Poster"], ["kinetic", "Kinetic"], ["intense", "Intense"]],
   transition: [["cut", "Cut"], ["fade", "Fade"]], label: [[false, "Off"], [true, "On"]],
+  audio: [["original", "All of it"], ["dialogue", "Dialogue only"]],
   loudnorm: [[true, "Even out"], [false, "As is"]], aspect: SC_CHOICES.aspect, fit: SC_CHOICES.fit, res: SC_CHOICES.res,
 };
 const studio = { clips: [], title: "", music: null, audio: null, queueAll: false, busy: false, job: null, now: null, vid: null, queue: [], cards: new Map(), draftId: null,
   pick: { kind: "", tag: "", sel: new Set() },
-  o: { captions: "classic", transition: "cut", label: false, loudnorm: true, aspect: "16:9", fit: "crop", res: 720 } };
+  o: { audio: "original", captions: "classic", transition: "cut", label: false, loudnorm: true, aspect: "16:9", fit: "crop", res: 720 } };
 try { Object.assign(studio.o, JSON.parse(localStorage.getItem("saytheline.studio") || "{}")); } catch (e) {}
 function saveStudio() { try { localStorage.setItem("saytheline.studio", JSON.stringify(studio.o)); } catch (e) {} }
 // a clip's length in the cut (a speed ramp replaces its own slow motion)
@@ -3099,12 +3121,17 @@ function openStudio() {
   $("#stName").value = studio.title; drawStudio();
 }
 function drawStudio() {
+  $("#stSoundHint").hidden = studio.o.audio !== "dialogue";
   $$("[data-st]").forEach(box => {
     const key = box.dataset.st; box.innerHTML = "";
     ST_CHOICES[key].forEach(([v, label]) => {
       const c = document.createElement("button"); c.type = "button"; c.className = "chip"; c.textContent = label;
       c.setAttribute("aria-pressed", String(studio.o[key] === v));
-      c.onclick = () => { studio.o[key] = v; saveStudio(); drawStudio(); };
+      if (key === "audio" && v !== "original" && !SERVER.stems) c.setAttribute("aria-disabled", "true");
+      c.onclick = () => {
+        if (key === "audio" && v !== "original" && !SERVER.stems) return flashSt("Needs demucs installed on the server (see README)");
+        studio.o[key] = v; saveStudio(); drawStudio();
+      };
       box.appendChild(c);
     });
   });
@@ -3170,6 +3197,7 @@ function stPlayOne(c, follow) {
   }
   v.src = `/preview/${c.item}/${c.in_ms}-${c.out_ms}.mp4`;
   v.muted = !!(studio.queueAll && studio.music && (studio.music.clips === "mute" || rampOn()));
+  studio.keep = rampKeep(c);
   v.playbackRate = 1;
   if (studio.queueAll && studio.music && studio.audio) {      // keep the song in step with this clip's place in the cut
     const at = studio.clips.slice(0, studio.clips.indexOf(c)).reduce((t, x) => t + stLen(x), 0);
@@ -3197,7 +3225,15 @@ function rampLoop() {
   const g = studio.grid, t = studio.audio.currentTime;
   let i = 0; while (i + 1 < g.length && g[i + 1] <= t) i++;
   const p = i + 1 < g.length && g[i] <= t ? (t - g[i]) / (g[i + 1] - g[i]) : 0;
-  studio.vid.playbackRate = Math.max(0.1, Math.min(8, rampSpeed(p, studio.music.ramp)));
+  let rate = rampSpeed(p, studio.music.ramp), kept = false;
+  if (keepLines() && studio.now) {             // in one of the clip's lines: normal speed, with its sound
+    const x = studio.vid.currentTime, sp = studio.keep || [];
+    kept = sp.some(([a, b]) => x >= a && x < b);
+    if (kept) rate = 1;
+    else { const d = sp.reduce((m, [a, b]) => Math.min(m, Math.abs(x - a), Math.abs(x - b)), 9); rate = 1 + (rate - 1) * Math.min(1, d / RAMP.ease); }
+  }
+  studio.vid.playbackRate = Math.max(0.1, Math.min(8, rate));
+  studio.vid.muted = !kept || studio.music.clips === "mute";
   requestAnimationFrame(rampLoop);
 }
 $("#stPlay").onclick = () => {
@@ -3269,6 +3305,7 @@ $("#stRender").onclick = async () => {
   const look = studio.o.captions;
   const m = studio.music;
   const body = { title: studio.title.trim(), clips: studio.clips, transition: studio.o.transition, label: studio.o.label,
+    audio: studio.o.audio === "dialogue" && SERVER.stems ? "dialogue" : "original",
     music: m ? { id: m.id, offset_ms: m.offset_ms, bpm: m.set_bpm || undefined, level: m.level, clips: m.clips, joins: m.joins,
                  ramp: rampOn() ? m.ramp : undefined } : undefined,
     loudnorm: studio.o.loudnorm, aspect: studio.o.aspect, fit: studio.o.fit, res: studio.o.res,
@@ -3278,9 +3315,9 @@ $("#stRender").onclick = async () => {
   try {
     const job = await postJob("/api/studio/render", body, j => {
       if (studio.job !== j.id) { studio.job = j.id; $("#stStop").hidden = false; }
-      $("#stSum").textContent = j.state === "timing" ? `Timing the words in clip ${(j.done || 0) + 1} of ${j.total}…`
-        : j.state === "rendering" ? `Rendering clip ${(j.done || 0) + 1} of ${j.total}${j.frames_total ? ` · frames ${Math.round(100 * j.frames / j.frames_total)}%` : ""}…`
-        : j.state === "mixing" ? "Mixing in the song…" : "Waiting for the renderer…";
+      $("#stSum").textContent = withLeft(j.state === "timing" ? `Timing the words in clip ${(j.done || 0) + 1} of ${j.total}`
+        : j.state === "rendering" ? `Rendering clip ${(j.done || 0) + 1} of ${j.total}`
+        : j.state === "separating" ? "Taking out the films' music" : j.state === "mixing" ? "Mixing in the song" : "Waiting for the renderer", j);
     });
     const url = "/clips/" + encodeURIComponent(job.file);
     $("#stResult").innerHTML = `<div class="result"><video src="${url}" controls playsinline autoplay></video>
@@ -3313,21 +3350,72 @@ const STM_CHOICES = {
   clips: [["duck", "Music dips"], ["keep", "Both full"], ["mute", "Clips muted"]],
   joins: [["off", "As cut"], ["beat", "On the beat"], ["bar", "On the bar"]],
 };
-// = ramp.py: speed within a beat (phase 0 = on the beat), averaging 1 over the beat
-const RAMP = { strength: { subtle: 2, strong: 4, extreme: 8 }, shape: { smooth: 1, sharp: 4 } };
+// = ramp.py: speed within a beat (phase 0 = on the beat), averaging 1 over the beat. A strength is
+// the fastest and slowest speed; the bump's shape is solved so the beat averages normal speed.
+const RAMP = { strength: { subtle: [1.8, 0.55], strong: [3.5, 0.3], extreme: [6, 0.15] }, edge: 0.08, steps: 2000, keep: [0.08, 0.15, 0.6], ease: 0.25 };
 const STR_CHOICES = {
   strength: [["off", "Off"], ["subtle", "Subtle"], ["strong", "Strong"], ["extreme", "Extreme"]],
   shape: [["smooth", "Smooth"], ["sharp", "Sharp"]],
   direction: [["beat", "On the beat"], ["between", "Between beats"]],
   every: [["beat", "Beat"], ["bar", "Bar"]],
+  lines: [["keep", "Normal speed"], ["ramp", "Ramped too"]],
 };
-const rampW = (p, shape) => ((1 + Math.cos(2 * Math.PI * p)) / 2) ** (RAMP.shape[shape] || 1);
-const rampMeanW = {};
-function rampSpeed(p, o) {
-  const r = RAMP.strength[o.strength] || 4, fast = o.direction !== "between";
-  if (!(o.shape in rampMeanW)) { let t = 0; for (let i = 0; i < 2000; i++) t += rampW((i + 0.5) / 2000, o.shape); rampMeanW[o.shape] = t / 2000; }
-  const m = fast ? rampMeanW[o.shape] : 1 - rampMeanW[o.shape], w = fast ? rampW(p, o.shape) : 1 - rampW(p, o.shape);
-  return (1 + (r - 1) * w) / (1 + (r - 1) * m);
+function rampBump(p, shape, c) {
+  if (shape === "sharp") {
+    const d = Math.min(p % 1, 1 - p % 1);
+    return d <= c[0] ? 1 : d < c[0] + c[1] ? (1 + Math.cos(Math.PI * (d - c[0]) / c[1])) / 2 : 0;
+  }
+  return ((1 + Math.cos(2 * Math.PI * p)) / 2) ** c;
+}
+const rampMeanOf = (shape, c) => { let t = 0; for (let i = 0; i < RAMP.steps; i++) t += rampBump((i + 0.5) / RAMP.steps, shape, c); return t / RAMP.steps; };
+const rampCurves = {};
+function rampCurve(o) {
+  const shape = o.shape === "sharp" ? "sharp" : "smooth", fast = o.direction !== "between";
+  const key = `${o.strength}|${shape}|${fast}`;
+  if (rampCurves[key]) return rampCurves[key];
+  const [hi, lo] = RAMP.strength[o.strength] || RAMP.strength.strong;
+  const m = fast ? (1 - lo) / (hi - lo) : (hi - 1) / (hi - lo);
+  let c;
+  if (shape === "sharp") { const e = Math.min(RAMP.edge, m); c = [Math.min(0.5 - e, (m - e) / 2), e]; }
+  else { let a = -8, b = 8; for (let i = 0; i < 60; i++) { const k = (a + b) / 2; if (rampMeanOf(shape, Math.exp(k)) > m) a = k; else b = k; } c = Math.exp((a + b) / 2); }
+  const raw = p => { const g = rampBump(p, shape, c); return fast ? lo + (hi - lo) * g : hi - (hi - lo) * g; };
+  let mean = 0; for (let i = 0; i < RAMP.steps; i++) mean += raw((i + 0.5) / RAMP.steps); mean /= RAMP.steps;
+  return (rampCurves[key] = { raw, mean, lo });
+}
+function rampSpeed(p, o) { const c = rampCurve(o); return c.raw(p) / c.mean; }
+// = ramp.keep_spans: the stretches of a clip (s from its start) a ramp keeps at normal speed
+// (from the words actually said once stSpoken has fetched them, else the subtitle lines)
+function rampKeep(c) {
+  const dur = (c.out_ms - c.in_ms) / 1000, [pre, post, gap] = RAMP.keep, sp = [];
+  const said = c.spoken && c.spoken_for && c.spoken_for[0] <= c.in_ms && c.spoken_for[1] >= c.out_ms ? c.spoken : c.lines;
+  for (const [s0, e0] of (said || []).slice().sort((x, y) => x[0] - y[0])) {
+    const a = Math.max(0, (s0 - c.in_ms) / 1000 - pre), b = Math.min(dur, (e0 - c.in_ms) / 1000 + post);
+    if (b <= a) continue;
+    if (sp.length && a - sp[sp.length - 1][1] < gap) sp[sp.length - 1][1] = Math.max(sp[sp.length - 1][1], b); else sp.push([a, b]);
+  }
+  if (sp.length && sp[0][0] < gap / 2) sp[0][0] = 0;
+  if (sp.length && dur - sp[sp.length - 1][1] < gap / 2) sp[sp.length - 1][1] = dur;
+  return sp;
+}
+const keepLines = () => rampOn() && studio.music.ramp.lines !== "ramp";
+// the words' own times, for each clip a ramp keeps the lines of (one at a time, quietly; the render
+// uses them too, or listens itself)
+async function stSpoken() {
+  if (studio.speaking) return;
+  studio.speaking = true;
+  try {
+    for (const c of studio.clips) {
+      if (!keepLines()) break;
+      if (c.spoken && c.spoken_for && c.spoken_for[0] <= c.in_ms && c.spoken_for[1] >= c.out_ms) continue;
+      const from = Math.max(0, c.in_ms - 500), to = c.out_ms + 500;
+      try {
+        const j = await postJob("/api/transcribe", { item: c.item, from_ms: from, to_ms: to });
+        c.spoken = j.cues.flatMap(q => (q.words || []).map(w => [w.s, w.e])); c.spoken_for = [from, to];
+      } catch (e) { break; }
+      if (studio.now === c) studio.keep = rampKeep(c);
+      drawMusic();
+    }
+  } finally { studio.speaking = false; }
 }
 const rampOn = () => !!(studio.music && studio.music.ramp && studio.music.ramp.strength !== "off");
 const mmss = s => `${Math.floor(s / 60)}:${(s % 60).toFixed(1).padStart(4, "0")}`;
@@ -3359,7 +3447,7 @@ function drawMusic() {
       box.appendChild(c);
     });
   });
-  m.ramp = m.ramp || { strength: "off", shape: "smooth", direction: "beat", every: "beat" };
+  m.ramp = { strength: "off", shape: "smooth", direction: "beat", every: "beat", lines: "keep", ...(m.ramp || {}) };
   $$("[data-str]").forEach(box => {
     const key = box.dataset.str; box.innerHTML = "";
     STR_CHOICES[key].forEach(([v, label]) => {
@@ -3377,14 +3465,19 @@ function drawMusic() {
   $("#stRampMore").hidden = false;
   $$("#stRampMore .opt").forEach(o => o.classList.toggle("disabled", !rampOn()));
   if (!rampOn()) $("#stRampHint").textContent = "Pick Subtle, Strong or Extreme to turn it on: the picture then speeds up on every beat and slows between, in time with the song.";
-  $("#stClipSound").classList.toggle("disabled", rampOn());          // a ramp mutes the clips
+  $("#stClipSound").classList.toggle("disabled", rampOn() && !keepLines());     // a ramp through the lines mutes the clips
+  if (keepLines() && studio.clips.some(c => !(c.spoken && c.spoken_for && c.spoken_for[0] <= c.in_ms && c.spoken_for[1] >= c.out_ms))) stSpoken();
   if (rampOn()) {
-    const secs = studio.clips.reduce((t, c) => t + (c.out_ms - c.in_ms), 0) / 1000;
-    const short = studio.o.res || 720, mp = short * short * 16 / 9 / 1e6;
-    let slow = 9; for (let i = 0; i < 200; i++) slow = Math.min(slow, rampSpeed(i / 200, m.ramp));
-    const est = secs * 25 * Math.min(8, Math.max(1, Math.ceil(30 / slow / 25))) * mp * (SERVER.slow_secs_per_mpix_frame || 0.15) + 10;
-    $("#stRampHint").textContent = `The picture speeds up ${m.ramp.direction === "between" ? "between beats and slows on them" : "on every " + m.ramp.every + " and slows between"}, easing along the curve; each ${m.ramp.every} still averages normal speed, so the cut keeps its length. `
-      + `The clips' own sound is muted (the song carries it) and their own slow motion is replaced. Play all previews it. Adds about ${est < 60 ? Math.round(est / 5) * 5 + " s" : Math.round(est / 60) + " min"} to the render.`;
+    const keep = keepLines();
+    const secs = studio.clips.reduce((t, c) => t + (c.out_ms - c.in_ms) / 1000 - (keep ? rampKeep(c).reduce((k, [a, b]) => k + b - a, 0) : 0), 0);
+    const short = studio.o.res || 720, mp = short * short * 16 / 9 / 1e6, cv = rampCurve(m.ramp), slow = cv.lo / cv.mean;
+    const hi = (RAMP.strength[m.ramp.strength] || RAMP.strength.strong)[0];
+    // how long this strength took per second of clip here before (web.RATES, mostly at 720), else the RIFE cost
+    const rate = (SERVER.rates || {})["studio:ramp:" + m.ramp.strength];
+    const est = rate ? rate * secs * mp / (720 * 1280 / 1e6) : secs * 24 * Math.min(10, Math.max(1, Math.ceil(30 / slow / 24))) * mp * (SERVER.slow_secs_per_mpix_frame || 0.15) + 10;
+    $("#stRampHint").textContent = `The picture runs up to ${hi}× fast ${m.ramp.direction === "between" ? "between beats and slows to " + Math.round(slow * 100) / 100 + "× on them" : "on every " + m.ramp.every + " and slows to " + Math.round(slow * 100) / 100 + "× between"}, ${m.ramp.shape === "sharp" ? "snapping" : "easing"} from one to the other; each ${m.ramp.every} still averages normal speed, so the cut keeps its length. `
+      + (keep ? "Spoken lines ease back to normal speed and keep their sound; the ramp runs between them. " : "Lines are ramped too, so the clips' own sound is muted (the song carries it). ")
+      + `Each clip's own slow motion is replaced. Play all previews it. Adds about ${est < 60 ? Math.round(est / 5) * 5 + " s" : Math.round(est / 60) + " min"} to the render.`;
   }
   const beat = 60 / stBpm();
   $("#stMusicHint").textContent = (m.clips === "duck" ? "The song dips whenever someone speaks and comes back between lines. " : "")

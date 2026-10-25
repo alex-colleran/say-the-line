@@ -228,15 +228,33 @@ Design notes: what each part does and why it is built that way. For setup, see t
   join to a whole 30 fps frame. For that to hold in the output, each supercut segment is exactly
   `round(dur x 30)` frames with its audio trimmed and padded to match, and the concat list gives each
   part's duration (AAC pads its last frame, which used to make long supercuts drift by ~50 ms a clip).
-- **Speed ramp (`ramp.py`):** speed within a beat is `slow x (1 + (r - 1) x w(p))`, with
-  `w = ((1 + cos 2πp) / 2)^k` (1 on the beat, 0 halfway; k = 1 smooth, 4 sharp), r = fastest / slowest
-  (2, 4, 8), and `slow` chosen so every beat averages 1x: the cut keeps its length and joins on the beat
-  stay there. Each segment's output frames get source times from the cumulative speed, scaled to land
-  exactly on the segment's end; the source is made k times denser by RIFE (per camera shot, k from the
-  slowest speed, at most 8) and each output frame takes the nearest dense frame. Captions follow by the
-  inverse map; the clips' sound is muted (the song carries it), and a clip's own slow motion is
-  replaced. JS `rampSpeed` = `ramp.speed`; the preview sets the clip's playbackRate from the song's
-  position every frame.
+- **Speed ramp (`ramp.py`):** a strength is a fastest and slowest speed (Subtle 1.8x / 0.55x, Strong
+  3.5x / 0.3x, Extreme 6x / 0.15x). Speed within a beat is `lo + (hi - lo) x g(p)` (or `hi - ...` for
+  fast between beats), where the bump g is 1 on the beat: Smooth is `((1 + cos 2πp) / 2)^k`, Sharp a
+  flat top with cosine edges of 8 % of a beat. For every beat to average 1x, g must average
+  `(1 - lo) / (hi - lo)`, which fixes k (by bisection) or the flat top's width: the faster the peak,
+  the shorter the burst. So the cut keeps its length and joins on the beat stay there. (An earlier
+  version fixed the ratio and the curve, which capped the peak at 2x for Smooth whatever the strength.)
+  Each segment's output frames get source times from the cumulative speed, scaled to land exactly on
+  the segment's end; the source is made k times denser by RIFE (per camera shot, k from the slowest
+  speed, at most 10) and each output frame takes the nearest dense frame. Captions follow by the
+  inverse map, and a clip's own slow motion is replaced. JS `rampSpeed` = `ramp.speed`; the preview
+  sets the clip's playbackRate from the song's position every frame.
+- **Kept lines:** with Lines at normal speed, `ramp.keep_spans` takes each word actually said
+  (Whisper, `web.studio_spoken`; subtitles stay up well past the speech and would leave nothing to
+  ramp), pads it (80 ms before, 150 ms after) and joins gaps under 0.6 s. Those frames show the
+  source as it was; the ramp eases back to 1x over 0.25 s either side, and each stretch between kept
+  spans is scaled to cover exactly its own source, so a kept line stays at its moment and in sync.
+  Kept spans need no RIFE (their frames are repeated to keep the dense sequence even). Their sound is
+  the source's, gated to the kept spans with 40 ms fades (`aeval`); the clips' sound is then mixed
+  under the song as usual. Lines ramped too: silent, the song alone.
+- **Time left (`web.eta_view`):** each job kind lists its phases and the share of the work each stands
+  for (`web.PHASES`); counters inside a phase (frames made, clips done) give the fraction done f, and
+  time left is `elapsed x (1 - f) / f`. A job's time per unit of work (second of clip, hit, word) is
+  kept per kind and variant in `data/eta.json` (a running average), and early on, before the
+  counters say much (f < 0.3), the estimate leans on that history. Readings are smoothed (counting
+  down, drifting 40 % towards each new one) so the number doesn't jump. A queued job's wait is the
+  time left on the jobs ahead of it.
 - **Mix:** the song from the chosen start, loudness-normalised (-27 / -22 / -17 LUFS under the clips,
   -14 alone), faded out over the last 1.5 s; with "Music dips" it goes through a sidechain compressor
   keyed on the clips' own audio, then a limiter.
