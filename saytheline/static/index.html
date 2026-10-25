@@ -366,6 +366,7 @@
   .sa-row.on { border-color: var(--accent); }
   input.st-name { width: 100%; height: 44px; min-height: 0; flex: none; font: inherit; font-size: 16px; padding: 0 10px; background: var(--panel);
     color: var(--text); border: 1px solid var(--line); border-radius: 6px; margin-bottom: 10px; }
+  .sa-top.st-sel { grid-template-columns: 1fr 44px; }
   .sa-top .st-btns { display: flex; flex-direction: column; gap: 6px; }
   /* Studio timeline: the cut's clips, the song's beats, and effects (the speed ramp) as bands to drag */
   .tl2 { position: relative; height: 68px; background: #000; border: 1px solid var(--line); user-select: none;
@@ -390,6 +391,27 @@
   .fxrow .sw { width: 12px; height: 12px; border-radius: 3px; background: rgba(108,99,255,.8); border: 1px solid #c3bbff; flex: none; }
   .fxrow.sel .ft { color: var(--text); font-weight: 600; }
   .fxrow .st-ctl span { color: var(--dim); margin: 0 2px 0 4px; }
+  /* Studio's preview: one window for every clip (like the editor's), in the cut's shape */
+  .st-stage { --ar: 1.7778; position: relative; background: #000; aspect-ratio: var(--ar); width: min(100%, calc(50vh * var(--ar)));
+    margin: 0 auto; overflow: hidden; }
+  .st-stage img, .st-stage video { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: var(--fit, cover); display: block; }
+  .st-stage .st-big { position: absolute; left: 50%; top: 50%; width: 64px; height: 64px; margin: -32px 0 0 -32px; border-radius: 50%;
+    background: rgba(0,0,0,.55); border: 2px solid rgba(255,255,255,.8); display: grid; place-items: center; padding: 0; }
+  .st-stage .st-big .i { width: 28px; height: 28px; margin-left: 3px; }
+  .st-stage.playing .st-big { display: none; }
+  .st-stage .st-now { position: absolute; left: 0; right: 0; bottom: 0; padding: 18px 10px 6px; font-size: 12.5px; color: #fff;
+    background: linear-gradient(transparent, rgba(0,0,0,.75)); pointer-events: none; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  /* the clips in order, as a ribbon of thumbnails: tap one to pick it */
+  .st-ribbon { display: flex; gap: 6px; overflow-x: auto; padding: 10px 0 4px; scroll-snap-type: x proximity; }
+  .st-ribbon .rb { position: relative; flex: none; width: 104px; aspect-ratio: 16/9; padding: 0; border: 2px solid transparent; background: #000;
+    scroll-snap-align: start; }
+  .st-ribbon .rb img { width: 100%; height: 100%; object-fit: cover; display: block; }
+  .st-ribbon .rb span { position: absolute; left: 3px; top: 3px; font-size: 11px; font-weight: 700; background: rgba(0,0,0,.7); padding: 0 4px; }
+  .st-ribbon .rb small { position: absolute; right: 3px; bottom: 3px; font-size: 10.5px; background: rgba(0,0,0,.7); padding: 0 3px; color: #ddd; }
+  .st-ribbon .rb.sel { border-color: var(--accent); }
+  .st-ribbon .rb.on::after { content: ""; position: absolute; left: 0; right: 0; bottom: 0; height: 3px; background: var(--accent); }
+  .st-ribbon .rb.add { display: grid; place-items: center; background: var(--panel-2); border: 1px dashed var(--edge); color: var(--dim); }
+  .tl2 .clipb.sel { opacity: 1; box-shadow: inset 0 0 0 2px var(--accent); }
   .st-ctl { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; }
   .st-ctl .b { min-width: 40px; min-height: 40px; padding: 0 6px; }
   .st-ctl span { color: var(--dim); font-size: 13px; margin: 0 2px 0 8px; }
@@ -781,6 +803,20 @@
     <div class="note" id="stNote" hidden></div>
     <input id="stName" class="st-name" type="text" placeholder="Name this cut (optional)" aria-label="Name" autocomplete="off" enterkeyhint="done">
     <div id="stResult"></div>
+    <div class="st-stage" id="stStage" hidden>
+      <img id="stPoster" alt="">
+      <button type="button" class="st-big" id="stBig" aria-label="Play this clip"><svg class="i" aria-hidden="true"><use href="#i-play"/></svg></button>
+      <div class="st-now" id="stNow"></div>
+    </div>
+    <div class="grp" id="stTL" hidden>
+      <h3>Timeline</h3>
+      <div class="tl2" id="stTrack"></div>
+      <div class="tl2-scale"><span>0:00</span><span id="stTLEnd"></span></div>
+      <div class="st-ribbon" id="stRibbon"></div>
+      <div id="stFxList"></div>
+      <div class="opt"><button class="b" id="stFxAdd"><svg class="i" aria-hidden="true"><use href="#i-plus"/></svg>Speed ramp</button></div>
+      <div class="hint" id="stFxHint"></div>
+    </div>
     <div class="sclist" id="stList"></div>
     <div class="opt"><button class="b primary" id="stAdd"><svg class="i" aria-hidden="true"><use href="#i-plus"/></svg>Add clips</button>
       <span class="hint" id="stAddHint">From your Library: saved moments and rendered clips.</span></div>
@@ -791,14 +827,6 @@
       <div class="chips" id="stPickKinds"></div>
       <div class="chips" id="stPickTags"></div>
       <div class="st-plist" id="stPickList"></div>
-    </div>
-    <div class="grp" id="stTL" hidden>
-      <h3>Timeline</h3>
-      <div class="tl2" id="stTrack"></div>
-      <div class="tl2-scale"><span>0:00</span><span id="stTLEnd"></span></div>
-      <div class="opt"><button class="b" id="stFxAdd"><svg class="i" aria-hidden="true"><use href="#i-plus"/></svg>Speed ramp</button></div>
-      <div id="stFxList"></div>
-      <div class="hint" id="stFxHint"></div>
     </div>
     <div class="grp" id="stMusic">
       <h3>Music</h3>
@@ -3238,27 +3266,19 @@ function drawStudio() {
     });
   });
   $("#stFitOpt").classList.toggle("disabled", studio.o.aspect === "original");
-  const list = $("#stList"), playing = studio.now;
-  studio.cards = new Map();
-  list.innerHTML = studio.clips.length ? "" : `<div class="hint">Nothing here yet. Add clips from your Library: hearted moments and rendered clips, in any mix of shows and movies.</div>`;
-  studio.clips.forEach((c, i) => {
-    const row = document.createElement("div");
-    row.className = "sa-row" + (c === playing ? " on" : ""); row.dataset.i = i;
-    const slow = c.slow ? ` · ${c.slow.factor === 2 ? "½" : "¼"}× slow` : "";
-    row.innerHTML = `<div class="sa-top">
-        <button class="st${c === playing ? " on" : ""}" data-a="play" aria-label="${c === playing ? "Stop" : "Play"} clip ${i + 1}"><img src="${c.thumb}" alt="" loading="lazy"><span class="pp">${ic("play")}</span></button>
-        <div class="st-info"><b>${i + 1}. ${esc(c.label)}</b><small>${esc(c.text || "")}</small><small>${(stLen(c) / 1000).toFixed(1)} s${slow}</small></div>
+  // the picked clip's own controls, under the ribbon
+  if (!studio.clips.includes(studio.sel)) studio.sel = studio.clips[0] || null;
+  const list = $("#stList"), c = studio.sel, i = studio.clips.indexOf(c);
+  list.innerHTML = !studio.clips.length ? `<div class="hint">Nothing here yet. Add clips from your Library: hearted moments and rendered clips, in any mix of shows and movies.</div>`
+    : `<div class="sa-row" data-i="${i}"><div class="sa-top st-sel">
+        <div class="st-info"><b>${i + 1}. ${esc(c.label)}</b><small>${esc(c.text || "")}</small><small>${(stLen(c) / 1000).toFixed(1)} s${c.slow ? ` · ${c.slow.factor === 2 ? "½" : "¼"}× slow` : ""}</small></div>
         <div class="st-btns"><button class="b" data-a="edit" aria-label="Edit clip ${i + 1}: cut, caption text, slow motion" title="Edit the cut, caption text and slow motion">${ic("scissors")}</button>
           <button class="b" data-a="del" aria-label="Take clip ${i + 1} out">${ic("x")}</button></div></div>
       <div class="st-ctl">
-        <button class="b" data-a="up" aria-label="Move up" ${i ? "" : "disabled"}>${ic("up")}</button><button class="b" data-a="down" aria-label="Move down" ${i < studio.clips.length - 1 ? "" : "disabled"}>${ic("down")}</button>
+        <button class="b" data-a="up" aria-label="Move earlier in the cut" ${i ? "" : "disabled"}>${ic("chev-left")}</button><button class="b" data-a="down" aria-label="Move later in the cut" ${i < studio.clips.length - 1 ? "" : "disabled"}>${ic("chev-right")}</button>
         <span>Start</span><button class="b" data-a="in,-250" aria-label="Start a quarter second earlier">−</button><button class="b" data-a="in,250" aria-label="Start a quarter second later">+</button>
-        <span>End</span><button class="b" data-a="out,-250" aria-label="End a quarter second earlier">−</button><button class="b" data-a="out,250" aria-label="End a quarter second later">+</button></div>`;
-    list.appendChild(row);
-    const st = row.querySelector(".st");
-    studio.cards.set(c, st);
-    if (c === playing && studio.vid) st.appendChild(studio.vid);
-  });
+        <span>End</span><button class="b" data-a="out,-250" aria-label="End a quarter second earlier">−</button><button class="b" data-a="out,250" aria-label="End a quarter second later">+</button></div></div>`;
+  drawStage(); drawRibbon();
   const n = studio.clips.length, total = studio.clips.reduce((t, c) => t + stLen(c), 0);
   $("#stSum").textContent = studio.busy ? $("#stSum").textContent : n ? `${n} clip${n === 1 ? "" : "s"} · ${(total / 1000).toFixed(1)} s${studio.music ? " · with music" : ""}` : "Add some clips";
   drawMusic(); drawTL();
@@ -3270,6 +3290,7 @@ $("#stList").addEventListener("click", e => {
   const b = e.target.closest("[data-a]"), row = e.target.closest(".sa-row"); if (!b || !row || studio.busy) return;
   const i = +row.dataset.i, c = studio.clips[i], a = b.dataset.a;
   if (a === "play") return studio.now === c ? stStopPlay() : stPlayOne(c);
+  if (a === "del") studio.sel = studio.clips[i + 1] || studio.clips[i - 1] || null;
   if (a === "edit") return stEdit(c, i);
   if (a === "del") { if (studio.now === c) stStopPlay(); studio.clips.splice(i, 1); }
   else if (a === "up" || a === "down") { const j = a === "up" ? i - 1 : i + 1; [studio.clips[i], studio.clips[j]] = [studio.clips[j], studio.clips[i]]; }
@@ -3291,14 +3312,10 @@ function stVid() {
   return studio.vid;
 }
 function stPlayOne(c, follow) {
-  const v = stVid(), prev = studio.now;
-  studio.now = c;
-  if (prev && prev !== c) { const o = studio.cards.get(prev); if (o) { o.classList.remove("on"); o.closest(".sa-row").classList.remove("on"); } }
-  const st = studio.cards.get(c);
-  if (st) {
-    st.classList.add("on"); st.closest(".sa-row").classList.add("on"); st.appendChild(v);
-    if (follow) { const r = st.getBoundingClientRect(); if (r.top < 0 || r.bottom > innerHeight) st.scrollIntoView({ behavior: "smooth", block: "center" }); }
-  }
+  const v = stVid(), sg = $("#stStage");
+  studio.now = c; studio.sel = c;
+  if (v.parentNode !== sg) sg.insertBefore(v, $("#stBig"));
+  v.hidden = false;
   v.src = `/preview/${c.item}/${c.in_ms}-${c.out_ms}.mp4`;
   v.muted = !!(studio.queueAll && studio.music && (studio.music.clips === "mute" || rampOn()));
   studio.keep = rampKeep(c);
@@ -3309,16 +3326,57 @@ function stPlayOne(c, follow) {
   }
   v.play().catch(() => {});
   if (studio.queueAll && rampOn()) requestAnimationFrame(rampLoop);
+  drawStudio();
+  if (follow) { const r = $(`#stRibbon .rb[data-i="${studio.clips.indexOf(c)}"]`); if (r) r.scrollIntoView({ inline: "nearest", block: "nearest" }); }
+  if (!studio.tlRun) { studio.tlRun = true; requestAnimationFrame(tlLoop); }
 }
 function stStopPlay() {
   const v = studio.vid; studio.queue = [];
   if (studio.queueAll && studio.audio) studio.audio.pause();
   studio.queueAll = false;
-  if (v) { v.pause(); v.remove(); v.removeAttribute("src"); v.load(); }
-  const st = studio.now && studio.cards.get(studio.now);
-  if (st) { st.classList.remove("on"); st.closest(".sa-row").classList.remove("on"); }
+  if (v) { v.pause(); v.removeAttribute("src"); v.load(); v.hidden = true; }
   studio.now = null;
+  drawStage(); drawRibbon();
 }
+// the preview window: the clip playing, else the picked one's frame, in the cut's shape and fit
+function drawStage() {
+  const sg = $("#stStage"), c = studio.now || studio.sel;
+  sg.hidden = !c; if (!c) return;
+  const [w, h] = studio.o.aspect === "original" ? [16, 9] : studio.o.aspect.split(":").map(Number);
+  sg.style.setProperty("--ar", w / h);
+  sg.style.setProperty("--fit", studio.o.aspect === "original" || studio.o.fit === "pad" ? "contain" : "cover");
+  const poster = $("#stPoster");
+  if (poster.getAttribute("src") !== c.thumb) poster.src = c.thumb;
+  sg.classList.toggle("playing", !!studio.now);
+  const i = studio.clips.indexOf(c);
+  $("#stNow").textContent = `${i + 1} of ${studio.clips.length} · ${c.label}${c.text ? " · " + c.text : ""}`;
+  $("#stBig").setAttribute("aria-label", `Play clip ${i + 1}`);
+}
+function drawRibbon() {
+  $("#stRibbon").innerHTML = studio.clips.map((c, i) => `<button type="button" class="rb${c === studio.sel ? " sel" : ""}${c === studio.now ? " on" : ""}" data-i="${i}"
+      aria-label="Clip ${i + 1}: ${esc(c.label)}"><img src="${c.thumb}" alt="" loading="lazy"><span>${i + 1}</span><small>${(stLen(c) / 1000).toFixed(1)} s</small></button>`).join("")
+    + `<button type="button" class="rb add" data-add aria-label="Add clips">${ic("plus")}</button>`;
+}
+// a clip in the ribbon (or on the timeline): tap to pick it, tap the picked one to play it
+function stPickClip(c) {
+  if (studio.busy) return;
+  if (c === studio.sel && !studio.now) return stPlayOne(c);
+  const wasOne = studio.now && !studio.queueAll;
+  if (studio.now) stStopPlay();
+  studio.sel = c;
+  if (wasOne) return stPlayOne(c);
+  drawStudio();
+}
+$("#stRibbon").addEventListener("click", e => {
+  const b = e.target.closest(".rb"); if (!b) return;
+  if (b.hasAttribute("data-add")) return stPick();
+  stPickClip(studio.clips[+b.dataset.i]);
+});
+$("#stStage").addEventListener("click", () => {
+  if (studio.busy) return;
+  if (studio.now) return stStopPlay();
+  if (studio.sel) stPlayOne(studio.sel);
+});
 function rampGrid() {
   const m = studio.music; let b = m.ramp.every === "bar" ? (m.downbeats || []) : (m.beats || []);
   if (m.set_bpm) { const step = (m.ramp.every === "bar" ? 240 : 60) / m.set_bpm, a = (m.downbeats || m.beats || [0])[0]; b = []; for (let t = a % step; t < m.duration; t += step) b.push(t); }
@@ -3350,7 +3408,7 @@ $("#stPlay").onclick = () => {
   if (!studio.clips.length) return;
   studio.queue = studio.clips.slice(1); studio.queueAll = true;
   if (rampOn()) { studio.grid = rampGrid(); requestAnimationFrame(rampLoop); }
-  if (studio.music) requestAnimationFrame(tlLoop);
+  if (!studio.tlRun) { studio.tlRun = true; requestAnimationFrame(tlLoop); }
   if (studio.music) { const a = stAudio(); a.currentTime = studio.music.offset_ms / 1000; a.play().catch(() => {}); }
   stPlayOne(studio.clips[0], true);
 };
@@ -3613,7 +3671,7 @@ function drawTL() {
   let at = 0, html = "";
   studio.clips.forEach((c, i) => {
     const L = stLen(c) / 1000;
-    html += `<div class="clipb" style="left:${at * W}%;width:${L * W}%;background-image:url('${c.thumb}')"><span>${i + 1}</span></div>`;
+    html += `<div class="clipb${c === studio.sel ? " sel" : ""}" data-ci="${i}" style="left:${at * W}%;width:${L * W}%;background-image:url('${c.thumb}')"><span>${i + 1}</span></div>`;
     at += L;
   });
   const bs = tlBeats(), px = tr.clientWidth || 360, dense = bs.length > 1 && (bs[1][0] - bs[0][0]) * px / T < 5;
@@ -3631,8 +3689,8 @@ function drawTL() {
       <span>End</span><button class="b" data-fx="${i},1,-1" aria-label="End a beat earlier">‹</button><button class="b" data-fx="${i},1,1" aria-label="End a beat later">›</button>
       <button class="b" data-fx="${i},x" aria-label="Take this speed ramp out">${ic("x")}</button></div></div>`).join("");
   $("#stFxHint").textContent = !studio.music ? "Add a song to put a speed ramp on part of the cut: it follows the song's beat."
-    : !on ? "Tap Speed ramp to add one, then drag its ends (or the middle) along the timeline; they snap to the beat."
-    : "Drag a purple stretch's ends or middle to move it (they snap to the beat), or nudge it a beat with ‹ ›. Outside it the clips play as they are, with their sound. The style (Subtle to Extreme, curve, peak) is under Music.";
+    : !on ? "Tap Speed ramp to add one, then drag it along the timeline."
+    : "Drag a purple stretch by its ends or middle; it snaps to the beat. Outside it, clips play as they are. Its style is under Music.";
 }
 $("#stFxAdd").onclick = () => {
   if (studio.busy) return;
@@ -3689,14 +3747,20 @@ $("#stTrack").addEventListener("pointermove", e => {
   d.f.style.left = a / d.T * 100 + "%"; d.f.style.width = (b - a) / d.T * 100 + "%";
   const row = $(`#stFxList .fxrow[data-i="${d.i}"] .ft span`); if (row) row.textContent = `Speed ramp ${mmss(a)} → ${mmss(b)}`;
 });
+$("#stTrack").addEventListener("click", e => {
+  if (e.target.closest(".fx")) return;
+  const cb = e.target.closest(".clipb"); if (cb) stPickClip(studio.clips[+cb.dataset.ci]);
+});
 const fxDrop = () => { const d = fxDrag; if (!d) return; fxDrag = null; if (d.moved) fxTidy(); drawStudio(); };
 $("#stTrack").addEventListener("pointerup", fxDrop);
 $("#stTrack").addEventListener("pointercancel", fxDrop);
 // Play all: a playhead along the timeline, from the song's position
 function tlLoop() {
-  const h = $("#stTrack .head"), a = studio.audio;
-  if (!studio.queueAll || !a || a.paused || !studio.music) { if (h) h.hidden = true; return; }
-  const ct = a.currentTime - studio.music.offset_ms / 1000, T = stTotal();
+  const h = $("#stTrack .head"), a = studio.audio, v = studio.vid;
+  const song = studio.queueAll && a && !a.paused && studio.music;
+  if (!song && !(studio.now && v)) { if (h) h.hidden = true; studio.tlRun = false; return; }
+  const start = studio.now ? studio.clips.slice(0, studio.clips.indexOf(studio.now)).reduce((t, x) => t + stLen(x), 0) / 1000 : 0;
+  const ct = song ? a.currentTime - studio.music.offset_ms / 1000 : start + v.currentTime, T = stTotal();
   if (h) { h.hidden = ct < 0 || ct > T; h.style.left = Math.max(0, Math.min(100, ct / T * 100)) + "%"; }
   requestAnimationFrame(tlLoop);
 }
