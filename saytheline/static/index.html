@@ -367,13 +367,17 @@
   .st-info b { font-size: 14px; line-height: 1.25; }
   .st-info small { color: var(--dim); font-size: 13px; line-height: 1.3; overflow-wrap: anywhere; }
   .st-pick { display: flex; flex-direction: column; gap: 8px; padding: 10px; border: 1px solid var(--line); border-radius: 8px; margin: 8px 0; }
-  .st-plist { display: flex; flex-direction: column; gap: 6px; max-height: 50vh; overflow-y: auto; }
-  .st-plist button { display: grid; grid-template-columns: 22px 80px 1fr; gap: 10px; align-items: center; text-align: left; padding: 6px 8px;
+  .st-pick-act { position: sticky; top: 0; z-index: 2; display: flex; flex-wrap: wrap; align-items: center; gap: 8px;
+    background: var(--bg); padding: 6px 0; }
+  .st-plist { display: flex; flex-direction: column; gap: 6px; }
+  .st-plist button { flex: none; display: grid; grid-template-columns: 22px 80px 1fr; gap: 10px; align-items: center; text-align: left; padding: 6px 8px;
     min-height: 56px; background: var(--panel); border: 1px solid var(--line); border-radius: 6px; color: var(--text); }
   .st-plist button[aria-pressed="true"] { border-color: var(--accent); }
   .st-plist button[aria-pressed="true"] .ck { background: var(--accent); }
   .st-plist .ck { width: 18px; height: 18px; border: 2px solid var(--accent); border-radius: 4px; }
   .st-plist img { width: 80px; aspect-ratio: 16 / 9; object-fit: cover; border-radius: 4px; background: #000; }
+  .st-plist b { display: block; line-height: 1.25; }
+  .st-plist small { line-height: 1.3; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
   .st-plist small { display: block; color: var(--dim); }
   .st-song { min-width: 0; font-weight: 600; overflow-wrap: anywhere; }
   .st-song small { display: block; font-weight: 400; color: var(--dim); }
@@ -749,10 +753,11 @@
     <div class="opt"><button class="b primary" id="stAdd"><svg class="i" aria-hidden="true"><use href="#i-plus"/></svg>Add clips</button>
       <span class="hint" id="stAddHint">From your Library: saved moments and rendered clips.</span></div>
     <div class="st-pick" id="stPick" hidden>
+      <div class="st-pick-act"><button class="b primary" id="stPickAdd" disabled>Add</button><button class="b" id="stPickCancel">Cancel</button>
+        <span class="hint">Tap clips to choose them, in any order.</span></div>
       <div class="chips" id="stPickKinds"></div>
       <div class="chips" id="stPickTags"></div>
       <div class="st-plist" id="stPickList"></div>
-      <div class="opt"><button class="b primary" id="stPickAdd" disabled>Add</button><button class="b" id="stPickCancel">Cancel</button></div>
     </div>
     <div class="grp" id="stMusic">
       <h3>Music</h3>
