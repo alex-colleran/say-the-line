@@ -14,6 +14,7 @@ import unittest
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 os.environ.setdefault("SAYTHELINE_CONFIG", os.devnull)
+os.environ.setdefault("SAYTHELINE_PERF", os.devnull)         # nor write to the real timing log
 os.environ["SAYTHELINE_VAAPI"] = ""                          # CPU decode: the same everywhere
 
 from saytheline import media, shots  # noqa: E402

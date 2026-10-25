@@ -9,6 +9,7 @@ import unittest
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 os.environ.setdefault("SAYTHELINE_CONFIG", os.devnull)       # never pick up a real saytheline.toml
+os.environ.setdefault("SAYTHELINE_PERF", os.devnull)         # nor write to the real timing log
 
 from saytheline import config, db, jellyfin, library, media, search, snap, subs  # noqa: E402
 
