@@ -28,6 +28,9 @@ def main():
     pi.add_argument("--movies", action="store_true")
     pi.add_argument("--external-only", action="store_true",
                     help="skip embedded tracks (they need ffmpeg to read the whole file)")
+    pi.add_argument("--ocr-minutes", type=float, default=60,
+                    help="at most this long reading Blu-ray picture subtitles by OCR per pass (default 60)")
+    pi.add_argument("--item", help="just this Jellyfin item id")
     pi.add_argument("-q", "--quiet", action="store_true")
     ps = sub.add_parser("search")
     ps.add_argument("query")
@@ -58,7 +61,7 @@ def main():
     if a.cmd == "index":
         t = time.time()
         st = idx.index(INDEX, a.series, a.movies, a.external_only,
-                       log=(lambda *_: None) if a.quiet else print)
+                       log=(lambda *_: None) if a.quiet else print, ocr_minutes=a.ocr_minutes, only=a.item)
         print(f"{st}  in {time.time() - t:.1f}s")
     elif a.cmd == "search":
         mode = "raw" if a.raw else "any" if a.any else "phrase"

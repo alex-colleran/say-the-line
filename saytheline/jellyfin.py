@@ -60,20 +60,23 @@ def _rank(lang, forced, title):
     # releases tag the full English track "jpn" and the signs-only track "eng") that the
     # indexer tries them in order and keeps the first that reads as English dialogue.
     r = 0 if lang in subs.ENGLISH else 1 if lang in ("", "und") else 2
-    if forced or "sign" in title or "song" in title:
+    if forced or "sign" in title or "song" in title or "commentary" in title:
         r += 10
     return r
 
 
 def list_items(src=None, series=None, movies=False):
-    """[{jf_id, kind, series, season, episode, title, year, path, runtime_s, added, embedded}] where
-    embedded = [(stream index, codec)] of text subtitle tracks, best first. Newest added first, so a
+    """[{jf_id, kind, series, season, episode, title, year, path, runtime_s, added, embedded, images}]
+    where embedded = [(stream index, codec)] of text subtitle tracks, best first, and images = the
+    stream indexes of English (or untagged) Blu-ray picture tracks, best first, for OCR. Newest added first, so a
     pass cut short by its time cap has done the media the owner just got."""
     src = src or source()
     items = _api_items(src[1], src[2], series, movies) if src[0] == "api" else _db_items(src[1], series, movies)
     for i in items:
         i["kind"] = "movie" if movies else "episode"
-        i["embedded"] = [(x, c) for _, x, c in sorted(i.pop("streams"))]
+        st = sorted(i.pop("streams"))
+        i["embedded"] = [(x, c) for _, x, c in st if c in subs.TEXT_CODECS]
+        i["images"] = [x for r, x, c in st if c in subs.IMAGE_CODECS and r < 2]
     items.sort(key=lambda i: i.get("added") or "", reverse=True)
     return items
 
@@ -104,7 +107,7 @@ def _api_items(url, key, series, movies):
                         s["Index"], (s.get("Codec") or "").lower())
                        for s in it.get("MediaStreams") or []
                        if s.get("Type") == "Subtitle" and not s.get("IsExternal")
-                       and (s.get("Codec") or "").lower() in subs.TEXT_CODECS]
+                       and (s.get("Codec") or "").lower() in subs.TEXT_CODECS | subs.IMAGE_CODECS]
             ticks = it.get("RunTimeTicks")
             out.append(dict(jf_id=norm_id(it["Id"]), series=it.get("SeriesName"), season=it.get("ParentIndexNumber"),
                             episode=it.get("IndexNumber"), title=it.get("Name"), year=it.get("ProductionYear"),
@@ -137,7 +140,7 @@ def _db_items(jf_db, series, movies):
                    lower(ifnull(Title, '')) AS title
             FROM MediaStreamInfos
             WHERE StreamType = 2 AND IsExternal = 0 AND ItemId IN ({ids})"""):
-        if s["codec"] in subs.TEXT_CODECS:
+        if s["codec"] in subs.TEXT_CODECS | subs.IMAGE_CODECS:
             streams.setdefault(norm_id(s["jf_id"]), []).append((_rank(s["lang"], s["forced"], s["title"]), s["idx"], s["codec"]))
     for i in items:
         i["jf_id"] = norm_id(i["jf_id"])

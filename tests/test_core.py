@@ -628,6 +628,34 @@ class SpeedRamp(unittest.TestCase):
         self.assertAlmostEqual(t[-1], 6.0, delta=0.11)          # the middle of a 6x last frame
 
 
+class BluraySubtitles(unittest.TestCase):
+    def test_picture_lines_decode_with_their_times(self):
+        import struct
+        from saytheline import pgs
+        if pgs.Image is None:
+            self.skipTest("needs pillow")
+
+        def seg(kind, pts_ms, data):
+            return b"PG" + struct.pack(">II", pts_ms * 90, 0) + bytes([kind]) + struct.pack(">H", len(data)) + data
+        # 4x2 picture: row 1 = two clear pixels then two of colour 1; row 2 = four of colour 1
+        rle = bytes([0, 0x02, 1, 1, 0, 0]) + bytes([0, 0x84, 1, 0, 0])
+        pcs = lambda n: struct.pack(">HHBHBBBB", 1920, 1080, 0x10, 0, 0x80, 0, 0, n) + (struct.pack(">HBBHH", 0, 0, 0, 100, 900) if n else b"")
+        pds = bytes([0, 0]) + bytes([1, 235, 128, 128, 255])          # colour 1: white, opaque
+        ods = struct.pack(">HBB", 0, 0, 0xC0) + (len(rle) + 4).to_bytes(3, "big") + struct.pack(">HH", 4, 2) + rle
+        sup = (seg(0x16, 1000, pcs(1)) + seg(0x14, 1000, pds) + seg(0x15, 1000, ods) + seg(0x80, 1000, b"")
+               + seg(0x16, 2500, pcs(0)) + seg(0x80, 2500, b""))
+        with tempfile.NamedTemporaryFile(suffix=".sup") as f:
+            f.write(sup); f.flush()
+            lines = pgs.read_sup(f.name)
+        self.assertEqual(len(lines), 1)
+        a, b, pics = lines[0]
+        self.assertEqual((a, b), (1000, 2500))
+        x, y, im = pics[0]
+        self.assertEqual((x, y, im.size), (100, 900, (4, 2)))
+        self.assertEqual(list(im.getdata()), [255, 255, 20, 20, 20, 20, 20, 20])   # white letters drawn black
+        self.assertEqual(pgs._ts(3723456), "01:02:03,456")
+
+
 class TimingLog(unittest.TestCase):
     def test_summary_finds_slow_routes_repeats_and_cache_misses(self):
         import tempfile

@@ -2,8 +2,33 @@
 its subtitle source or that source's mtime changed."""
 import datetime
 import os
+import subprocess
+import tempfile
+import time
 
-from . import db, jellyfin, subs
+from . import config, db, jellyfin, pgs, subs
+
+OCR_DIR = os.path.join(config.data_dir(), "ocr")      # Blu-ray picture tracks read once, kept as SRT
+
+
+def ocr_track(path, jf_id, stream):
+    """An English Blu-ray picture track as SRT text, read by OCR once and kept in data/ocr."""
+    out = os.path.join(OCR_DIR, f"{jf_id}-{stream}.srt")
+    if os.path.exists(out) and os.path.getmtime(out) >= os.path.getmtime(path):
+        with open(out, encoding="utf-8") as f:
+            return f.read()
+    os.makedirs(OCR_DIR, exist_ok=True)
+    with tempfile.TemporaryDirectory(prefix="saytheline-pgs-") as tmp:
+        sup = os.path.join(tmp, "t.sup")
+        r = subprocess.run(["ffmpeg", "-v", "error", "-nostdin", "-y", "-i", path, "-map", f"0:{stream}",
+                            "-c", "copy", sup], capture_output=True, timeout=1800)
+        if r.returncode != 0:
+            raise RuntimeError(r.stderr.decode(errors="replace").strip()[:300])
+        text = pgs.to_srt(sup)
+    with open(out + ".tmp", "w", encoding="utf-8") as f:
+        f.write(text)
+    os.replace(out + ".tmp", out)
+    return text
 
 def _drop_cues(c, item_id):
     for cid, text in c.execute("SELECT id, text FROM cues WHERE item_id = ?", (item_id,)).fetchall():
@@ -12,15 +37,25 @@ def _drop_cues(c, item_id):
     c.execute("DELETE FROM cues WHERE item_id = ?", (item_id,))
 
 
-def index(index_path, series=None, movies=False, external_only=False, log=print):
+def cached_ocr(jf_id, src):
+    return os.path.exists(os.path.join(OCR_DIR, f"{jf_id}-{src[4:]}.srt"))
+
+
+def index(index_path, series=None, movies=False, external_only=False, log=print, ocr_minutes=60, only=None):
+    """ocr_minutes: at most this long reading picture tracks per pass (the rest wait for the next);
+    only: just this Jellyfin id."""
     c = db.open_index(index_path)
+    ocr_until = time.time() + ocr_minutes * 60
     pmap = db.path_map()
     jf_subs = jellyfin.subtitle_cache()
-    stats = dict(items=0, indexed=0, unchanged=0, no_subs=0, errors=0, cues=0, from_jellyfin=0)
+    stats = dict(items=0, indexed=0, unchanged=0, no_subs=0, errors=0, cues=0, from_jellyfin=0, ocr=0, ocr_later=0)
+    use_ocr = pgs.available() and not external_only
     # Subtitle files first (cheap), then embedded tracks (ffmpeg reads the whole file), each newest
     # first: a pass cut short by its time cap has then done the most for what was just added.
     work = []
     for it in jellyfin.list_items(None, series, movies):
+        if only and it["jf_id"] != jellyfin.norm_id(only):
+            continue
         path = db.to_host(it["path"], pmap)
         work.append((it, path, subs.find_external(path)))
     work.sort(key=lambda x: not x[2])
@@ -30,13 +65,19 @@ def index(index_path, series=None, movies=False, external_only=False, log=print)
             source, mtime = ext, os.path.getmtime(ext)
         elif it["embedded"] and not external_only and os.path.exists(path):
             source, mtime = "embedded", os.path.getmtime(path)
+        elif it.get("images") and use_ocr and os.path.exists(path):
+            source, mtime = "pgs", os.path.getmtime(path)
         else:
             stats["no_subs"] += 1
             continue
 
         row = c.execute("SELECT id, sub_source, sub_mtime FROM items WHERE jf_id = ?",
                         (it["jf_id"],)).fetchone()
-        if row and row[1].split(":")[0] == source and row[2] == mtime:
+        was = row[1].split(":")[0] if row else None
+        # (a file's own tracks, text or pictures, count as one source: the same file, unchanged)
+        # (read by OCR: its kept text must still be there, so deleting it reads the track again)
+        if row and (was == source or {was, source} <= {"embedded", "pgs"}) and row[2] == mtime \
+                and not (was == "pgs" and not cached_ocr(it["jf_id"], row[1])):
             stats["unchanged"] += 1
             continue
 
@@ -44,9 +85,22 @@ def index(index_path, series=None, movies=False, external_only=False, log=print)
         cands = [(ext, os.path.splitext(ext)[1][1:].lower(), None)] if ext else []
         cands += [] if external_only else [(f"embedded:{x}", "ass" if cdc in ("ass", "ssa") else "srt", (x, cdc))
                   for x, cdc in it["embedded"]] if os.path.exists(path) else []
-        cues, err, fallback = None, None, None
+        # then English picture tracks, by OCR: only when no text track reads as dialogue
+        cands += [(f"pgs:{x}", "srt", None) for x in it.get("images") or []] if use_ocr and os.path.exists(path) else []
+        cues, err, fallback, later = None, None, None, False
         for src, kind, emb in cands:
             try:
+                if src.startswith("pgs:"):
+                    if not cached_ocr(it["jf_id"], src) and time.time() > ocr_until:
+                        later = True                # this pass's OCR time is used up: next time
+                        break
+                    text = ocr_track(path, it["jf_id"], int(src[4:]))
+                    stats["ocr"] += 1
+                    got = subs.tidy(subs.parse(text, kind))
+                    if subs.is_dialogue(got, it["runtime_s"]) and subs.overlap(got) <= subs.MAX_OVERLAP:
+                        cues, source = got, src
+                        break
+                    continue
                 cached = emb and jellyfin.cached_subtitle(jf_subs, it["jf_id"], emb[0], emb[1], path)
                 if cached:                  # Jellyfin already read the file for it: no second read
                     text = subs.read_text(cached)
@@ -66,6 +120,9 @@ def index(index_path, series=None, movies=False, external_only=False, log=print)
                 fallback = fallback or (got, src)
         if cues is None and fallback:
             cues, source = fallback
+        if cues is None and later:
+            stats["ocr_later"] += 1
+            continue
         if cues is None:
             if err:
                 stats["errors"] += 1
@@ -101,6 +158,6 @@ def index(index_path, series=None, movies=False, external_only=False, log=print)
         stats["cues"] += len(cues)
         label = (f"{it['series']} S{it['season'] or 0:02d}E{it['episode'] or 0:02d}"
                  if it["kind"] == "episode" else it["title"])
-        log(f"  {label}: {len(cues)} cues ({source if source.startswith('embedded') else 'external'})")
+        log(f"  {label}: {len(cues)} cues ({source if source.startswith(('embedded', 'pgs')) else 'external'})")
     c.commit()
     return stats

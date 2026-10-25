@@ -327,3 +327,16 @@ looked in and whether they had it) and one per job (each state's seconds, the qu
 each with a short hash of the exact request: the same hash twice is work a cache could have saved.
 Job polls and `/api/busy` are left out. The file rolls to `perf.1.jsonl` at 10 MB. `summary()` sorts
 routes by the total time spent on them, which is where a cache would pay back most.
+
+## Blu-ray picture subtitles
+
+Many discs carry English only as PGS: each line is a picture. `pgs.py` reads a `.sup` stream
+(ffmpeg `-c copy` of the track): presentation segments start and end each line, palettes are Y Cr Cb
+A, objects are run-length coded bitmaps. Each line is drawn as black text on white (brightness times
+opacity, inverted, so the white letters go black and their dark outline and the clear background
+stay white), contrast stretched, padded, and tesseract reads them all in four runs side by side
+(`--psm 6`, one thread each). Tesseract reads a ♪ as J, f, I, < or ¢, so a sung line's stray end
+marks go back to ♪ (a lone "I" only when the other end is a note too). The indexer tries English
+(or untagged) picture tracks only after every text track, keeps the text in `data/ocr/<id>-<stream>.srt`,
+and treats a file's text and picture tracks as one source, so an unchanged file is not read again;
+deleting its OCR file reads it again.

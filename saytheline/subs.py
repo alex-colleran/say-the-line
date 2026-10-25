@@ -6,6 +6,7 @@ import re
 import subprocess
 
 TEXT_CODECS = {"subrip", "srt", "ass", "ssa", "mov_text", "webvtt", "sami", "microdvd", "text"}
+IMAGE_CODECS = {"pgssub", "hdmv_pgs_subtitle"}      # Blu-ray pictures of the lines: read by OCR (pgs.py)
 SUB_EXTS = (".srt", ".ass", ".ssa", ".vtt")
 ENGLISH = {"en", "eng", "english"}
 

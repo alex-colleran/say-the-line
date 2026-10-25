@@ -46,6 +46,9 @@ def checks():
         yield WARN, "Poster look off: pip install pillow"
     yield (OK, f"stem audio: {config.demucs()}") if config.demucs() else \
         (WARN, "Dialogue only / No dialogue off (optional: pip install -r requirements-stems.txt)")
+    from . import pgs
+    yield (OK, f"Blu-ray picture subtitles read by OCR: {pgs.TESSERACT}") if pgs.available() else \
+        (WARN, "Blu-ray (PGS) subtitles can't be searched (optional: apt install tesseract-ocr tesseract-ocr-eng, pip install pillow)")
     from . import slowmo
     yield (OK, f"slow motion: {slowmo.rife()[0]}") if slowmo.rife() else \
         (WARN, "Slow motion off (optional: rife-ncnn-vulkan with its rife-v4.6 model, see README)")
