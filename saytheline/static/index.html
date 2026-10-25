@@ -312,6 +312,13 @@
   @keyframes sp-here { from { background: rgba(255, 176, 0, .35); } }
   .sp-l mark.cur { outline: 2px solid var(--text); outline-offset: 1px; }
   .sp-gap { height: 1px; background: var(--line); margin: 8px 0 8px 62px; }
+  .sp-cover { position: relative; overflow: hidden; border-radius: 10px; margin: 2px 0 14px; height: min(320px, 52vh);
+    display: flex; justify-content: center; align-items: center; background: var(--panel); }
+  .sp-cover .bg { position: absolute; inset: -20px; background-size: cover; background-position: center; filter: blur(18px) brightness(.45); }
+  .sp-cover img { position: relative; height: calc(100% - 24px); width: auto; max-width: calc(100% - 24px); object-fit: contain;
+    border-radius: 6px; box-shadow: 0 6px 24px rgba(0, 0, 0, .5); }
+  .sp-shot { margin: 10px 0 10px 68px; max-width: 340px; aspect-ratio: 16 / 9; border-radius: 6px; overflow: hidden; background: var(--panel); }
+  .sp-shot img { display: block; width: 100%; height: 100%; object-fit: cover; }
   .sp-ticks { position: fixed; right: 3px; width: 8px; bottom: 76px; z-index: 3; pointer-events: none; }
   .sp-ticks i { position: absolute; left: 0; right: 0; height: 3px; margin-top: -1px; background: var(--accent); opacity: .75;
     pointer-events: auto; cursor: pointer; }
@@ -2781,6 +2788,8 @@ $$("#menu [data-go]").forEach(b => b.onclick = () => { setMenu(false); b.dataset
 
 /* ================= scripts: a title's whole subtitle, find in page, clip from it ================= */
 const SP_GAP_MS = 5000;           // a longer silence draws a faint divider (roughly a scene change)
+const SP_SHOT_MS = 120000;        // a frame from the scene now and then: at a scene change once this long has passed...
+const SP_SHOT_MAX_MS = 240000;    // ...or at the next line once this long has passed without one
 const SP_MAX_CLIP_MS = 180000;
 const sp = { item: null, lines: [], tok: [], matches: [], cur: -1, marked: new Set(), sel: null, prev: null, next: null };
 // = snap.norm: lower case, no punctuation, dropped-g spellings made one ("doing" = "doin'")
@@ -2815,9 +2824,15 @@ async function openScript(itemId, idx) {
     : `${esc(it.label)}<small>${d.lines.length} lines</small>`;
   $("#spPrev").hidden = $("#spNext").hidden = it.kind !== "episode";
   $("#spPrev").disabled = !d.prev; $("#spNext").disabled = !d.next;
-  let html = "", last = null;
+  // the show's or movie's poster on top (gone if Jellyfin has none), then a frame now and then
+  let html = `<div class="sp-cover" id="spCover"><div class="bg" style="background-image:url('/cover/${it.id}.jpg')"></div>`
+    + `<img src="/cover/${it.id}.jpg" alt="" onerror="this.parentNode.remove()"></div>`, last = null, shot = 0;
   d.lines.forEach(([i, a, b, t], k) => {
-    if (last !== null && a - last > SP_GAP_MS) html += `<div class="sp-gap"></div>`;
+    const gap = last !== null && a - last > SP_GAP_MS;
+    if (k && (gap ? a - shot >= SP_SHOT_MS : a - shot >= SP_SHOT_MAX_MS)) {
+      html += `<div class="sp-shot"><img loading="lazy" alt="" src="/thumb/${it.id}/${a + 400}.jpg" onerror="this.parentNode.remove()"></div>`;
+      shot = a;
+    } else if (gap) html += `<div class="sp-gap"></div>`;
     html += `<div class="sp-l" data-k="${k}"><span class="sp-tc">${fmt(a)}</span><span class="sp-tx">${esc(t)}</span></div>`;
     last = b;
   });

@@ -143,3 +143,38 @@ def _db_items(jf_db, series, movies):
         i["jf_id"] = norm_id(i["jf_id"])
         i["streams"] = streams.get(i["jf_id"], [])
     return items
+
+
+def _guid(h):
+    return f"{h[:8]}-{h[8:12]}-{h[12:16]}-{h[16:20]}-{h[20:]}".upper()
+
+
+def cover(jf_id):
+    """The poster for an item: a movie's own, or for an episode its show's (an episode's own
+    image is a still from it). Returns a local image path, image bytes, or None."""
+    src, h = source(), norm_id(jf_id)
+    if src[0] == "api":
+        url, key = src[1], src[2]
+        it = (_api_get(url, key, "/Items", {"Ids": h, "Fields": "SeriesId"}).get("Items") or [{}])[0]
+        req = urllib.request.Request(f"{url}/Items/{it.get('SeriesId') or h}/Images/Primary?maxWidth=600",
+                                     headers={"Authorization": f'MediaBrowser Token="{key}"'})
+        try:
+            with urllib.request.urlopen(req, timeout=30) as r:
+                return r.read()
+        except OSError:
+            return None
+    jf_db = src[1]
+    row = db.jellyfin_query(jf_db, f"SELECT SeriesId FROM BaseItems WHERE Id = {_sql_str(_guid(h))}")
+    owner = (row[0]["SeriesId"] if row and row[0].get("SeriesId") else _guid(h))
+    img = db.jellyfin_query(jf_db, f"SELECT Path FROM BaseItemImageInfos WHERE ItemId = {_sql_str(owner)} "
+                                   "AND ImageType = 0 ORDER BY Width DESC LIMIT 1")
+    if not img:
+        return None
+    p = img[0]["Path"]
+    # Jellyfin's own metadata folder sits beside the folder holding jellyfin.db (<data>/data/ and
+    # <data>/metadata/), whatever path the container gave it; art saved with the media is path-mapped
+    i = p.find("/metadata/")
+    for cand in ([os.path.join(os.path.dirname(os.path.dirname(jf_db)), p[i + 1:])] if i >= 0 else []) + [db.to_host(p, db.path_map()), p]:
+        if os.path.isfile(cand):
+            return cand
+    return None

@@ -20,6 +20,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import parse_qs, quote, unquote, urlparse
 
 from . import config
+from . import jellyfin
 from . import library
 from . import media
 from . import sayany
@@ -32,6 +33,7 @@ INDEX = os.environ.get("SAYTHELINE_INDEX", os.path.join(config.data_dir(), "cues
 THUMBS = os.environ.get("SAYTHELINE_THUMBS", os.path.join(os.path.dirname(INDEX), "thumbs"))
 HOST = os.environ.get("SAYTHELINE_HOST", "127.0.0.1")
 PORT = int(os.environ.get("SAYTHELINE_PORT", "8765"))
+COVERS = os.path.join(os.path.dirname(INDEX), "covers")
 PREVIEWS = os.environ.get("SAYTHELINE_PREVIEWS", os.path.join(os.path.dirname(INDEX), "previews"))
 CLIPS = os.environ.get("SAYTHELINE_CLIPS", os.path.join(os.path.dirname(INDEX), "clips"))
 
@@ -185,6 +187,41 @@ def thumbnail(item_id, ms):
     return out
 
 
+
+
+NO_COVER = set()
+
+
+def cover_image(item_id):
+    """The show's or movie's poster from Jellyfin, scaled for a phone and kept in data/covers
+    (one per show, since its episodes share it). None when Jellyfin has none."""
+    row = db().execute("SELECT jf_id, kind, series FROM items WHERE id = ?", (item_id,)).fetchone()
+    if not row:
+        return None
+    key = ("s-" + hashlib.sha1(row["series"].encode()).hexdigest()[:16]) if row["kind"] == "episode" and row["series"] else f"m-{item_id}"
+    out = os.path.join(COVERS, key + ".jpg")
+    if os.path.exists(out):
+        return out
+    if key in NO_COVER:
+        return None
+    try:
+        src = jellyfin.cover(row["jf_id"])
+    except Exception:
+        src = None
+    if not src:
+        NO_COVER.add(key)
+        return None
+    os.makedirs(COVERS, exist_ok=True)
+    tmp = out + ".tmp.jpg"
+    with FFMPEG_SLOTS:
+        r = subprocess.run(["ffmpeg", "-v", "error", "-nostdin", "-y", "-i", "pipe:0" if isinstance(src, bytes) else src,
+                            "-frames:v", "1", "-vf", "scale='min(600,iw)':-2", "-q:v", "4", tmp],
+                           input=src if isinstance(src, bytes) else None, capture_output=True, timeout=60)
+    if r.returncode != 0 or not os.path.exists(tmp):
+        NO_COVER.add(key)
+        return None
+    os.replace(tmp, out)
+    return out
 
 
 def font_file(family):
@@ -1006,7 +1043,7 @@ class Handler(BaseHTTPRequestHandler):
     server_version = "saytheline"
 
     def log_message(self, fmt, *args):  # quiet: the journal does not need every thumbnail
-        if not self.path.startswith(("/thumb/", "/preview/", "/api/job/")):
+        if not self.path.startswith(("/thumb/", "/cover/", "/preview/", "/api/job/")):
             super().log_message(fmt, *args)
 
     def send(self, code, body, ctype="application/json", cache=None):
@@ -1244,6 +1281,13 @@ class Handler(BaseHTTPRequestHandler):
                     movies=c.execute("SELECT COUNT(*) FROM items WHERE kind='movie'").fetchone()[0],
                     shows=c.execute("SELECT COUNT(DISTINCT series) FROM items WHERE kind='episode'").fetchone()[0],
                     cues=c.execute("SELECT COUNT(*) FROM cues").fetchone()[0]), cache="max-age=300")
+            m = re.fullmatch(r"/cover/(\d+)\.jpg", u.path)
+            if m:
+                p = cover_image(int(m.group(1)))
+                if not p:
+                    return self.send(404, b"", "image/jpeg")
+                with open(p, "rb") as f:
+                    return self.send(200, f.read(), "image/jpeg", "max-age=86400")
             m = re.fullmatch(r"/thumb/(\d+)/(\d+)\.jpg", u.path)
             if m:
                 p = thumbnail(int(m.group(1)), int(m.group(2)))

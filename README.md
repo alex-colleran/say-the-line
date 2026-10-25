@@ -32,7 +32,7 @@ It runs on the machine that has your media, next to Jellyfin, and is used from a
   `-word` to leave lines out, `word*` for any word starting so. "doin" also finds "doing";
   filter by TV / movies / show, with the lines before and after each hit and recent searches.
   A show or movie's name brings up the title itself first (All / Titles / Lines to filter).
-- **Scripts**: open a title (a show goes season → episode) to read its subtitles in order. Find
+- **Scripts**: open a title (a show goes season → episode) to read its subtitles in order, under its poster from Jellyfin, with a frame from the scene every couple of minutes. Find
   in the page with ▲▼ through the matches and marks on the scrollbar; tap a line, or a first and
   last line, to clip it. ‹ › step to the episode before or after.
 - **Editor**: preview window, drag-to-trim timeline, ±0.1 s nudges, play / pause / loop / mute,
