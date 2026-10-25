@@ -46,6 +46,9 @@ def checks():
         yield WARN, "Poster look off: pip install pillow"
     yield (OK, f"stem audio: {config.demucs()}") if config.demucs() else \
         (WARN, "Dialogue only / No dialogue off (optional: pip install -r requirements-stems.txt)")
+    from . import slowmo
+    yield (OK, f"slow motion: {slowmo.rife()[0]}") if slowmo.rife() else \
+        (WARN, "Slow motion off (optional: rife-ncnn-vulkan with its rife-v4.6 model, see README)")
     missing = [f for f in media.FONTS if not os.path.isfile(os.path.join(media.FONT_DIR, media.FONT_FILES[f]))]
     yield (BAD, f"bundled fonts missing: {', '.join(missing)}") if missing else (OK, "caption fonts")
 

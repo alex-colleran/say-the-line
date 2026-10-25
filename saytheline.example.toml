@@ -35,3 +35,6 @@ preview_cache_gb = 2                   # SAYTHELINE_PREVIEW_CACHE_GB: editor pre
 # demucs = "/opt/demucs/bin/demucs"           # SAYTHELINE_DEMUCS
 # Hardware preview encoding on Linux. Default: /dev/dri/renderD128 if present; "" = CPU only.
 # vaapi = "/dev/dri/renderD128"               # SAYTHELINE_VAAPI
+# Optional slow motion: rife-ncnn-vulkan (Vulkan GPU). Default: on PATH; the model is rife-v4.6 beside it.
+# rife = "/opt/rife-ncnn-vulkan/rife-ncnn-vulkan"   # SAYTHELINE_RIFE
+# rife_model = "/opt/rife-ncnn-vulkan/rife-v4.6"   # SAYTHELINE_RIFE_MODEL

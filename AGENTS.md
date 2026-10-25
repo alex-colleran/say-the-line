@@ -23,6 +23,7 @@ saytheline/
   poster.py      Poster layout with real font metrics (Pillow)
   kinetic.py     Kinetic look: Poster's layout as justified stacks + lockups, animated per frame
   sayany.py      Say Anything: plan a sentence into heard takes, measured cut points
+  slowmo.py      slow motion: time map, caption re-timing, RIFE per camera shot, the slowed master
   library.py     favourites, tags, drafts (data/library.db; separate from the index)
   web.py         HTTP server (stdlib ThreadingHTTPServer) + JSON API + job queue
   doctor.py      `python -m saytheline doctor`
@@ -86,6 +87,7 @@ sed -n '/<script>/,/<\/script>/p' saytheline/static/index.html | sed '1d;$d' > /
 - Snap results are cached in `data/listen.db` (`web.cached_snap`). Bump `web.LISTEN_V` whenever
   `snap.py` or `stt_worker.py` timing changes, or old timings keep being served.
 - Say Anything (`sayany.py`): `sayany.cut` = JS `saCut`; a take's measured `cuts` are what both use.
+- Slow motion: `slowmo.timemap` = JS `outLength` / `applySlowRate` (the preview plays the part at 1/factor).
 - A systemd `Type=oneshot` job is capped with `TimeoutStartSec`, not `RuntimeMaxSec`.
 - Input-side `-t` can let one frame past the out point through: renders start their video chain
   with `trim=end=` so a clip ending on a camera cut never shows the next shot.

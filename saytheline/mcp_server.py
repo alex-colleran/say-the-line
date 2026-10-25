@@ -217,6 +217,11 @@ async def _clip_payload(job, req, notes):
              edit_url=None if clip.get("supercut") else f"{PUBLIC}/?edit={clip['id']}", format=fmt, seconds=secs,
              width=w, height=h, bytes=clip["bytes"], source=src, in_ms=req.get("in_ms"), out_ms=req.get("out_ms"), notes=notes)
     lines = await _lines_on_screen(req) if not clip.get("supercut") else []
+    if sl := req.get("slow"):                       # on the slowed clip's timeline
+        from . import slowmo
+        part = (sl["a_ms"] - req["in_ms"], sl["b_ms"] - req["in_ms"], sl["factor"])
+        lines = [dict(ln, from_ms=round(slowmo.timemap(ln["from_ms"], *part)), to_ms=round(slowmo.timemap(ln["to_ms"], *part)))
+                 for ln in lines]
     s["lines"] = lines
     size = f"{clip['bytes'] / 1e6:.1f} MB" if clip["bytes"] > 1e6 else f"{clip['bytes'] // 1000} KB"
     shown = "; ".join(f"{ln['line']} \"{ln['text']}\" {ln['from_ms'] / 1000:.1f}-{ln['to_ms'] / 1000:.1f} s"
@@ -441,7 +446,8 @@ async def saytheline_make_clip(ctx: Context, moment_id: str, format: str = "gif"
                              shots: bool = True, whole_shot: bool = False,
                              start_ms: int = 0, end_ms: int = 0, caption_size: str = "m",
                              caption_position: str = "", hide_lines: list[int] | None = None,
-                             line_text: dict[str, str] | None = None) -> CallToolResult:
+                             line_text: dict[str, str] | None = None, slow_motion: str = "off",
+                             slow_sound: str = "deep") -> CallToolResult:
     """Render a moment as a reaction GIF (default), an MP4/WebM clip, or a captioned still.
 
     moment_id: from saytheline_search ("51:99").
@@ -462,6 +468,9 @@ async def saytheline_make_clip(ctx: Context, moment_id: str, format: str = "gif"
       listed in the result). A neighbouring line cut off by the clip's edge and on screen under
       0.5 s is hidden anyway.
     line_text: {line number: text} to reword a line as burned in (e.g. it differs from what is said).
+    slow_motion: "off" (default), "2x" or "4x" slower, smooth (the in-between frames are made up). The
+      whole clip when it is up to 5 s, else 5 s from the line's first word. slow_sound: "deep"
+      (pitched down, the classic), "pitch" (same pitch) or "mute". Adds seconds to a minute or two.
     Takes a few seconds (longer the first time a show's audio is checked). Returns the clip id for
     saytheline_refine_clip, the file path to send, a link, and an image of the result to check."""
     fmt = format.lower()
@@ -473,6 +482,13 @@ async def saytheline_make_clip(ctx: Context, moment_id: str, format: str = "gif"
         raise ToolError(f"shape must be one of {', '.join(SHAPES)}")
     if captions not in ("subtitles", "none", "speech"):
         raise ToolError('captions must be "subtitles", "none" or "speech"')
+    slow = {"off": 1, "2x": 2, "4x": 4}.get(slow_motion.lower().strip())
+    if slow is None:
+        raise ToolError('slow_motion must be "off", "2x" or "4x"')
+    if slow_sound not in ("deep", "pitch", "mute"):
+        raise ToolError('slow_sound must be "deep", "pitch" or "mute"')
+    if slow > 1 and fmt == "still":
+        raise ToolError("a still can't be slowed: use mp4, webm or gif")
     m = await _moment(moment_id)
     lines = sorted(m["lines"], key=lambda c: c["idx"])
     first = next(c for c in lines if c["idx"] >= m["idx"] - max(0, min(lines_before, 4)))
@@ -517,6 +533,10 @@ async def saytheline_make_clip(ctx: Context, moment_id: str, format: str = "gif"
                          hl="yellow", caps=False, box=False, position=caption_position or ("middle" if look == "bigword" else "bottom")),
                moment=dict(idx=m["idx"], start_ms=m["line"]["start_ms"], end_ms=m["line"]["end_ms"], text=m["line"]["text"]),
                keep=dict(start_ms=int(keep[0]), end_ms=int(keep[1])), made_by="mcp")
+    if slow > 1:                                    # the whole clip, or 5 s from the line's first word
+        a = in_ms if out_ms - in_ms <= 5000 else max(in_ms, min(int(keep[0]), out_ms - 5000))
+        req["slow"] = dict(factor=slow, a_ms=int(a), b_ms=int(min(out_ms, a + 5000)), sound=slow_sound)
+        notes.append(f"{slow_motion} slow motion over {(min(out_ms, a + 5000) - a) / 1000:.1f} s")
     req["mcp"] = dict(captions=captions, look=look, caption_text=caption_text)
     await _captions_for(ctx, req, captions, look, caption_text)
     lines = await _lines_on_screen(req)

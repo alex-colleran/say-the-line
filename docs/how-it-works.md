@@ -166,6 +166,27 @@ Design notes: what each part does and why it is built that way. For setup, see t
 - **Audio (optional):** demucs `htdemucs --two-stems=vocals` replaces the clip's audio with the
   vocals (dialogue) stem or the rest (music + effects). About 1.6× the clip length on a CPU.
 
+## Slow motion (`slowmo.py`)
+- **What:** one part of the cut (`slow: {factor 2|4, a_ms, b_ms, sound}`, up to 5 s of source) plays
+  2× or 4× slower. The slowed cut is built first as an intermediate video at the output size, then
+  `media.render` makes the clip from it like from any source: every format, caption look and
+  dialogue separation works unchanged.
+- **Frames:** the part's frames are read at the output size through the same crop/scale chain,
+  then RIFE (rife-ncnn-vulkan, model v4.6, Vulkan) makes n × factor frames from n, played at the
+  source's frame rate. Interpolating across a camera cut morphs one shot into the next, so the part
+  is split at the cuts `shots.find_cuts` finds and each shot is interpolated on its own (a one-frame
+  shot is repeated).
+- **Joins:** before | slow | after are trimmed from one `-ss` point and concatenated, so the frames
+  either side of each join are exactly the ones the trims leave out. Audio: pitched down
+  (`asetrate`, like slowed tape), the same pitch (`atempo`), or silent, with 10 ms fades at the joins.
+- **Captions:** `slowmo.timemap` moves every line and word time onto the slowed timeline
+  (unchanged before the part, stretched inside it, shifted after it).
+- **Cost:** about 0.15 s per megapixel of each frame RIFE writes on a Radeon 680M (47 s to slow
+  2 s of 1920×800 to 4×; 13 s at 1152×480). A part estimated at over 5 minutes is refused. It runs in
+  `RENDER_SLOT` like any render, and the job reports `slowing` with frames done / total.
+- **Preview:** the editor plays the part at `1/factor` speed (`preservesPitch` off for Deep, muted
+  for Silent), so the timing matches the render; only the extra frames are missing.
+
 ## Supercut
 - Loads up to 300 hits for the search. "Hide repeats" drops the same line in the same item, and
   hits less than 1.5 s apart.

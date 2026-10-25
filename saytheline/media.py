@@ -416,11 +416,18 @@ def force_style(st):
     return ",".join(parts)
 
 
-def render(src, in_ms, out_ms, opts, cues, out, label=None, uniform=False):
+def render(src, in_ms, out_ms, opts, cues, out, label=None, uniform=False, slow=None, progress=None):
     """Final clip. x264/AAC MP4 by default; WebM (VP9/Opus) or GIF (palette, no audio).
     Subtitles are burned after scaling, so the style is relative to the output size.
     `uniform` (supercut segments): fixed size, 30 fps, square pixels, 48 kHz stereo always present,
-    so the segments concatenate without re-encoding. `label`: small source caption, top-left."""
+    so the segments concatenate without re-encoding. `label`: small source caption, top-left.
+    `slow` (a, b, factor, sound) from slowmo.part_of: that part plays slower (see slowmo.py);
+    progress(done, total) while its frames are made."""
+    with tempfile.TemporaryDirectory(prefix="saytheline-") as tmp:
+        return _render(src, in_ms, out_ms, opts, cues, out, label, uniform, slow, progress, tmp)
+
+
+def _render(src, in_ms, out_ms, opts, cues, out, label, uniform, slow, progress, tmp):
     info = probe(src)
     if not info["width"]:
         raise RuntimeError("no video stream")
@@ -431,56 +438,63 @@ def render(src, in_ms, out_ms, opts, cues, out, label=None, uniform=False):
                            "pad" if uniform and aspect == "16:9" else opts.get("fit", "crop"),
                            int(opts.get("res") or (720 if uniform else 0)), upscale=uniform)
     fmt = "mp4" if uniform else opts.get("format", "mp4")
+    if slow:
+        # the slowed cut, already at the output size, becomes the source: nothing else changes
+        from . import slowmo
+        track = audio_track(src) if info["has_audio"] else None
+        src, _ = slowmo.master(src, in_ms, out_ms, slow, chain, (w, h), track, tmp, progress)
+        cues = slowmo.remap_cues(cues, in_ms, *slow[:3])
+        in_ms, out_ms = 0, round(slowmo.timemap(out_ms - in_ms, *slow[:3]))
+        chain, info = [], probe(src)
     dur = (out_ms - in_ms) / 1000
     # The input -t below is not exact: depending on where the start falls between frames it lets one
     # frame past the out point through, and with a cut there that frame is the next shot. The trim
     # keeps exactly the frames before the out point (times here are relative to the -ss point).
     chain.insert(0, f"trim=end={dur:.3f}")
-    with tempfile.TemporaryDirectory(prefix="saytheline-") as tmp:
-        sub = caption_filter(opts.get("subs") or {}, cues, in_ms, out_ms, w, h, tmp)
-        if sub:
-            chain.append(sub)
-        if label:
-            tf = os.path.join(tmp, "label.txt")
-            with open(tf, "w", encoding="utf-8") as f:
-                f.write(label)
-            chain.append(f"drawtext=fontfile={_fpath(font_path())}:textfile={_fpath(tf)}:x=h*0.03:y=h*0.03:fontsize=h*0.032"
-                         f":fontcolor=white:box=1:boxcolor=black@0.5:boxborderw={max(4, round(h * 0.012))}")
+    sub = caption_filter(opts.get("subs") or {}, cues, in_ms, out_ms, w, h, tmp)
+    if sub:
+        chain.append(sub)
+    if label:
+        tf = os.path.join(tmp, "label.txt")
+        with open(tf, "w", encoding="utf-8") as f:
+            f.write(label)
+        chain.append(f"drawtext=fontfile={_fpath(font_path())}:textfile={_fpath(tf)}:x=h*0.03:y=h*0.03:fontsize=h*0.032"
+                     f":fontcolor=white:box=1:boxcolor=black@0.5:boxborderw={max(4, round(h * 0.012))}")
+    if uniform:
+        chain += ["fps=30", "setsar=1", "format=yuv420p"]
+        if opts.get("transition") == "fade" and dur > 0.6:     # quick dip at each join
+            chain += [f"fade=t=in:st=0:d=0.12", f"fade=t=out:st={dur - 0.12:.3f}:d=0.12"]
+    cmd = [*config.nice(), "ffmpeg", "-v", "error", "-nostdin", "-y",
+           "-ss", f"{in_ms / 1000:.3f}", "-t", f"{dur:.3f}", "-i", src]   # input-side -t: the
+    # GIF palette pass waits for end of input, so the input itself must stop at the out point
+    silent = uniform and not info["has_audio"]
+    if silent:   # every segment needs an audio track or the concat drops audio
+        cmd += ["-f", "lavfi", "-t", f"{dur:.3f}", "-i", "anullsrc=r=48000:cl=stereo"]
+    if fmt == "gif":
+        # two-pass palette in one graph; GIFs stay small: 12 fps, at most 480 px wide
+        gw = min(w, 480)
+        graph = ("[0:v:0]" + ",".join(chain) + f",fps=12,scale={gw}:-2:flags=lanczos,split[a][b];"
+                 "[a]palettegen=stats_mode=diff[p];[b][p]paletteuse=dither=bayer:bayer_scale=4[g]")
+        cmd += ["-filter_complex", graph, "-map", "[g]", out]
+    else:
+        cmd += ["-map", "0:v:0", "-map", "1:a:0" if silent else f"0:a:{audio_track(src)}?", "-vf", ",".join(chain),
+                "-sn", "-dn", "-map_chapters", "-1"]
         if uniform:
-            chain += ["fps=30", "setsar=1", "format=yuv420p"]
-            if opts.get("transition") == "fade" and dur > 0.6:     # quick dip at each join
-                chain += [f"fade=t=in:st=0:d=0.12", f"fade=t=out:st={dur - 0.12:.3f}:d=0.12"]
-        cmd = [*config.nice(), "ffmpeg", "-v", "error", "-nostdin", "-y",
-               "-ss", f"{in_ms / 1000:.3f}", "-t", f"{dur:.3f}", "-i", src]   # input-side -t: the
-        # GIF palette pass waits for end of input, so the input itself must stop at the out point
-        silent = uniform and not info["has_audio"]
-        if silent:   # every segment needs an audio track or the concat drops audio
-            cmd += ["-f", "lavfi", "-t", f"{dur:.3f}", "-i", "anullsrc=r=48000:cl=stereo"]
-        if fmt == "gif":
-            # two-pass palette in one graph; GIFs stay small: 12 fps, at most 480 px wide
-            gw = min(w, 480)
-            graph = ("[0:v:0]" + ",".join(chain) + f",fps=12,scale={gw}:-2:flags=lanczos,split[a][b];"
-                     "[a]palettegen=stats_mode=diff[p];[b][p]paletteuse=dither=bayer:bayer_scale=4[g]")
-            cmd += ["-filter_complex", graph, "-map", "[g]", out]
+            # Sources differ wildly in level (a quiet drama next to a loud sitcom) and every hard
+            # cut clicks. Even out loudness per segment and fade the audio a few ms at each end.
+            fa = 0.12 if opts.get("transition") == "fade" else 0.015
+            af = (["loudnorm=I=-16:TP=-1.5:LRA=11"] if opts.get("loudnorm", True) else []) + \
+                 ["aresample=48000", f"afade=t=in:st=0:d={fa}", f"afade=t=out:st={max(0, dur - fa):.3f}:d={fa}"]
+            cmd += ["-af", ",".join(af), "-ar", "48000"]
+        if fmt == "webm":
+            cmd += ["-c:v", "libvpx-vp9", "-deadline", "realtime", "-cpu-used", "8", "-row-mt", "1",
+                    "-b:v", "0", "-crf", "33", "-c:a", "libopus", "-b:a", "128k", out]
         else:
-            cmd += ["-map", "0:v:0", "-map", "1:a:0" if silent else f"0:a:{audio_track(src)}?", "-vf", ",".join(chain),
-                    "-sn", "-dn", "-map_chapters", "-1"]
-            if uniform:
-                # Sources differ wildly in level (a quiet drama next to a loud sitcom) and every hard
-                # cut clicks. Even out loudness per segment and fade the audio a few ms at each end.
-                fa = 0.12 if opts.get("transition") == "fade" else 0.015
-                af = (["loudnorm=I=-16:TP=-1.5:LRA=11"] if opts.get("loudnorm", True) else []) + \
-                     ["aresample=48000", f"afade=t=in:st=0:d={fa}", f"afade=t=out:st={max(0, dur - fa):.3f}:d={fa}"]
-                cmd += ["-af", ",".join(af), "-ar", "48000"]
-            if fmt == "webm":
-                cmd += ["-c:v", "libvpx-vp9", "-deadline", "realtime", "-cpu-used", "8", "-row-mt", "1",
-                        "-b:v", "0", "-crf", "33", "-c:a", "libopus", "-b:a", "128k", out]
-            else:
-                cmd += ["-c:v", "libx264", "-preset", "veryfast", "-crf", "20", "-pix_fmt", "yuv420p",
-                        "-c:a", "aac", "-b:a", "160k", "-ac", "2", "-movflags", "+faststart", out]
-        r = subprocess.run(cmd, capture_output=True, timeout=600)
-        if r.returncode != 0:
-            raise RuntimeError(r.stderr.decode(errors="replace").strip()[-500:])
+            cmd += ["-c:v", "libx264", "-preset", "veryfast", "-crf", "20", "-pix_fmt", "yuv420p",
+                    "-c:a", "aac", "-b:a", "160k", "-ac", "2", "-movflags", "+faststart", out]
+    r = subprocess.run(cmd, capture_output=True, timeout=600)
+    if r.returncode != 0:
+        raise RuntimeError(r.stderr.decode(errors="replace").strip()[-500:])
     mode = opts.get("audio", "original")
     if mode in ("dialogue", "nodialogue") and fmt != "gif" and info["has_audio"]:
         separate(out, mode, fmt)

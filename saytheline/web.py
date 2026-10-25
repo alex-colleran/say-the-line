@@ -26,6 +26,7 @@ from . import media
 from . import sayany
 from . import search as srch
 from . import shots as shotcuts
+from . import slowmo
 from . import snap as snapper
 
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -295,7 +296,7 @@ def preview_file(item_id, start_ms, end_ms):
     return out
 
 
-def clip_name(row, in_ms, text, fmt, aspect="original", audio="original"):
+def clip_name(row, in_ms, text, fmt, aspect="original", audio="original", slow=None):
     if row["kind"] == "episode":
         who = f"{row['series']} - S{row['season'] or 0:02d}E{row['episode'] or 0:02d}"
     else:
@@ -306,6 +307,8 @@ def clip_name(row, in_ms, text, fmt, aspect="original", audio="original"):
     base = media.safe_name(f"{who} - {words} - {s // 60}m{s % 60:02d}s", 120)
     shape = "" if aspect in (None, "original") else f" ({aspect.replace(':', 'x')})"
     shape += {"dialogue": " [dialogue]", "nodialogue": " [no dialogue]"}.get(audio, "")
+    if slow:
+        shape += f" [slow {slow[2]}x]"
     return f"{base}{shape}.{fmt}"
 
 
@@ -329,17 +332,24 @@ def run_render(job_id, req):
         in_ms, out_ms = int(req["in_ms"]), int(req["out_ms"])
         if not row or out_ms <= in_ms or out_ms - in_ms > 180_000:
             raise ValueError("clip must be between 0 and 180 seconds")
+        slow = slowmo.part_of(req, in_ms, out_ms)
+        if slow and not slowmo.rife():
+            raise ValueError("slow motion needs rife-ncnn-vulkan installed on the server (see README)")
         cues = clip_captions(row, in_ms, out_ms, req)
         fmt = req.get("format") if req.get("format") in ("mp4", "webm", "gif") else "mp4"
         os.makedirs(CLIPS, exist_ok=True)
         name = version_name(clip_name(row, in_ms, " ".join(c["text"] for c in cues) or "clip", fmt, req.get("aspect"),
-                                      req.get("audio")), req)
+                                      req.get("audio"), slow), req)
         out = os.path.join(CLIPS, name)
         job["state"] = "queued"
+
+        def progress(done, total):           # RIFE making the slow part's frames
+            job.update(state="slowing" if done < total else "rendering", done=done, total=total)
         with RENDER_SLOT:
-            job["state"] = "rendering"
+            job["state"] = "slowing" if slow else "rendering"
             t = time.time()
-            info = media.render(row["path"], in_ms, out_ms, {**req, "format": fmt}, cues, out + ".tmp." + fmt)
+            info = media.render(row["path"], in_ms, out_ms, {**req, "format": fmt}, cues, out + ".tmp." + fmt,
+                                slow=slow, progress=progress)
             os.replace(out + ".tmp." + fmt, out)
         with open(out + ".json", "w") as f:       # sidecar: re-render later with other options
             json.dump({"item": dict(row), "request": req, "result": info}, f, indent=1)
@@ -1181,6 +1191,8 @@ class Handler(BaseHTTPRequestHandler):
                                                 int(q.get("offset_ms") or 0)))
             if u.path == "/api/options":
                 return self.send(200, dict(fonts=media.FONTS, sizes=list(media.SIZES), stems=bool(config.demucs()),
+                                           slowmo=bool(slowmo.rife()), slow_max_ms=slowmo.MAX_PART_MS,
+                                           slow_secs_per_mpix_frame=slowmo.SECS_PER_MPIX_FRAME,
                                            colours=list(media.COLOURS), aspects=["original", *media.ASPECTS]),
                                  cache="max-age=300")
             if u.path.startswith("/api/job/"):

@@ -32,6 +32,8 @@ KEYS = {
     ("tools", "stt_python"): "SAYTHELINE_STT_PYTHON",
     ("tools", "demucs"): "SAYTHELINE_DEMUCS",
     ("tools", "vaapi"): "SAYTHELINE_VAAPI",
+    ("tools", "rife"): "SAYTHELINE_RIFE",
+    ("tools", "rife_model"): "SAYTHELINE_RIFE_MODEL",
 }
 _loaded_from = None
 
@@ -63,7 +65,7 @@ def load():
                     if v in (None, ""):
                         continue
                     v = _flat(v)
-                    if key in ("data", "db", "stt_python", "demucs"):    # relative to the file
+                    if key in ("data", "db", "stt_python", "demucs", "rife", "rife_model"):    # relative to the file
                         v = os.path.normpath(os.path.join(base, os.path.expanduser(v)))
                     os.environ.setdefault(env, v)
                 _loaded_from = p

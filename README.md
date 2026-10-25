@@ -53,6 +53,10 @@ It runs on the machine that has your media, next to Jellyfin, and is used from a
 - **Output**: MP4, WebM, GIF or a **still** (JPEG); original / 16:9 / 4:3 / 1:1 / 9:16 with
   crop or bars; 480–1080 or source size.
 - **Audio** (optional): *Dialogue only* or *No dialogue* via demucs stem separation.
+- **Slow motion** (optional): mark part of a clip (up to 5 s) to play at ½× or ¼×. The missing
+  frames are made by [RIFE](https://github.com/nihui/rife-ncnn-vulkan) on the GPU, so it stays smooth,
+  and each camera shot is slowed on its own so shots never blend. Sound pitched down, stretched at the
+  same pitch, or silent; captions follow the slowed picture. The editor previews it at the slower speed.
 - **Supercut**: every hit for a search in one video. It checks each hit against the audio,
   skips lines that are never actually heard, can cut to just the phrase, trims each clip to its
   shot, hides repeats, evens out loudness and adds labels and captions. Each clip previews in its
@@ -75,6 +79,10 @@ It runs on the machine that has your media, next to Jellyfin, and is used from a
 - **Python 3.11+** and **ffmpeg** built with libass (most distro and Homebrew builds are).
 - About 2 GB of disk for the speech model and Python packages. A modern 4-core CPU is plenty;
   no GPU needed.
+- Optional, for slow motion: [rife-ncnn-vulkan](https://github.com/nihui/rife-ncnn-vulkan/releases)
+  and a GPU with Vulkan (integrated is fine: about 13 s to slow 2 s to 4× at 480p on a Radeon 680M).
+  Unzip it, keep its `rife-v4.6` model folder beside the binary, and set `[tools] rife` to the binary
+  (or put it on PATH).
 
 ### Platforms
 

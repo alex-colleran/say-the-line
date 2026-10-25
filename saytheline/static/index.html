@@ -150,6 +150,8 @@
   .timeline .cue { position: absolute; top: 33px; height: 8px; background: #3e4554; }
   .timeline .selbox { position: absolute; top: 0; bottom: 0; background: var(--sel); border-left: 3px solid var(--accent);
     border-right: 3px solid var(--accent); }
+  .timeline .slow { position: absolute; top: 0; height: 29px; pointer-events: none;
+    background: repeating-linear-gradient(135deg, rgba(90, 170, 255, .5) 0 6px, rgba(90, 170, 255, .22) 6px 12px); }
   .timeline .ph { position: absolute; top: 0; bottom: 0; width: 2px; background: #fff; }
   .timeline .shot { position: absolute; top: 0; height: 29px; width: 2px; margin-left: -1px;
     background: rgba(242, 243, 245, .5); pointer-events: none; }
@@ -531,6 +533,23 @@
         <div class="opt"><button class="b" id="snap"><svg class="i" aria-hidden="true"><use href="#i-target"/></svg>Snap to speech</button>
           <span class="hint">Moves the cut onto the spoken words when subtitles run early or late.</span></div>
         <div class="note" id="snapNote" hidden></div>
+      </div>
+      <div class="grp" id="slowGrp">
+        <h3>Slow motion</h3>
+        <div class="opt"><span>Speed</span><div class="chips" data-opt="slow"></div></div>
+        <div id="slowPart" hidden style="display:flex;flex-direction:column;gap:10px">
+          <div class="nudge"><span>From</span>
+            <button class="b" data-slownudge="a,-100" aria-label="Slow part starts a tenth of a second earlier">−0.1</button>
+            <button class="b" id="slowSetA" aria-label="Slow part starts here">Set</button>
+            <button class="b" data-slownudge="a,100" aria-label="Slow part starts a tenth of a second later">+0.1</button></div>
+          <div class="nudge"><span>To</span>
+            <button class="b" data-slownudge="b,-100" aria-label="Slow part ends a tenth of a second earlier">−0.1</button>
+            <button class="b" id="slowSetB" aria-label="Slow part ends here">Set</button>
+            <button class="b" data-slownudge="b,100" aria-label="Slow part ends a tenth of a second later">+0.1</button></div>
+          <div class="opt"><button class="b" id="slowWhole">Whole clip</button><span class="hint" id="slowRead"></span></div>
+          <div class="opt"><span>Sound</span><div class="chips" data-opt="slowSound"></div></div>
+          <div class="hint" id="slowHint"></div>
+        </div>
       </div>
       <div class="hint">Lines: tap text to play from it · <b>Only</b> = clip just that line · <b>+</b> grow the clip to include it · <b>−</b> trim it off</div>
       <div class="lines" id="lines"></div>
@@ -1078,6 +1097,7 @@ async function showEmpty() {
 
 /* ================= options + their rules ================= */
 const opts = { format: "mp4", aspect: "original", fit: "crop", res: 720, audio: "original",
+  slow: 1, slowSound: "deep",
   subsOn: true, captionSrc: "subs", look: "classic", fontClassic: "Inter", fontWord: "Inter Black",
   size: "m", colour: "white", hl: "yellow", caps: false, box: false, position: "bottom", tab: "cut", loop: false };
 const CHOICES = {
@@ -1086,6 +1106,8 @@ const CHOICES = {
   fit: [["crop", "Crop"], ["pad", "Bars"]],
   res: [[0, "Source"], [1080, "1080"], [720, "720"], [480, "480"]],
   audio: [["original", "Original"], ["dialogue", "Dialogue only"], ["nodialogue", "No dialogue"]],
+  slow: [[1, "Off"], [2, "½×"], [4, "¼×"]],
+  slowSound: [["deep", "Deep"], ["pitch", "Same pitch"], ["mute", "Silent"]],
   subsOn: [[true, "On"], [false, "Off"]],
   captionSrc: [["subs", "Subtitles"], ["speech", "Speech"]],
   look: [["classic", "Classic"], ["tiktok", "TikTok"], ["popin", "Pop-in"], ["bigword", "Big word"], ["poster", "Poster"], ["kinetic", "Kinetic"]],
@@ -1110,6 +1132,8 @@ function disabledReason(key, v) {
   if (key === "audio" && opts.format === "gif" && v !== "original") return "GIFs have no sound";
   if (key === "audio" && v !== "original" && !SERVER.stems) return "Needs demucs installed on the server (see README)";
   if (key === "res" && opts.format === "gif" && v === 1080) return "GIFs are capped at 480 px";
+  if (key === "slow" && v !== 1 && !SERVER.slowmo) return "Needs rife-ncnn-vulkan installed on the server (see README)";
+  if (key === "slowSound" && opts.format === "gif") return "GIFs have no sound";
   return null;
 }
 function setOpt(key, v) {
@@ -1118,6 +1142,7 @@ function setOpt(key, v) {
   opts[key] = v;
   // follow-on rules
   if (key === "format" && v === "gif") opts.audio = "original";
+  if (key === "slow") { if (v === 1) applySlowRate(); else fitSlow(true); drawTimeline(); }
   saveOpts(); refreshAll();
 }
 let flashTimer;
@@ -1165,6 +1190,7 @@ function applyRules() {
   $("#gifHint").hidden = opts.format !== "gif";
   $("#audioGrp").classList.toggle("off", opts.format === "gif");
   $("#audioHint").hidden = opts.audio === "original" || opts.format === "gif";
+  drawSlow();
 }
 function refreshAll() { buildOptions(); applyRules(); drawCapShift(); drawStt(); drawSubText(); drawOverlay(); drawSummary(); schedulePoster(); autosave(); }
 function drawSummary() {
@@ -1172,7 +1198,8 @@ function drawSummary() {
   const cap = !capsOn() ? "no captions" : `${CHOICES.look.find(l => l[0] === opts.look)[1]} captions from ${speechMode() ? "speech" : "subtitles"}`;
   const shape = opts.aspect === "original" ? "original shape" : opts.aspect + (opts.fit === "pad" ? " bars" : "");
   const audio = opts.format === "gif" ? " · silent" : opts.audio === "original" ? "" : opts.audio === "dialogue" ? " · dialogue only" : " · no dialogue";
-  $("#summary").textContent = `${((ed.outMs - ed.inMs) / 1000).toFixed(1)} s · ${opts.format.toUpperCase()} · ${shape} · ${cap}${audio}`;
+  const slow = slowOn() ? ` · ${opts.slow === 2 ? "½" : "¼"}× slow` : "";
+  $("#summary").textContent = `${(outLength() / 1000).toFixed(1)} s · ${opts.format.toUpperCase()} · ${shape} · ${cap}${slow}${audio}`;
   $("#capDot").hidden = !(needWords() && !sttCovers());
 }
 
@@ -1195,6 +1222,7 @@ function resetEd(h) {
     autoLines: false,     // trim a fresh default cut's padding to the lines either side once they load
     speech: null,        // the heard words' span after a snap: {a, b, offset}
     seekOnLoad: false, session: (ed.session || 0) + 1,
+    slowA: null, slowB: null,   // the slowed part (media ms) while opts.slow is 2 or 4
     baseState: null });   // the state as opened: a draft is only written once something differs
 }
 // A new clip always opens with plain subtitles, so there is text on screen straight away; looks that
@@ -1203,11 +1231,12 @@ function captionDefaults() { opts.subsOn = true; opts.captionSrc = "subs"; opts.
 
 /* drafts: every edited clip is kept (Library > Recent edits); a hearted moment keeps the same state */
 const DRAFT_OPTS = ["subsOn", "captionSrc", "look", "fontClassic", "fontWord", "size", "colour", "hl", "caps", "box", "position",
-  "format", "aspect", "fit", "res", "audio"];
+  "format", "aspect", "fit", "res", "audio", "slow", "slowSound"];
 function edState() {
   const o = {}; DRAFT_OPTS.forEach(k => o[k] = opts[k]);
   return { v: 1, in_ms: Math.round(ed.inMs), out_ms: Math.round(ed.outMs), offset_ms: ed.offset, opts: o,
-    stt: ed.stt && ed.stt.item === ed.hit.item_id ? ed.stt : null, sub_text: ed.subText, cap_shift: ed.capShift, file: ed.lastFile };
+    stt: ed.stt && ed.stt.item === ed.hit.item_id ? ed.stt : null, sub_text: ed.subText, cap_shift: ed.capShift, file: ed.lastFile,
+    slow_a: slowOn() ? Math.round(ed.slowA) : undefined, slow_b: slowOn() ? Math.round(ed.slowB) : undefined };
 }
 function applyState(st) {
   ed.inMs = st.in_ms; ed.outMs = st.out_ms; ed.offset = st.offset_ms || 0;
@@ -1216,6 +1245,8 @@ function applyState(st) {
   ed.lastFile = st.file || null;
   ed.subText = st.sub_text || {};
   ed.capShift = st.cap_shift || 0;
+  ed.slowA = st.slow_a ?? null; ed.slowB = st.slow_b ?? null;
+  if (opts.slow !== 1 && ed.slowA === null) opts.slow = 1;
   if (needWords() && !sttCovers()) captionDefaults();       // never reopen to a look with no text
   saveOpts();
 }
@@ -1257,7 +1288,7 @@ function offsetNote() {
 async function openEditor(h, cut, entryId, preset) {
   flushDraft();
   resetEd(h);
-  captionDefaults();
+  captionDefaults(); opts.slow = 1;
   const seq = ed.loadSeq;
   const [known, draft] = await Promise.all([
     fetch(`/api/offset?item=${h.item_id}`).then(r => r.json()).then(j => j.offset_ms || 0).catch(() => 0),
@@ -1295,7 +1326,7 @@ function drawDraftNote(d) {
     <button class="b" id="startFresh">Start fresh</button>`;
   $("#startFresh").onclick = () => {
     $("#vid").pause();
-    captionDefaults(); saveOpts();
+    captionDefaults(); opts.slow = 1; saveOpts();
     ed.stt = null; ed.poster = null; ed.lastFile = null; ed.subText = {}; ed.speech = null; ed.capShift = 0;
     defaultCut();
     ed.winA = Math.max(0, ed.inMs - WIN); ed.winB = ed.outMs + WIN;
@@ -1403,12 +1434,69 @@ function setSel(inMs, outMs, { seek, auto } = {}) {
   drawAll();
   if (seek === "in") showIn(); else if (seek === "out") showOut();
 }
-function drawAll() { drawTimeline(); drawShotRow(); drawLines(); drawSubText(); drawReadout(); drawOverlay(); drawSttHint(); drawSummary(); schedulePoster(); autosave(); }
+function drawAll() { fitSlow(); drawTimeline(); drawShotRow(); drawLines(); drawSubText(); drawReadout(); drawOverlay(); drawSttHint(); drawSummary(); schedulePoster(); autosave(); }
+/* slow motion: one part of the cut, 2× or 4× slower (frames made up by RIFE on the server) */
+const slowOn = () => opts.slow > 1 && ed.slowA !== null && ed.slowB !== null;
+const SLOW_MAX = () => SERVER.slow_max_ms || 5000;
+// the rendered clip's length: the slow part lasts `slow` times as long
+function outLength() { return ed.outMs - ed.inMs + (slowOn() ? (ed.slowB - ed.slowA) * (opts.slow - 1) : 0); }
+// keep the slow part inside the cut and no longer than the server allows; fresh: start one now
+function fitSlow(fresh) {
+  if (opts.slow === 1) return;
+  if (fresh || ed.slowA === null || ed.slowB === null) {
+    if (ed.outMs - ed.inMs <= SLOW_MAX()) { ed.slowA = ed.inMs; ed.slowB = ed.outMs; }
+    else {
+      const now = absNow(), a = now > ed.inMs && now < ed.outMs - 500 ? now : ed.inMs;
+      ed.slowA = a; ed.slowB = Math.min(ed.outMs, a + 2000);
+    }
+  }
+  ed.slowA = Math.max(ed.inMs, Math.min(ed.slowA, ed.outMs - 200));
+  ed.slowB = Math.max(ed.slowA + 200, Math.min(ed.slowB, ed.outMs, ed.slowA + SLOW_MAX()));
+}
+function setSlow(a, b) { ed.slowA = a; ed.slowB = b; fitSlow(); drawAll(); }
+function drawSlow() {
+  $("#slowPart").hidden = opts.slow === 1;
+  $("#slowGrp").classList.toggle("off", !SERVER.slowmo);
+  if (!slowOn()) return;
+  const part = ed.slowB - ed.slowA, whole = ed.slowA <= ed.inMs + 1 && ed.slowB >= ed.outMs - 1;
+  $("#slowRead").textContent = whole ? `the whole clip · ${(part / 1000).toFixed(1)} s` : `${fmtp(ed.slowA)} → ${fmtp(ed.slowB)} · ${(part / 1000).toFixed(1)} s`;
+  // RIFE's cost grows with the frames it makes and their size (~25 fps sources assumed)
+  const short = opts.res || 1080, mp = short * short * 16 / 9 / 1e6;
+  const est = part / 1000 * 25 * opts.slow * mp * (SERVER.slow_secs_per_mpix_frame || 0.15) + 5;
+  $("#slowHint").textContent = `Plays ${(part / 1000).toFixed(1)} s over ${(part * opts.slow / 1000).toFixed(1)} s, with the in-between frames made up so it stays smooth. `
+    + `Adds up to about ${est < 60 ? Math.max(5, Math.round(est / 5) * 5) + " s" : Math.round(est / 60) + " min"} to the render`
+    + (opts.res === 0 || opts.res === 1080 ? " (a smaller Size is quicker)." : ".")
+    + (part >= SLOW_MAX() - 1 ? ` At most ${SLOW_MAX() / 1000} s can be slowed.` : "");
+}
+// the preview plays the slow part at the slower rate: close to the render, minus the extra frames
+let slowRateOn = false;
+function applySlowRate() {
+  const v = $("#vid"), now = absNow();
+  const inside = slowOn() && now >= ed.slowA && now < ed.slowB && !v.paused;
+  if (inside !== slowRateOn || (inside && v.playbackRate !== 1 / opts.slow)) {
+    slowRateOn = inside;
+    v.playbackRate = inside ? 1 / opts.slow : 1;
+    v.preservesPitch = !(inside && opts.slowSound === "deep");
+  }
+  v.muted = !!opts.muted || (inside && opts.slowSound === "mute");
+}
+$("#slowSetA").onclick = () => { const p = frameOnScreen(); setSlow(p ? p - frameF() / 2 : absNow(), ed.slowB); };
+$("#slowSetB").onclick = () => { const p = frameOnScreen(); setSlow(ed.slowA, p ? p + frameF() / 2 : absNow()); };
+$("#slowWhole").onclick = () => {
+  if (ed.outMs - ed.inMs > SLOW_MAX()) flash(`At most ${SLOW_MAX() / 1000} s can be slowed: the first ${SLOW_MAX() / 1000} s are marked`);
+  setSlow(ed.inMs, ed.outMs);
+};
+$$("[data-slownudge]").forEach(b => b.onclick = () => {
+  const [which, d] = b.dataset.slownudge.split(",");
+  if (which === "a") setSlow(ed.slowA + +d, ed.slowB); else setSlow(ed.slowA, ed.slowB + +d);
+  seekTo(which === "a" ? ed.slowA : Math.max(ed.slowA, ed.slowB - 1000));
+});
 function pct(ms) { return ((ms - ed.winA) / Math.max(1, ed.winB - ed.winA)) * 100; }
 function clampPct(x) { return Math.max(0, Math.min(100, x)); }
 function drawTimeline() {
   $("#tl").innerHTML = ed.cues.map(c => `<div class="cue" style="left:${clampPct(pct(c.start_ms))}%;width:${clampPct(pct(c.end_ms)) - clampPct(pct(c.start_ms))}%"></div>`).join("")
     + `<div class="selbox" style="left:${clampPct(pct(ed.inMs))}%;width:${clampPct(pct(ed.outMs)) - clampPct(pct(ed.inMs))}%"></div>`
+    + (slowOn() ? `<div class="slow" style="left:${clampPct(pct(ed.slowA))}%;width:${clampPct(pct(ed.slowB)) - clampPct(pct(ed.slowA))}%"></div>` : "")
     + shotCuts().map(c => `<div class="shot" style="left:${pct(c)}%"></div>`).join("")
     + `<div class="ph" id="ph" style="left:${clampPct(pct(absNow()))}%"></div>`
     + `<div class="h" data-h="in" style="left:${clampPct(pct(ed.inMs))}%"></div><div class="h" data-h="out" style="left:${clampPct(pct(ed.outMs))}%"></div>`;
@@ -1534,7 +1622,7 @@ function paintMute() {
   const b = $("#muteBtn"); $("#vid").muted = !!opts.muted;
   b.innerHTML = ic(opts.muted ? "volume-off" : "volume"); b.setAttribute("aria-pressed", String(!!opts.muted));
 }
-$("#muteBtn").onclick = () => { opts.muted = !opts.muted; saveOpts(); paintMute(); };
+$("#muteBtn").onclick = () => { opts.muted = !opts.muted; saveOpts(); paintMute(); applySlowRate(); };
 $("#playSel").onclick = togglePlay;
 $("#vid").addEventListener("click", togglePlay);
 ["play", "pause", "ended", "emptied"].forEach(ev => $("#vid").addEventListener(ev, paintPlay));
@@ -1545,6 +1633,7 @@ function frameLoop() {
   const v = $("#vid");
   if (v.paused || v.ended || $("#sheet").hidden) return;
   const ph = $("#ph"); if (ph) ph.style.left = clampPct(pct(absNow())) + "%";
+  applySlowRate();
   // the clip's current out point (it may be trimmed while playing): loop back or stop there
   if (!RVFC && ed.stopAt !== null && absNow() >= ed.outMs) endOfClip();
   drawOverlay();
@@ -2090,6 +2179,7 @@ function renderBody() {
     format: opts.format, aspect: opts.aspect, fit: opts.fit, res: opts.res, audio: opts.format === "gif" ? "original" : opts.audio,
     caption_source: speechMode() ? "speech" : "subs", offset_ms: ed.offset, caption_shift_ms: ed.capShift || undefined,
     sub_text: needWords() ? undefined : ed.subText,
+    slow: slowOn() ? { factor: opts.slow, a_ms: Math.round(ed.slowA), b_ms: Math.round(ed.slowB), sound: opts.slowSound } : undefined,
     caption_cues: needWords() ? ed.stt.cues.map(c => ({ start_ms: c.start_ms, end_ms: c.end_ms, text: c.text, words: c.words || [] })) : undefined,
     subs: { on: capsOn(), font: curFont(), size: opts.size, colour: opts.colour, box: opts.box, position: opts.position,
             style: isWordLook() ? opts.look : "classic", hl: opts.hl, caps: opts.caps } };
@@ -2109,7 +2199,8 @@ $("#render").onclick = async () => {
   btn.disabled = true; btn.textContent = "Rendering…";
   $("#result").innerHTML = "";
   try {
-    const job = await postJob("/api/render", renderBody(), j => btn.textContent = j.state === "queued" ? "Waiting…" : "Rendering…");
+    const job = await postJob("/api/render", renderBody(), j => btn.textContent = j.state === "queued" ? "Waiting…"
+      : j.state === "slowing" && j.total ? `Slowing ${Math.round(100 * (j.done || 0) / j.total)}%…` : "Rendering…");
     ed.lastFile = job.file; autosave();
     showResult(job, `${job.width}×${job.height} · ${job.seconds} s · ${bytes(job.bytes)} · rendered in ${job.secs} s`);
   } catch (e) {
@@ -3117,7 +3208,7 @@ $$("header [data-kind]").forEach(c => c.onclick = () => { state.kind = c.dataset
 $("#load").onclick = () => { state.offset += PAGE; run(true); };
 
 let FONT_LIST = ["Inter", "Inter Black", "League Spartan Black"];
-const SERVER = { stems: true };          // what this install can do (from /api/options)
+const SERVER = { stems: true, slowmo: false };          // what this install can do (from /api/options)
 (async () => {
   const p = new URLSearchParams(location.search);
   state.q = p.get("q") || ""; state.mode = p.get("mode") || "phrase"; state.kind = p.get("kind") || "";
@@ -3128,7 +3219,8 @@ const SERVER = { stems: true };          // what this install can do (from /api/
   drawRecentList();
   run();
   if (p.get("edit")) openClipLink(p.get("edit"));
-  try { const o = await (await fetch("/api/options")).json(); FONT_LIST = o.fonts; SERVER.stems = !!o.stems; } catch (e) {}
+  try { const o = await (await fetch("/api/options")).json(); FONT_LIST = o.fonts; SERVER.stems = !!o.stems;
+    Object.assign(SERVER, { slowmo: !!o.slowmo, slow_max_ms: o.slow_max_ms, slow_secs_per_mpix_frame: o.slow_secs_per_mpix_frame }); } catch (e) {}
   buildOptions(); applyRules();
 })();
 </script>
