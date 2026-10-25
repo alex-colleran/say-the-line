@@ -3373,7 +3373,10 @@ function drawMusic() {
       box.appendChild(c);
     });
   });
-  $("#stRampMore").hidden = !rampOn();
+  // the whole set shows with a song, greyed while the ramp is off, so it can be found
+  $("#stRampMore").hidden = false;
+  $$("#stRampMore .opt").forEach(o => o.classList.toggle("disabled", !rampOn()));
+  if (!rampOn()) $("#stRampHint").textContent = "Pick Subtle, Strong or Extreme to turn it on: the picture then speeds up on every beat and slows between, in time with the song.";
   $("#stClipSound").classList.toggle("disabled", rampOn());          // a ramp mutes the clips
   if (rampOn()) {
     const secs = studio.clips.reduce((t, c) => t + (c.out_ms - c.in_ms), 0) / 1000;
