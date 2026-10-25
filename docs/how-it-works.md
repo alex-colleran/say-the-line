@@ -215,7 +215,22 @@ Design notes: what each part does and why it is built that way. For setup, see t
   joins, optional source labels). A word look times the words of any clip that has none yet
   (`snap.subtitle_words`). A clip nobody edited shows only the lines mostly inside its cut, so the end
   of the line before doesn't flash up. Slow motion is per clip (`media.render(slow=…)`).
-- **Draft:** a Studio is a Library draft of type `studio`: its name, clips in order and settings.
+- **Draft:** a Studio is a Library draft of type `studio`: its name, clips in order, settings and song.
+- **Music (`music.py`, `beat_worker.py`):** an uploaded song is kept in `data/uploads/` under a hash
+  of its bytes. Its beats are found once, in the speech Python (numpy only): positive spectral flux
+  on a log spectrogram (centred 2048-sample frames, 512 hop at 22.05 kHz) with its 1 s trend removed;
+  tempo from the envelope's autocorrelation weighted towards ~115 BPM; beats by Ellis's dynamic
+  programme; bar starts as the phase of four with the most low-band (<150 Hz) onset. On click tracks
+  at 70-174 BPM the tempo is within 0.5 % and beats within a frame (15 ms bias corrected). A BPM set
+  by hand becomes an even grid through the first downbeat (`music.grid`).
+- **Joins on the beat:** `music.snap_joins` moves each clip's end (and the cut's end) to the nearest
+  beat, by at most half a beat (half a bar, up to 1 s, for bars), and `web.studio_snap` rounds every
+  join to a whole 30 fps frame. For that to hold in the output, each supercut segment is exactly
+  `round(dur x 30)` frames with its audio trimmed and padded to match, and the concat list gives each
+  part's duration (AAC pads its last frame, which used to make long supercuts drift by ~50 ms a clip).
+- **Mix:** the song from the chosen start, loudness-normalised (-27 / -22 / -17 LUFS under the clips,
+  -14 alone), faded out over the last 1.5 s; with "Music dips" it goes through a sidechain compressor
+  keyed on the clips' own audio, then a limiter.
 
 ## Supercut
 - Loads up to 300 hits for the search. "Hide repeats" drops the same line in the same item, and

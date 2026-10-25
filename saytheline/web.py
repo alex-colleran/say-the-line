@@ -24,6 +24,7 @@ from . import config
 from . import jellyfin
 from . import library
 from . import media
+from . import music
 from . import sayany
 from . import search as srch
 from . import shots as shotcuts
@@ -924,9 +925,32 @@ def lines_mostly_in(cues, a, b):
     return [c for c in cues if min(c["end_ms"], b) - max(c["start_ms"], a) > (c["end_ms"] - c["start_ms"]) / 2]
 
 
+def studio_snap(clips, song, mu):
+    """The clips with their ends moved (by at most half a beat, or half a bar up to 1 s) so every
+    join, and the end, lands on the song's beat or bar."""
+    bars = mu.get("joins") == "bar"
+    bpm = float(mu.get("bpm") or song["bpm"])
+    beats = music.grid(song, bpm, bars)
+    step = 60 / bpm * (4 if bars else 1)
+    out, lengths = [dict(c) for c in clips], []
+    for c in out:
+        sl = slowmo.part_of(c, int(c["in_ms"]), int(c["out_ms"]))
+        lengths.append((c["out_ms"] - c["in_ms"] + ((sl[1] - sl[0]) * (sl[2] - 1) if sl else 0)) / 1000)
+    t = 0.0
+    for c, L, d in zip(out, lengths, music.snap_joins(lengths, beats, (mu.get("offset_ms") or 0) / 1000, min(1.0, step / 2))):
+        # every join on a whole frame of the 30 fps cut, so the timeline adds up exactly
+        end = round((t + L + d) * 30) / 30
+        c["out_ms"] = int(round(c["out_ms"] + (end - t - L) * 1000))
+        t = end
+        if c.get("slow") and c["slow"]["b_ms"] > c["out_ms"]:
+            c["slow"] = dict(c["slow"], b_ms=c["out_ms"]) if c["out_ms"] - c["slow"]["a_ms"] >= slowmo.MIN_PART_MS else None
+    return out
+
+
 def run_studio(job_id, req):
     """req: {"title", "clips": [studio_clip() dicts, in order, cuts maybe trimmed], "subs": {...},
-    "aspect", "res", "transition", "loudnorm", "label"}"""
+    "aspect", "res", "transition", "loudnorm", "label", "music": {"id", "offset_ms", "bpm" (set by
+    hand, else the detected one), "level": low|medium|high, "clips": duck|mute|keep, "joins": off|beat|bar}}"""
     job = JOBS[job_id]
     try:
         clips = (req.get("clips") or [])[:SUPERCUT_MAX_SEGMENTS]
@@ -934,6 +958,12 @@ def run_studio(job_id, req):
             raise ValueError("add some clips first")
         st = req.get("subs") or {}
         words_needed = st.get("on") and st.get("style") in media.LOOKS
+        mu = req.get("music") or {}
+        song = music.info(mu.get("id")) if mu.get("id") else None
+        if mu.get("id") and not (song and music.path(mu["id"])):
+            raise ValueError("the song is gone from the server: add it again")
+        if song and mu.get("joins") in ("beat", "bar"):
+            clips = studio_snap(clips, song, mu)
         segs, total = [], 0
         for i, c in enumerate(clips):
             stop_if_cancelled(job)
@@ -974,6 +1004,11 @@ def run_studio(job_id, req):
         t = time.time()
         with RENDER_SLOT:
             info = media.supercut(segs, req, out + ".tmp.mp4", progress)
+            if song:
+                job.update(state="mixing")
+                music.mix(out + ".tmp.mp4", music.path(mu["id"]), dict(offset_s=(mu.get("offset_ms") or 0) / 1000,
+                          level=mu.get("level"), clips=mu.get("clips")), out + ".mix.mp4")
+                os.replace(out + ".mix.mp4", out + ".tmp.mp4")
             os.replace(out + ".tmp.mp4", out)
         with open(out + ".json", "w") as f:
             json.dump({"studio": req, "result": info}, f, indent=1)
@@ -1273,6 +1308,14 @@ class Handler(BaseHTTPRequestHandler):
         u = urlparse(self.path)
         try:
             n = int(self.headers.get("Content-Length") or 0)
+            if u.path == "/api/upload/song":           # raw bytes, not JSON: a song for the Studio
+                if n > music.MAX_BYTES:
+                    return self.send(413, {"error": f"songs can be up to {music.MAX_BYTES // 1024 // 1024} MB"})
+                data = self.rfile.read(n)
+                try:
+                    return self.send(200, music.save(unquote(self.headers.get("X-Name") or "song"), data))
+                except (ValueError, RuntimeError, subprocess.SubprocessError) as e:
+                    return self.send(400, {"error": str(e)[:300]})
             req = json.loads(self.rfile.read(n) or b"{}")
             m = re.fullmatch(r"/api/job/([0-9a-f]+)/cancel", u.path)
             if m:
@@ -1403,6 +1446,13 @@ class Handler(BaseHTTPRequestHandler):
                     return self.send_file(contact_sheet(item_frames(frames)), "image/jpeg")
                 except (ValueError, RuntimeError) as e:
                     return self.send(400, {"error": str(e)})
+            m = re.fullmatch(r"/uploads/([0-9a-f]{16})", u.path)            # a Studio song, for the preview
+            if m:
+                p = music.path(m.group(1))
+                ext = p.rsplit(".", 1)[-1] if p else ""
+                return self.send_file(p, {"mp3": "audio/mpeg", "m4a": "audio/mp4", "aac": "audio/aac", "wav": "audio/wav",
+                                          "flac": "audio/flac", "ogg": "audio/ogg", "opus": "audio/ogg", "webm": "audio/webm"}[ext]) \
+                    if p else self.send(404, {"error": "no such song"})
             m = re.fullmatch(r"/interp/([0-9a-f]{6,40})\.mp4", u.path)     # an interpolation preview
             if m and os.path.isfile(os.path.join(INTERP, m.group(1) + ".mp4")):
                 return self.send_file(os.path.join(INTERP, m.group(1) + ".mp4"), "video/mp4")

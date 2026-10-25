@@ -495,6 +495,68 @@ class Studio(unittest.TestCase):
         self.assertEqual([c["text"] for c in web.lines_mostly_in(cues, 800, 3300)], ["the line itself"])
 
 
+class Music(unittest.TestCase):
+    song = dict(bpm=120.0, duration=20.0, beats=[0.25 + 0.5 * k for k in range(39)], downbeats=[0.25 + 2 * k for k in range(10)])
+
+    def test_joins_land_on_the_beat(self):
+        from saytheline import music
+        beats = music.grid(self.song)
+        # clips 1.9 s and 2.2 s long, the song starting 1 s in: joins move onto beats, by under half a beat
+        d = music.snap_joins([1.9, 2.2], beats, 1.0, 0.25)
+        ends = [1.9 + d[0], 1.9 + d[0] + 2.2 + d[1]]
+        for e in ends:
+            self.assertAlmostEqual((e + 1.0 - 0.25) / 0.5 % 1, 0, delta=0.002, msg=ends)
+        self.assertTrue(all(abs(x) <= 0.25 for x in d))
+        self.assertEqual(music.snap_joins([1.9], beats, 1.0, 0.05), [0.0], "too far to move: left alone")
+
+    def test_bpm_set_by_hand_keeps_the_bar(self):
+        from saytheline import music
+        g = music.grid(self.song, bpm=100)
+        self.assertAlmostEqual(g[1] - g[0], 0.6, places=3)
+        self.assertIn(0.25, g, "the grid runs through the detected first downbeat")
+        bars = music.grid(self.song, bpm=100, bars=True)
+        self.assertAlmostEqual(bars[1] - bars[0], 2.4, places=3)
+        self.assertIn(0.25, bars)
+
+
+def _has_numpy(py):
+    import subprocess
+    try:
+        return subprocess.run([py, "-c", "import numpy"], capture_output=True, timeout=30).returncode == 0
+    except OSError:
+        return False
+
+
+BEAT_PY = config.stt_python()
+
+
+@unittest.skipUnless(_has_numpy(BEAT_PY), "beat finding needs numpy in the speech Python")
+class Beats(unittest.TestCase):
+    def test_click_track(self):
+        """A 128 BPM click track with a kick on each bar: tempo, beat times and bar starts."""
+        import json, subprocess
+        gen = (
+            "import sys, wave, numpy as np\n"
+            "sr, bpm = 22050, 128.0; x = 0.02 * np.random.default_rng(1).standard_normal(sr * 20); k = 0\n"
+            "while True:\n"
+            "    s = int((0.37 + k * 60 / bpm) * sr); n = int(0.05 * sr)\n"
+            "    if s + n >= len(x): break\n"
+            "    f = 60 if k % 4 == 0 else 2000\n"
+            "    x[s:s + n] += 0.6 * np.exp(-np.arange(n) / (0.01 * sr)) * np.sin(2 * np.pi * f * np.arange(n) / sr); k += 1\n"
+            "w = wave.open(sys.argv[1], 'wb'); w.setnchannels(1); w.setsampwidth(2); w.setframerate(sr)\n"
+            "w.writeframes((np.clip(x, -1, 1) * 32767).astype(np.int16).tobytes()); w.close()\n")
+        with tempfile.TemporaryDirectory() as d:
+            wav = os.path.join(d, "click.wav")
+            subprocess.run([BEAT_PY, "-c", gen, wav], check=True)
+            worker = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "saytheline", "beat_worker.py")
+            out = json.loads(subprocess.run([BEAT_PY, "-I", worker, wav], capture_output=True, text=True, check=True).stdout)
+        self.assertAlmostEqual(out["bpm"], 128, delta=1)
+        beat = 60 / 128
+        errs = [(b - 0.37) - round((b - 0.37) / beat) * beat for b in out["beats"]]
+        self.assertLess(max(abs(e) for e in errs), 0.03, "every beat within ~a frame")
+        self.assertTrue(all(round((b - 0.37) / beat) % 4 == 0 for b in out["downbeats"]), "bars start on the kicks")
+
+
 class AudioTracks(unittest.TestCase):
     def tracks(self, *tags):
         from unittest import mock

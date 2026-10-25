@@ -25,6 +25,8 @@ saytheline/
   intense.py     Intense look: Kinetic with every effect (drop, wipe, type, bars, loudness, exits)
   sayany.py      Say Anything: plan a sentence into heard takes, measured cut points
   slowmo.py      slow motion: time map, caption re-timing, RIFE per camera shot, the slowed master
+  music.py       Studio songs: uploads, beat grid, joins on the beat, the ducked mix
+  beat_worker.py tempo, beats and bar starts of a song (numpy only, runs in the speech Python)
   library.py     favourites, tags, drafts (data/library.db; separate from the index)
   web.py         HTTP server (stdlib ThreadingHTTPServer) + JSON API + job queue
   doctor.py      `python -m saytheline doctor`

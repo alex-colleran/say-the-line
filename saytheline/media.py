@@ -488,7 +488,8 @@ def _render(src, in_ms, out_ms, opts, cues, out, label, uniform, slow, progress,
         chain.append(f"drawtext=fontfile={_fpath(font_path())}:textfile={_fpath(tf)}:x=h*0.03:y=h*0.03:fontsize=h*0.032"
                      f":fontcolor=white:box=1:boxcolor=black@0.5:boxborderw={max(4, round(h * 0.012))}")
     if uniform:
-        chain += ["fps=30", "setsar=1", "format=yuv420p"]
+        # exactly round(dur x 30) frames: the fps conversion can round up one, which adds up over a cut
+        chain += ["fps=30", f"trim=end_frame={max(1, round(dur * 30))}", "setsar=1", "format=yuv420p"]
         if opts.get("transition") == "fade" and dur > 0.6:     # quick dip at each join
             chain += [f"fade=t=in:st=0:d=0.12", f"fade=t=out:st={dur - 0.12:.3f}:d=0.12"]
     cmd = [*config.nice(), "ffmpeg", "-v", "error", "-nostdin", "-y",
@@ -510,8 +511,10 @@ def _render(src, in_ms, out_ms, opts, cues, out, label, uniform, slow, progress,
             # Sources differ wildly in level (a quiet drama next to a loud sitcom) and every hard
             # cut clicks. Even out loudness per segment and fade the audio a few ms at each end.
             fa = 0.12 if opts.get("transition") == "fade" else 0.015
-            af = (["loudnorm=I=-16:TP=-1.5:LRA=11"] if opts.get("loudnorm", True) else []) + \
-                 ["aresample=48000", f"afade=t=in:st=0:d={fa}", f"afade=t=out:st={max(0, dur - fa):.3f}:d={fa}"]
+            # the audio exactly as long as the video's frames, so joined segments don't drift apart
+            vdur = max(1, round(dur * 30)) / 30
+            af = [f"atrim=end={vdur:.4f}"] + (["loudnorm=I=-16:TP=-1.5:LRA=11"] if opts.get("loudnorm", True) else []) + \
+                 ["aresample=48000", f"apad=whole_dur={vdur:.4f}", f"afade=t=in:st=0:d={fa}", f"afade=t=out:st={max(0, vdur - fa):.3f}:d={fa}"]
             cmd += ["-af", ",".join(af), "-ar", "48000"]
         if fmt == "webm":
             cmd += ["-c:v", "libvpx-vp9", "-deadline", "realtime", "-cpu-used", "8", "-row-mt", "1",
@@ -622,7 +625,10 @@ def supercut(segments, opts, out, progress=None):
             raise RuntimeError("no segment rendered")
         lst = os.path.join(tmp, "list.txt")
         with open(lst, "w") as f:
-            f.writelines(f"file '{p}'\n" for p in parts)
+            for p in parts:              # each part lasts exactly its video (AAC pads its last frame)
+                r = subprocess.run(["ffprobe", "-v", "error", "-select_streams", "v:0", "-show_entries", "stream=duration",
+                                    "-of", "csv=p=0", p], capture_output=True, text=True, timeout=30)
+                f.write(f"file '{p}'\n" + (f"duration {float(r.stdout.strip()):.4f}\n" if r.stdout.strip() else ""))
         r = subprocess.run(["ffmpeg", "-v", "error", "-nostdin", "-y", "-f", "concat", "-safe", "0",
                             "-i", lst, "-c", "copy", "-movflags", "+faststart", out],
                            capture_output=True, timeout=600)

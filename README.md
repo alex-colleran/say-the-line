@@ -66,6 +66,9 @@ It runs on the machine that has your media, next to Jellyfin, and is used from a
   Add them from the Library (by tag), reorder, nudge each start and end, preview each clip in place,
   then render one video with one caption look and shape. Each clip keeps its own cut, caption edits
   and slow motion from the editor. Saved as a draft like the rest.
+  **Music**: upload a song to go under it. Its tempo and beats are found on upload (tap or type to
+  correct the BPM); the song dips whenever someone speaks, and each join can land on the beat or the
+  bar. Play all plays the song with the clips before you render.
 - **Supercut**: every hit for a search in one video. It checks each hit against the audio,
   skips lines that are never actually heard, can cut to just the phrase, trims each clip to its
   shot, hides repeats, evens out loudness and adds labels and captions. Each clip previews in its
