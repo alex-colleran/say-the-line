@@ -62,6 +62,10 @@ It runs on the machine that has your media, next to Jellyfin, and is used from a
   **60 fps** (same Interpolation section) does the same for the whole clip at normal speed: smooth
   motion from a 24 or 30 fps source. **Preview** renders just that part small, in a few seconds, to
   check the motion before the real render.
+- **Studio**: put any saved clips together, from any mix of shows and movies, in your own order.
+  Add them from the Library (by tag), reorder, nudge each start and end, preview each clip in place,
+  then render one video with one caption look and shape. Each clip keeps its own cut, caption edits
+  and slow motion from the editor. Saved as a draft like the rest.
 - **Supercut**: every hit for a search in one video. It checks each hit against the audio,
   skips lines that are never actually heard, can cut to just the phrase, trims each clip to its
   shot, hides repeats, evens out loudness and adds labels and captions. Each clip previews in its

@@ -206,6 +206,17 @@ Design notes: what each part does and why it is built that way. For setup, see t
 - **Live preview:** the editor plays the part at `1/factor` speed (`preservesPitch` off for Deep, muted
   for Silent), so the timing matches the render; only the extra frames are missing.
 
+## Studio
+- **Clips:** `web.studio_clip` turns a Library entry into a clip: a moment or recent edit gives its
+  editor state (cut, subtitle offset, caption edits and shift, word timing, slow motion); a rendered
+  clip the recipe in its sidecar. A supercut or Say Anything (many sources) can't be one clip yet.
+- **Render:** `web.run_studio` keeps each clip's exact cut (no padding or shot trimming: the editor
+  did that) and joins them with `media.supercut` (one size, 30 fps, loudness evened, cut or fade
+  joins, optional source labels). A word look times the words of any clip that has none yet
+  (`snap.subtitle_words`). A clip nobody edited shows only the lines mostly inside its cut, so the end
+  of the line before doesn't flash up. Slow motion is per clip (`media.render(slow=…)`).
+- **Draft:** a Studio is a Library draft of type `studio`: its name, clips in order and settings.
+
 ## Supercut
 - Loads up to 300 hits for the search. "Hide repeats" drops the same line in the same item, and
   hits less than 1.5 s apart.

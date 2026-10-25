@@ -358,6 +358,23 @@
   .sa-top .st .pp .i { width: 14px; height: 14px; }
   .sa-top .st.on .pp { display: none; }
   .sa-row.on { border-color: var(--accent); }
+  input.st-name { width: 100%; height: 44px; min-height: 0; flex: none; font: inherit; font-size: 16px; padding: 0 10px; background: var(--panel);
+    color: var(--text); border: 1px solid var(--line); border-radius: 6px; margin-bottom: 10px; }
+  .st-ctl { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; }
+  .st-ctl .b { min-width: 40px; min-height: 40px; padding: 0 6px; }
+  .st-ctl span { color: var(--dim); font-size: 13px; margin: 0 2px 0 8px; }
+  .st-info { min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+  .st-info b { font-size: 14px; line-height: 1.25; }
+  .st-info small { color: var(--dim); font-size: 13px; line-height: 1.3; overflow-wrap: anywhere; }
+  .st-pick { display: flex; flex-direction: column; gap: 8px; padding: 10px; border: 1px solid var(--line); border-radius: 8px; margin: 8px 0; }
+  .st-plist { display: flex; flex-direction: column; gap: 6px; max-height: 50vh; overflow-y: auto; }
+  .st-plist button { display: grid; grid-template-columns: 22px 80px 1fr; gap: 10px; align-items: center; text-align: left; padding: 6px 8px;
+    min-height: 56px; background: var(--panel); border: 1px solid var(--line); border-radius: 6px; color: var(--text); }
+  .st-plist button[aria-pressed="true"] { border-color: var(--accent); }
+  .st-plist button[aria-pressed="true"] .ck { background: var(--accent); }
+  .st-plist .ck { width: 18px; height: 18px; border: 2px solid var(--accent); border-radius: 4px; }
+  .st-plist img { width: 80px; aspect-ratio: 16 / 9; object-fit: cover; border-radius: 4px; background: #000; }
+  .st-plist small { display: block; color: var(--dim); }
   .sa-row .w { font-size: 18px; font-weight: 700; }
   .sa-row .src { color: var(--dim); font-size: 13px; overflow-wrap: anywhere; }
   .sa-row .take-n { color: var(--dim); font-size: 12px; margin-top: 2px; }
@@ -454,6 +471,7 @@
       <button class="hbtn" id="menuBtn" title="More: Say Anything, Scripts" aria-label="Menu" aria-haspopup="menu" aria-expanded="false" aria-controls="menu"><svg class="i" aria-hidden="true"><use href="#i-menu"/></svg></button>
       <div class="menu" id="menu" role="menu" hidden>
         <button type="button" role="menuitem" data-go="sa"><svg class="i" aria-hidden="true"><use href="#i-message"/></svg><span>Say Anything<small>Type a sentence; the library says it</small></span></button>
+        <button type="button" role="menuitem" data-go="studio"><svg class="i" aria-hidden="true"><use href="#i-movie"/></svg><span>Studio<small>Put any saved clips together, in your order</small></span></button>
         <button type="button" role="menuitem" data-go="script"><svg class="i" aria-hidden="true"><use href="#i-script"/></svg><span>Scripts<small>Read a title's subtitles, find a line, clip it</small></span></button>
       </div>
     </div>
@@ -715,6 +733,41 @@
     <button class="b" id="saPlay"><svg class="i" aria-hidden="true"><use href="#i-play"/></svg>Play pieces</button>
     <button class="b primary" id="saRender">Render</button>
     <button class="b" id="saStop" hidden><svg class="i" aria-hidden="true"><use href="#i-stop"/></svg>Stop</button>
+  </div></div>
+</div>
+<div class="sheet" id="stSheet" hidden>
+  <div class="sheet-in">
+    <div class="sheet-head"><div class="t">Studio<small>saved clips, in your order</small></div>
+      <button class="hbtn2" id="stHeart" aria-label="Save as a draft"><svg class="i" aria-hidden="true"><use href="#i-heart"/></svg></button><button class="x" id="stClose" aria-label="Close"><svg class="i" aria-hidden="true"><use href="#i-x"/></svg></button></div>
+    <div class="tagrow" id="stDraftTags" hidden></div>
+    <input id="stName" class="st-name" type="text" placeholder="Name this cut (optional)" aria-label="Name" autocomplete="off" enterkeyhint="done">
+    <div id="stResult"></div>
+    <div class="sclist" id="stList"></div>
+    <div class="opt"><button class="b primary" id="stAdd"><svg class="i" aria-hidden="true"><use href="#i-plus"/></svg>Add clips</button>
+      <span class="hint" id="stAddHint">From your Library: saved moments and rendered clips.</span></div>
+    <div class="st-pick" id="stPick" hidden>
+      <div class="chips" id="stPickKinds"></div>
+      <div class="chips" id="stPickTags"></div>
+      <div class="st-plist" id="stPickList"></div>
+      <div class="opt"><button class="b primary" id="stPickAdd" disabled>Add</button><button class="b" id="stPickCancel">Cancel</button></div>
+    </div>
+    <details class="grp" id="stSettings">
+      <summary>Settings</summary>
+      <div class="opt"><span>Captions</span><div class="chips" data-st="captions"></div></div>
+      <div class="opt"><span>Joins</span><div class="chips" data-st="transition"></div></div>
+      <div class="opt"><span>Labels</span><div class="chips" data-st="label"></div></div>
+      <div class="opt"><span>Loudness</span><div class="chips" data-st="loudnorm"></div></div>
+      <div class="opt"><span>Shape</span><div class="chips" data-st="aspect"></div></div>
+      <div class="opt" id="stFitOpt"><span>Fit</span><div class="chips" data-st="fit"></div></div>
+      <div class="opt"><span>Size</span><div class="chips" data-st="res"></div></div>
+      <div class="hint">Caption font, size, position and colours follow the editor's Captions settings. Each clip keeps its own cut, caption edits and slow motion from the editor.</div>
+    </details>
+  </div>
+  <div class="footer"><div class="footer-in">
+    <div class="sum" id="stSum"></div>
+    <button class="b" id="stPlay"><svg class="i" aria-hidden="true"><use href="#i-play"/></svg>Play all</button>
+    <button class="b primary" id="stRender">Render</button>
+    <button class="b" id="stStop" hidden><svg class="i" aria-hidden="true"><use href="#i-stop"/></svg>Stop</button>
   </div></div>
 </div>
 <div class="sheet" id="scriptSheet" hidden>
@@ -2969,6 +3022,13 @@ async function openDraft(id) {
     $("#saText").value = st.text ?? sa.sentence; $("#saResult").innerHTML = "";
     sa.draftId = d.id; DRAFT.sa.last = d.state;
     openSayAnything();
+  } else if (st.type === "studio") {
+    if (studio.busy) { openStudio(); $("#stSum").textContent = "Let this render finish, then open the draft again"; return; }
+    draftFlush("st"); stStopPlay();
+    Object.assign(studio, { title: st.title || "", clips: st.clips || [], draftId: d.id });
+    Object.assign(studio.o, st.o || {}); DRAFT.st.last = d.state;
+    $("#stResult").innerHTML = "";
+    openStudio();
   } else if (st.type === "supercut") {
     if (sc.busy) { $("#scSheet").hidden = false; document.body.style.overflow = "hidden"; history.pushState({ sheet: 3 }, "");
       $("#scSum").textContent = "Stop this or let it finish, then open the draft again"; return; }
@@ -2982,6 +3042,199 @@ async function openDraft(id) {
     drawSc();
   }
 }
+/* Studio: any saved clips, in any order, each keeping its own cut, caption edits and slow motion,
+   rendered as one video by the supercut renderer (web.run_studio) */
+const ST_CHOICES = {
+  captions: [["off", "Off"], ["classic", "Subtitles"], ["tiktok", "TikTok"], ["popin", "Pop-in"], ["bigword", "Big word"],
+             ["poster", "Poster"], ["kinetic", "Kinetic"], ["intense", "Intense"]],
+  transition: [["cut", "Cut"], ["fade", "Fade"]], label: [[false, "Off"], [true, "On"]],
+  loudnorm: [[true, "Even out"], [false, "As is"]], aspect: SC_CHOICES.aspect, fit: SC_CHOICES.fit, res: SC_CHOICES.res,
+};
+const studio = { clips: [], title: "", busy: false, job: null, now: null, vid: null, queue: [], cards: new Map(), draftId: null,
+  pick: { kind: "", tag: "", sel: new Set() },
+  o: { captions: "classic", transition: "cut", label: false, loudnorm: true, aspect: "16:9", fit: "crop", res: 720 } };
+try { Object.assign(studio.o, JSON.parse(localStorage.getItem("saytheline.studio") || "{}")); } catch (e) {}
+function saveStudio() { try { localStorage.setItem("saytheline.studio", JSON.stringify(studio.o)); } catch (e) {} }
+const stLen = c => c.out_ms - c.in_ms + (c.slow ? (c.slow.b_ms - c.slow.a_ms) * (c.slow.factor - 1) : 0);
+function openStudio() {
+  $("#stSheet").hidden = false; document.body.style.overflow = "hidden"; history.pushState({ sheet: 6 }, "");
+  $("#stName").value = studio.title; drawStudio();
+}
+function drawStudio() {
+  $$("[data-st]").forEach(box => {
+    const key = box.dataset.st; box.innerHTML = "";
+    ST_CHOICES[key].forEach(([v, label]) => {
+      const c = document.createElement("button"); c.type = "button"; c.className = "chip"; c.textContent = label;
+      c.setAttribute("aria-pressed", String(studio.o[key] === v));
+      c.onclick = () => { studio.o[key] = v; saveStudio(); drawStudio(); };
+      box.appendChild(c);
+    });
+  });
+  $("#stFitOpt").classList.toggle("disabled", studio.o.aspect === "original");
+  const list = $("#stList"), playing = studio.now;
+  studio.cards = new Map();
+  list.innerHTML = studio.clips.length ? "" : `<div class="hint">Nothing here yet. Add clips from your Library: hearted moments and rendered clips, in any mix of shows and movies.</div>`;
+  studio.clips.forEach((c, i) => {
+    const row = document.createElement("div");
+    row.className = "sa-row" + (c === playing ? " on" : ""); row.dataset.i = i;
+    const slow = c.slow ? ` · ${c.slow.factor === 2 ? "½" : "¼"}× slow` : "";
+    row.innerHTML = `<div class="sa-top">
+        <button class="st${c === playing ? " on" : ""}" data-a="play" aria-label="${c === playing ? "Stop" : "Play"} clip ${i + 1}"><img src="${c.thumb}" alt="" loading="lazy"><span class="pp">${ic("play")}</span></button>
+        <div class="st-info"><b>${i + 1}. ${esc(c.label)}</b><small>${esc(c.text || "")}</small><small>${(stLen(c) / 1000).toFixed(1)} s${slow}</small></div>
+        <button class="b" data-a="del" aria-label="Take clip ${i + 1} out">${ic("x")}</button></div>
+      <div class="st-ctl">
+        <button class="b" data-a="up" aria-label="Move up" ${i ? "" : "disabled"}>${ic("up")}</button><button class="b" data-a="down" aria-label="Move down" ${i < studio.clips.length - 1 ? "" : "disabled"}>${ic("down")}</button>
+        <span>Start</span><button class="b" data-a="in,-250" aria-label="Start a quarter second earlier">−</button><button class="b" data-a="in,250" aria-label="Start a quarter second later">+</button>
+        <span>End</span><button class="b" data-a="out,-250" aria-label="End a quarter second earlier">−</button><button class="b" data-a="out,250" aria-label="End a quarter second later">+</button></div>`;
+    list.appendChild(row);
+    const st = row.querySelector(".st");
+    studio.cards.set(c, st);
+    if (c === playing && studio.vid) st.appendChild(studio.vid);
+  });
+  const n = studio.clips.length, total = studio.clips.reduce((t, c) => t + stLen(c), 0);
+  $("#stSum").textContent = studio.busy ? $("#stSum").textContent : n ? `${n} clip${n === 1 ? "" : "s"} · ${(total / 1000).toFixed(1)} s` : "Add some clips";
+  $("#stRender").disabled = !n || studio.busy; $("#stPlay").disabled = !n || studio.busy;
+  $("#stStop").hidden = !(studio.busy && studio.job);
+  touchDraft("st");
+}
+$("#stList").addEventListener("click", e => {
+  const b = e.target.closest("[data-a]"), row = e.target.closest(".sa-row"); if (!b || !row || studio.busy) return;
+  const i = +row.dataset.i, c = studio.clips[i], a = b.dataset.a;
+  if (a === "play") return studio.now === c ? stStopPlay() : stPlayOne(c);
+  if (a === "del") { if (studio.now === c) stStopPlay(); studio.clips.splice(i, 1); }
+  else if (a === "up" || a === "down") { const j = a === "up" ? i - 1 : i + 1; [studio.clips[i], studio.clips[j]] = [studio.clips[j], studio.clips[i]]; }
+  else {
+    const [end, d] = a.split(","), ms = +d;
+    if (end === "in") c.in_ms = Math.max(0, Math.min(c.in_ms + ms, c.out_ms - 300));
+    else c.out_ms = Math.max(c.in_ms + 300, c.out_ms + ms);
+    if (c.slow) { c.slow.a_ms = Math.max(c.in_ms, c.slow.a_ms); c.slow.b_ms = Math.min(c.out_ms, c.slow.b_ms); if (c.slow.b_ms - c.slow.a_ms < 200) c.slow = null; }
+    if (studio.now === c) { stStopPlay(); drawStudio(); return stPlayOne(c); }
+  }
+  drawStudio();
+});
+// one video, moved into whichever card is playing (like Say Anything's)
+function stVid() {
+  if (!studio.vid) {
+    studio.vid = document.createElement("video"); studio.vid.playsInline = true; studio.vid.preload = "auto";
+    studio.vid.onended = () => studio.queue.length ? stPlayOne(studio.queue.shift(), true) : stStopPlay();
+  }
+  return studio.vid;
+}
+function stPlayOne(c, follow) {
+  const v = stVid(), prev = studio.now;
+  studio.now = c;
+  if (prev && prev !== c) { const o = studio.cards.get(prev); if (o) { o.classList.remove("on"); o.closest(".sa-row").classList.remove("on"); } }
+  const st = studio.cards.get(c);
+  if (st) {
+    st.classList.add("on"); st.closest(".sa-row").classList.add("on"); st.appendChild(v);
+    if (follow) { const r = st.getBoundingClientRect(); if (r.top < 0 || r.bottom > innerHeight) st.scrollIntoView({ behavior: "smooth", block: "center" }); }
+  }
+  v.src = `/preview/${c.item}/${c.in_ms}-${c.out_ms}.mp4`; v.play().catch(() => {});
+}
+function stStopPlay() {
+  const v = studio.vid; studio.queue = [];
+  if (v) { v.pause(); v.remove(); v.removeAttribute("src"); v.load(); }
+  const st = studio.now && studio.cards.get(studio.now);
+  if (st) { st.classList.remove("on"); st.closest(".sa-row").classList.remove("on"); }
+  studio.now = null;
+}
+$("#stPlay").onclick = () => { if (!studio.clips.length) return; studio.queue = studio.clips.slice(1); stPlayOne(studio.clips[0], true); };
+$("#stName").addEventListener("input", e => { studio.title = e.target.value; touchDraft("st"); });
+// adding: the Library's moments and rendered clips, by kind and tag, several at once
+async function stPick() {
+  const P = $("#stPick"); P.hidden = !P.hidden;
+  if (P.hidden) return;
+  studio.pick.sel = new Set();
+  await loadLibrary();
+  stPickDraw();
+  P.scrollIntoView({ behavior: "smooth", block: "nearest" });
+}
+function stPickDraw() {
+  const pk = studio.pick;
+  const kinds = [["", "All saved"], ["moment", "Moments"], ["clip", "Clips"]];
+  $("#stPickKinds").innerHTML = kinds.map(([k, l]) => `<button type="button" class="chip" data-k="${k}" aria-pressed="${pk.kind === k}">${l}</button>`).join("");
+  $("#stPickTags").innerHTML = lib.tags.length ? [["", "Any tag"], ...lib.tags.map(t => [t.tag, t.tag])]
+    .map(([t, l]) => `<button type="button" class="chip" data-t="${esc(t)}" aria-pressed="${pk.tag === t}">${esc(l)}</button>`).join("") : "";
+  const rows = lib.entries.filter(e => (e.kind === "moment" || e.kind === "clip") && (!pk.kind || e.kind === pk.kind)
+    && (!pk.tag || (e.tags || []).includes(pk.tag)));
+  $("#stPickList").innerHTML = rows.length ? rows.map(e => {
+    const mid = e.in_ms != null ? Math.round((e.in_ms + e.out_ms) / 2) : Math.round((e.start_ms + e.end_ms) / 2);
+    return `<button type="button" data-id="${e.id}" aria-pressed="${pk.sel.has(e.id)}"><span class="ck"></span>`
+      + `<img src="/thumb/${e.item_id}/${mid}.jpg" alt="" loading="lazy"><span><b>${esc(e.label || "")}</b><small>${esc(e.text || "")}${e.kind === "clip" ? " · rendered clip" : ""}</small></span></button>`;
+  }).join("") : `<div class="hint">Nothing saved${pk.tag ? " with that tag" : ""} yet. Tap ♡ on a search result or in the editor to save a moment.</div>`;
+  $("#stPickAdd").disabled = !pk.sel.size;
+  $("#stPickAdd").textContent = pk.sel.size ? `Add ${pk.sel.size}` : "Add";
+}
+$("#stAdd").onclick = stPick;
+$("#stPickCancel").onclick = () => { $("#stPick").hidden = true; };
+$("#stPick").addEventListener("click", e => {
+  const k = e.target.closest("[data-k]"), t = e.target.closest("[data-t]"), r = e.target.closest("[data-id]"), pk = studio.pick;
+  if (k) pk.kind = k.dataset.k;
+  else if (t) pk.tag = t.dataset.t;
+  else if (r) {                     // toggled in place: redrawing would lose the list's scroll position
+    const id = +r.dataset.id;
+    pk.sel.has(id) ? pk.sel.delete(id) : pk.sel.add(id);
+    r.setAttribute("aria-pressed", String(pk.sel.has(id)));
+    $("#stPickAdd").disabled = !pk.sel.size; $("#stPickAdd").textContent = pk.sel.size ? `Add ${pk.sel.size}` : "Add";
+    return;
+  } else return;
+  stPickDraw();
+});
+$("#stPickAdd").onclick = async () => {
+  const ids = lib.entries.filter(e => studio.pick.sel.has(e.id)).map(e => e.id).reverse();   // oldest first, as saved
+  const btn = $("#stPickAdd"); btn.disabled = true; btn.textContent = "Adding…";
+  const bad = [];
+  for (const id of ids) {
+    try {
+      const r = await fetch("/api/studio/clip?id=" + id), j = await r.json();
+      if (!r.ok) throw new Error(j.error || "can't add that one");
+      studio.clips.push(j);
+    } catch (e) { bad.push(e.message); }
+  }
+  $("#stPick").hidden = true;
+  $("#stAddHint").textContent = bad.length ? `${bad.length} not added: ${bad[0]}` : "From your Library: saved moments and rendered clips.";
+  drawStudio();
+};
+$("#stRender").onclick = async () => {
+  if (!studio.clips.length || studio.busy) return;
+  stStopPlay(); studio.busy = true; drawStudio(); $("#stResult").innerHTML = "";
+  const look = studio.o.captions;
+  const body = { title: studio.title.trim(), clips: studio.clips, transition: studio.o.transition, label: studio.o.label,
+    loudnorm: studio.o.loudnorm, aspect: studio.o.aspect, fit: studio.o.fit, res: studio.o.res,
+    subs: { on: look !== "off", style: look === "off" ? "classic" : look, font: look === "classic" ? opts.fontClassic : opts.fontWord,
+            size: opts.size, colour: opts.colour, box: opts.box, hl: opts.hl, caps: opts.caps,
+            position: ["bigword", "poster", "kinetic", "intense"].includes(look) ? "middle" : opts.position } };
+  try {
+    const job = await postJob("/api/studio/render", body, j => {
+      if (studio.job !== j.id) { studio.job = j.id; $("#stStop").hidden = false; }
+      $("#stSum").textContent = j.state === "timing" ? `Timing the words in clip ${(j.done || 0) + 1} of ${j.total}…`
+        : j.state === "rendering" ? `Rendering clip ${(j.done || 0) + 1} of ${j.total}…` : "Waiting for the renderer…";
+    });
+    const url = "/clips/" + encodeURIComponent(job.file);
+    $("#stResult").innerHTML = `<div class="result"><video src="${url}" controls playsinline autoplay></video>
+      <div class="hint">${esc(job.file)}<br>${job.segments} clips · ${job.seconds} s · ${bytes(job.bytes)} · ${job.secs} s to render</div>
+      <div class="opt"><a class="b primary" href="${url}?dl=1" download>${ic("download")}Download</a><button class="b" id="stSave"></button></div>
+      <div class="tagrow" id="stTags" hidden></div></div>`;
+    const c0 = studio.clips[0];
+    const entry = { kind: "clip", file: job.file, item_id: c0.item, in_ms: c0.in_ms, out_ms: c0.out_ms, start_ms: c0.in_ms, end_ms: c0.out_ms,
+      label: `Studio · ${job.segments} clips`, text: studio.title.trim() || studio.clips.map(c => c.text).filter(Boolean).slice(0, 2).join(" / "), media_kind: "episode" };
+    const paint = () => { const e = savedClip(job.file); $("#stSave").innerHTML = e ? ic("heart-f") + "Saved" : ic("heart") + "Save to library";
+      $("#stTags").hidden = !e; if (e) tagEditor($("#stTags"), e, paint); };
+    $("#stSave").onclick = async () => { const e = savedClip(job.file); if (e) await libDelete(e.id); else await libSave({ ...entry, tags: ["studio"] }); paint(); };
+    paint();
+    $("#stResult").scrollIntoView({ behavior: "smooth", block: "start" });
+  } catch (e) {
+    $("#stResult").innerHTML = e.message === "Stopped" ? `<div class="hint">Stopped. Nothing was rendered.</div>` : `<div class="err">${esc(e.message)}</div>`;
+  } finally { studio.busy = false; studio.job = null; drawStudio(); }
+};
+$("#stStop").onclick = () => { if (studio.job) fetch(`/api/job/${studio.job}/cancel`, { method: "POST" }).catch(() => {}); };
+$("#stClose").onclick = () => history.back();
+DRAFT.st = { st: () => studio, heart: "#stHeart", tags: "#stDraftTags", ready: () => studio.clips.length > 0,
+  snap: () => ({ type: "studio", title: studio.title, clips: studio.clips, o: studio.o }),
+  meta: () => { const c = studio.clips[0], n = studio.clips.length;
+    return { label: "Studio", text: (studio.title.trim() ? `“${studio.title.trim()}” · ` : "") + `${n} clip${n === 1 ? "" : "s"}`,
+             item_id: c ? c.item : null, start_ms: c ? c.in_ms : null, end_ms: c ? c.out_ms : null }; } };
+$("#stHeart").onclick = () => toggleDraft("st");
 // ⓘ buttons: show or hide the short explanation they point at (aria-controls). Which ones are
 // open is remembered, so a card redrawn after a tap keeps its explanation showing.
 const openInfo = new Set();
@@ -3007,7 +3260,7 @@ $("#menu").addEventListener("keydown", e => {
   if (e.key === "Escape") { setMenu(false); $("#menuBtn").focus(); }
   else if (e.key === "ArrowDown" || e.key === "ArrowUp") { e.preventDefault(); items[(k + (e.key === "ArrowDown" ? 1 : items.length - 1)) % items.length].focus(); }
 });
-$$("#menu [data-go]").forEach(b => b.onclick = () => { setMenu(false); b.dataset.go === "sa" ? openSayAnything() : openScript(); });
+$$("#menu [data-go]").forEach(b => b.onclick = () => { setMenu(false); ({ sa: openSayAnything, studio: openStudio })[b.dataset.go]?.() ?? openScript(); });
 
 /* ================= scripts: a title's whole subtitle, find in page, clip from it ================= */
 const SP_GAP_MS = 5000;           // a longer silence draws a faint divider (roughly a scene change)
@@ -3349,6 +3602,8 @@ $("#libBtn").onclick = () => { $("#libSheet").hidden = false; history.pushState(
 $("#libClose").onclick = () => history.back();
 $("#edClose").onclick = () => history.back();
 window.addEventListener("popstate", () => {
+  if (!$("#stSheet").hidden) { stStopPlay(); draftFlush("st"); $("#stSheet").hidden = true; $("#stPick").hidden = true;
+    document.body.style.overflow = ""; return; }
   if (!$("#saSheet").hidden) { saStopPlay(); draftFlush("sa"); $("#saSheet").hidden = true;
     document.body.style.overflow = ""; return; }
   // closing the sheet stops a check (its results would be lost with the sheet); a render carries on

@@ -605,7 +605,7 @@ def separate(path, mode, fmt):
 def supercut(segments, opts, out, progress=None):
     """Concatenate many hits into one MP4. Each segment is rendered `uniform` (same size, fps,
     audio layout) into a temp dir, then joined with the concat demuxer without re-encoding.
-    segments: [{"src", "in_ms", "out_ms", "cues", "label"}]."""
+    segments: [{"src", "in_ms", "out_ms", "cues", "label", "slow"?}] (slow: slowmo.part_of)."""
     with tempfile.TemporaryDirectory(prefix="saytheline-sc-") as tmp:
         parts = []
         for i, sg in enumerate(segments):
@@ -614,7 +614,7 @@ def supercut(segments, opts, out, progress=None):
             p = os.path.join(tmp, f"{i:04d}.mp4")
             try:
                 render(sg["src"], sg["in_ms"], sg["out_ms"], {**opts, "format": "mp4", "audio": "original"},
-                       sg["cues"], p, label=sg.get("label"), uniform=True)
+                       sg["cues"], p, label=sg.get("label"), uniform=True, slow=sg.get("slow"))
                 parts.append(p)
             except Exception:
                 continue          # one unreadable file must not sink the whole supercut

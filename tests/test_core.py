@@ -486,6 +486,15 @@ class Intense(unittest.TestCase):
         self.assertGreater(intense.word_state(card, x, gone - 50)["cy"], settled["cy"], "it falls away")
 
 
+class Studio(unittest.TestCase):
+    def test_only_lines_mostly_inside_the_cut(self):
+        from saytheline import web
+        cues = [dict(start_ms=0, end_ms=1000, text="the end of the line before"),
+                dict(start_ms=1000, end_ms=3000, text="the line itself"),
+                dict(start_ms=2800, end_ms=6000, text="the next one, barely started")]
+        self.assertEqual([c["text"] for c in web.lines_mostly_in(cues, 800, 3300)], ["the line itself"])
+
+
 class AudioTracks(unittest.TestCase):
     def tracks(self, *tags):
         from unittest import mock

@@ -108,7 +108,7 @@ def find_clip(cid):
         return dict(id=cid, file=f, url="/clips/" + quote(f), path=os.path.abspath(p), bytes=os.path.getsize(p),
                     item=item, label=srch.label(item) if item.get("kind") else None,
                     request=side.get("request"), result=side.get("result"),
-                    supercut="supercut" in side or "sayanything" in side)     # many sources: not one editor cut
+                    supercut="supercut" in side or "sayanything" in side or "studio" in side)  # many sources: not one editor cut
     return None
 
 
@@ -860,6 +860,132 @@ def run_supercut(job_id, req):
         job.update(state="error", error=str(e)[:500])
 
 
+# ---- Studio ------------------------------------------------------------------------------------
+# Any clips from the Library, in any order, each with its own exact cut (no padding or shot
+# trimming: that was done in the editor), its own caption edits and slow motion, joined by the
+# supercut renderer with one caption style, shape and size for the whole thing.
+STUDIO_PAD_IN, STUDIO_PAD_OUT = 400, 600        # a saved line with no cut of its own gets this around it
+
+
+def studio_clip(entry_id):
+    """A Library entry as a Studio clip: {entry, item, label, text, in_ms, out_ms, offset_ms,
+    sub_text, caption_shift_ms, caption_cues, slow, thumb}. A moment or recent edit gives its editor
+    state; a rendered clip the recipe it was made with. A supercut or Say Anything (many sources) can't
+    be one clip."""
+    e = LIB.get(int(entry_id))
+    if not e:
+        raise ValueError("that Library entry is gone")
+    if e["kind"] == "draft":
+        raise ValueError("a draft Say Anything or supercut can't go into a Studio as one clip yet")
+    st, req = {}, {}
+    if e["kind"] == "clip":
+        side = clip_info(clip_id(e["file"] or "")) if e.get("file") else None
+        if not side or side.get("supercut") or not side.get("request"):
+            raise ValueError("a supercut or Say Anything can't go into a Studio as one clip yet")
+        req = side["request"]
+        edited = True
+        item = int(req["item"])
+        a, b = int(req["in_ms"]), int(req["out_ms"])
+        cues = req.get("caption_cues")
+        sub_text, shift, slow = req.get("sub_text") or {}, int(req.get("caption_shift_ms") or 0), req.get("slow")
+        off = int(req.get("offset_ms") or 0)
+    else:
+        try:
+            st = json.loads(e.get("state") or "{}")
+        except ValueError:
+            st = {}
+        item = int(e["item_id"])
+        edited = bool(st)
+        if st.get("in_ms") is not None:
+            a, b = int(st["in_ms"]), int(st["out_ms"])
+        elif e.get("in_ms") is not None:
+            a, b = int(e["in_ms"]), int(e["out_ms"])
+        else:
+            a, b = int(e["start_ms"]) - STUDIO_PAD_IN, int(e["end_ms"]) + STUDIO_PAD_OUT
+        off = int(st.get("offset_ms", e.get("offset_ms") or 0))
+        stt = st.get("stt") or {}
+        cues = stt.get("cues") if stt.get("item") == item else None
+        sub_text, shift = st.get("sub_text") or {}, int(st.get("cap_shift") or 0)
+        o = st.get("opts") or {}
+        slow = (dict(factor=o["slow"], a_ms=st["slow_a"], b_ms=st["slow_b"], sound=o.get("slowSound", "deep"))
+                if o.get("slow", 1) > 1 and st.get("slow_a") is not None else None)
+    row = item_row(item)
+    if not row:
+        raise ValueError("that title is no longer in the library")
+    text = e.get("text") or ""
+    return dict(entry=e["id"], item=item, label=srch.label(row), text=text, in_ms=max(0, a), out_ms=b, offset_ms=off,
+                sub_text=sub_text, caption_shift_ms=shift, caption_cues=cues, slow=slow, edited=edited,
+                thumb=f"/thumb/{item}/{(a + b) // 2}.jpg")
+
+
+def lines_mostly_in(cues, a, b):
+    """The caption lines most of which fall inside [a, b) (= JS lineIn): a neighbouring line that only
+    spills into the cut isn't shown. For clips nobody has edited in the editor."""
+    return [c for c in cues if min(c["end_ms"], b) - max(c["start_ms"], a) > (c["end_ms"] - c["start_ms"]) / 2]
+
+
+def run_studio(job_id, req):
+    """req: {"title", "clips": [studio_clip() dicts, in order, cuts maybe trimmed], "subs": {...},
+    "aspect", "res", "transition", "loudnorm", "label"}"""
+    job = JOBS[job_id]
+    try:
+        clips = (req.get("clips") or [])[:SUPERCUT_MAX_SEGMENTS]
+        if not clips:
+            raise ValueError("add some clips first")
+        st = req.get("subs") or {}
+        words_needed = st.get("on") and st.get("style") in media.LOOKS
+        segs, total = [], 0
+        for i, c in enumerate(clips):
+            stop_if_cancelled(job)
+            row = item_row(int(c["item"]))
+            if not row:
+                continue
+            a, b = int(c["in_ms"]), int(c["out_ms"])
+            if not 0 < b - a <= 180_000:
+                raise ValueError(f"clip {i + 1}: a clip must be 0-180 s long")
+            creq = {**c, "subs": st, "caption_source": "subs"}
+            if words_needed and not c.get("caption_cues"):
+                # a word look needs each word's timing: take it from the speech, keeping the subtitle text
+                job.update(state="timing", done=i, total=len(clips))
+                reach = snapper.SUB_REACH_MS
+                with RENDER_SLOT:
+                    creq["caption_cues"] = snapper.subtitle_words(
+                        row["path"], a, b, item_cues(row["id"], a - reach, b + reach, int(c.get("offset_ms") or 0)))
+            slow = slowmo.part_of(c, a, b)
+            seg_len = b - a + ((slow[1] - slow[0]) * (slow[2] - 1) if slow else 0)
+            if total + seg_len > SUPERCUT_MAX_SECONDS * 1000:
+                raise ValueError(f"a Studio can run up to {SUPERCUT_MAX_SECONDS // 60} min: take some clips out")
+            total += seg_len
+            cues = clip_captions(row, a, b, creq)
+            if not c.get("edited"):
+                cues = lines_mostly_in(cues, a, b)
+            segs.append(dict(item=row["id"], src=row["path"], in_ms=a, out_ms=b, cues=cues,
+                             label=sc_label(row) if req.get("label") else None, slow=slow))
+        if any(s["slow"] for s in segs) and not slowmo.rife():
+            raise ValueError("slow motion needs rife-ncnn-vulkan installed on the server (see README)")
+        os.makedirs(CLIPS, exist_ok=True)
+        title = media.safe_name(req.get("title") or "Studio", 50)
+        name = f"Studio - {title} - {len(segs)} clips ({time.strftime('%m%d-%H%M')}).mp4"
+        out = os.path.join(CLIPS, name)
+
+        def progress(i, n):
+            stop_if_cancelled(job)
+            job.update(state="rendering", done=i, total=n)
+        t = time.time()
+        with RENDER_SLOT:
+            info = media.supercut(segs, req, out + ".tmp.mp4", progress)
+            os.replace(out + ".tmp.mp4", out)
+        with open(out + ".json", "w") as f:
+            json.dump({"studio": req, "result": info}, f, indent=1)
+        first = segs[0]
+        job.update(state="done", file=name, url="/clips/" + name, secs=round(time.time() - t, 1),
+                   item_id=first["item"], in_ms=first["in_ms"], out_ms=first["out_ms"], **info)
+    except Cancelled:
+        job.update(state="cancelled")
+    except Exception as e:
+        job.update(state="error", error=str(e)[:500])
+
+
 # ---- Say Anything ----------------------------------------------------------------------------
 SA_MAX_WORDS = 40
 
@@ -1166,9 +1292,11 @@ class Handler(BaseHTTPRequestHandler):
             runners = {"/api/render": run_render, "/api/snap": run_snap, "/api/supercut": run_supercut,
                        "/api/supercut/check": run_sc_check, "/api/sayany/plan": run_sa_plan,
                        "/api/sayany/take": run_sa_take, "/api/sayany/render": run_sa_render,
-                       "/api/transcribe": run_transcribe, "/api/poster": run_poster, "/api/still": run_still}
+                       "/api/transcribe": run_transcribe, "/api/poster": run_poster, "/api/still": run_still,
+                       "/api/studio/render": run_studio}
             if u.path in runners:
-                job_id = new_job(("sa-" if u.path.startswith("/api/sayany/") else "") + u.path.rsplit("/", 1)[-1])
+                job_id = new_job("studio" if u.path.startswith("/api/studio/") else
+                                 ("sa-" if u.path.startswith("/api/sayany/") else "") + u.path.rsplit("/", 1)[-1])
                 threading.Thread(target=runners[u.path], args=(job_id, req), daemon=True).start()
                 return self.send(202, JOBS[job_id])
             return self.send(404, {"error": "not found"})
@@ -1319,6 +1447,11 @@ class Handler(BaseHTTPRequestHandler):
             if u.path == "/api/lines":            # a title's whole subtitle, for the script view
                 body, cache = script_lines(int(q["item"]))
                 return self.send(404 if "error" in body else 200, body, cache=cache)
+            if u.path == "/api/studio/clip":      # a Library entry as a Studio clip
+                try:
+                    return self.send(200, studio_clip(q.get("id")))
+                except (ValueError, TypeError, KeyError) as e:
+                    return self.send(400, {"error": str(e)})
             if u.path == "/api/suggest":          # the script picker before anything is typed
                 return self.send(200, suggest(min(48, int(q.get("n") or 18))))
             if u.path == "/api/browse":           # the script view's title picker

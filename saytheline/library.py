@@ -6,8 +6,9 @@ Every clip worked on in the editor is also kept as a 'recent' draft (the last RE
 is never lost without anyone tapping save. A moment or draft carries the whole editor state as JSON
 (cut, caption look and style, the edited transcript, output settings).
 
-A 'draft' is a hearted Say Anything or supercut that isn't rendered yet: its state is the whole sheet
-(pieces and takes, or hits, ticks and checks), with item_id/start_ms only for its thumbnail."""
+A 'draft' is a hearted Say Anything, supercut or Studio that isn't rendered yet: its state is the whole
+sheet (pieces and takes; hits, ticks and checks; or a Studio's clips in order), with item_id/start_ms
+only for its thumbnail."""
 import contextlib
 import datetime
 import os
