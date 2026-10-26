@@ -30,7 +30,7 @@ from . import ramp
 from . import sayany
 from . import search as srch
 from . import shots as shotcuts
-from . import laser, slowmo
+from . import laser, sfx, slowmo
 from . import snap as snapper
 
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -322,7 +322,7 @@ def preview_file(item_id, start_ms, end_ms):
     return out
 
 
-def clip_name(row, in_ms, text, fmt, aspect="original", audio="original", slow=None, smooth=0, lasers=False):
+def clip_name(row, in_ms, text, fmt, aspect="original", audio="original", slow=None, smooth=0, lasers=False, fx=False):
     if row["kind"] == "episode":
         who = f"{row['series']} - S{row['season'] or 0:02d}E{row['episode'] or 0:02d}"
     else:
@@ -339,6 +339,8 @@ def clip_name(row, in_ms, text, fmt, aspect="original", audio="original", slow=N
         shape += f" [{smooth}fps]"
     if lasers:
         shape += " [laser eyes]"
+    if fx:
+        shape += " [sfx]"
     return f"{base}{shape}.{fmt}"
 
 
@@ -370,6 +372,7 @@ def run_render(job_id, req):
         lasers = laser.part_of(req, in_ms, out_ms)
         if lasers:
             laser.need()
+        fx = sfx.spec_of(req) if fmt != "gif" else None
         cues = clip_captions(row, in_ms, out_ms, req)
         if req.get("preview"):
             # a quick look at the interpolation or the lasers before the real render: small, with
@@ -382,7 +385,7 @@ def run_render(job_id, req):
         else:
             os.makedirs(CLIPS, exist_ok=True)
             name = version_name(clip_name(row, in_ms, " ".join(c["text"] for c in cues) or "clip", fmt, req.get("aspect"),
-                                          req.get("audio"), slow, smooth, bool(lasers)), req)
+                                          req.get("audio"), slow, smooth, bool(lasers), bool(fx)), req)
             out = os.path.join(CLIPS, name)
         job["state"] = "queued"
 
@@ -1607,7 +1610,18 @@ class Handler(BaseHTTPRequestHandler):
                     return self.send(200, music.save(unquote(self.headers.get("X-Name") or "song"), data))
                 except (ValueError, RuntimeError, subprocess.SubprocessError) as e:
                     return self.send(400, {"error": str(e)[:300]})
+            if u.path == "/api/upload/sfx":            # raw bytes too: a sound effect
+                if n > sfx.MAX_BYTES:
+                    return self.send(413, {"error": f"sounds can be up to {sfx.MAX_BYTES // 1024 // 1024} MB"})
+                data = self.rfile.read(n)
+                try:
+                    return self.send(200, sfx.save(unquote(self.headers.get("X-Name") or "sound"), data))
+                except (ValueError, RuntimeError, subprocess.SubprocessError) as e:
+                    return self.send(400, {"error": str(e)[:300]})
             req = json.loads(self.rfile.read(n) or b"{}")
+            m = re.fullmatch(r"/api/sfx/([0-9a-f]{16})/delete", u.path)
+            if m:
+                return self.send(200, {"deleted": sfx.delete(m.group(1))})
             m = re.fullmatch(r"/api/job/([0-9a-f]+)/cancel", u.path)
             if m:
                 job = JOBS.get(m.group(1))
@@ -1701,6 +1715,15 @@ class Handler(BaseHTTPRequestHandler):
                                            slow_secs_per_mpix_frame=slowmo.SECS_PER_MPIX_FRAME, rates=dict(RATES),
                                            colours=list(media.COLOURS), aspects=["original", *media.ASPECTS]),
                                  cache="max-age=300")
+            if u.path == "/api/sfx":
+                return self.send(200, {"sounds": sfx.library(), "volumes": sfx.VOLUMES, "min_gap_ms": sfx.MIN_GAP_MS})
+            m = re.fullmatch(r"/sfx/([a-z]{2,12}|[0-9a-f]{16})\.wav", u.path)        # a sound effect, for the editor
+            if m:
+                try:
+                    p = sfx.path(m.group(1))
+                except RuntimeError:
+                    p = None
+                return self.send_file(p, "audio/wav") if p else self.send(404, {"error": "no such sound"})
             if u.path.startswith("/api/job/"):
                 job = JOBS.get(u.path.rsplit("/", 1)[-1])
                 return self.send(200 if job else 404, eta_view(job) if job else {"error": "unknown job"})

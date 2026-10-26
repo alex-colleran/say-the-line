@@ -69,6 +69,11 @@ It runs on the machine that has your media, next to Jellyfin, and is used from a
   choose whose eyes: otherwise it's the biggest face in each shot. Each camera shot picks again, so
   the lasers never jump to someone else mid-shot. Captions stay on top, and it works with slow
   motion, GIFs and stills. **Preview** renders 3 s of it small. About 8 s for a 4 s clip at 720p.
+- **Sound effects** (Cut > Sound effect): a hit a moment after each line, after the last line, when
+  the laser eyes start, or at a mark. Built-in Bass boom, Whoosh, Ding and Pop (made by ffmpeg, no
+  recordings shipped), or upload your own (trimmed of silence, evened out, up to 8 s; kept in
+  `data/sfx`). Timed to the last word heard when the clip has word timing, else to the subtitle; the
+  editor plays the hits as the clip plays, and the render lays them over the sound with a limiter.
 - **Studio**: put any saved clips together, from any mix of shows and movies, in your own order.
   Add them from the Library (by tag), reorder, nudge each start and end, preview each clip in place,
   then render one video with one caption look and shape. Each clip keeps its own cut, caption edits

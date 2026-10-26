@@ -1029,3 +1029,21 @@ class LaserEyes(unittest.TestCase):
         w, h, _ = media.geometry(1920, 1080, "1:1", "crop", 720, crop=crop)
         cw, ch, cx, cy = media.crop_box(1920, 1080, 1.0, crop)
         self.assertEqual(pt({"aspect": "1:1", "crop": crop}, w, h, ((cx + cw / 2) / 1920, (cy + ch / 2) / 1080)), [w / 2, h / 2])
+
+
+class SoundEffects(unittest.TestCase):
+    def test_hits_follow_the_lines_inside_the_cut(self):
+        from saytheline import sfx
+        cues = [dict(start_ms=900, end_ms=1500, text="a"),            # ends before the cut: no hit
+                dict(start_ms=2000, end_ms=3000, text="b", words=[dict(w="b", s=2000, e=2600)]),
+                dict(start_ms=2700, end_ms=2900, text="c"),            # ends within the gap of "b"'s hit: shares it
+                dict(start_ms=4000, end_ms=5000, text="d"),
+                dict(start_ms=7000, end_ms=9500, text="e")]            # still being said at the out point
+        spec = lambda when, given=None, mark=None: ("boom", given, when, 200, 0.6, mark)
+        self.assertEqual(sfx.times(spec("lines"), cues, 2000, 8000), [2800, 5200])   # "b" ends at its last word
+        self.assertEqual(sfx.times(spec("lines"), [dict(cues[1], words=None), cues[2]], 2000, 8000), [3100])
+        self.assertEqual(sfx.times(spec("last"), cues, 2000, 8000), [5200])
+        self.assertEqual(sfx.times(spec("laser"), cues, 2000, 8000, laser_a=2500), [2700])
+        self.assertEqual(sfx.times(spec("laser"), cues, 2000, 8000), [])
+        self.assertEqual(sfx.times(spec("mark", mark=6100), cues, 2000, 8000), [6100])
+        self.assertEqual(sfx.times(spec("lines", given=[9000, 2100, 2300, 7999]), cues, 2000, 8000), [2100, 7999])

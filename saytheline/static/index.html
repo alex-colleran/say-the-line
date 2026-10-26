@@ -161,6 +161,7 @@
   .timeline .slow { position: absolute; top: 0; height: 29px; pointer-events: none;
     background: repeating-linear-gradient(135deg, rgba(90, 170, 255, .5) 0 6px, rgba(90, 170, 255, .22) 6px 12px); }
   .timeline .laser { position: absolute; top: 0; height: 5px; pointer-events: none; background: #ff3b2a; box-shadow: 0 0 6px #ff3b2a; }
+  .timeline .hit { position: absolute; top: 29px; height: 19px; width: 3px; margin-left: -1px; pointer-events: none; background: #b98cff; }
   .pick-layer { position: absolute; inset: 0; z-index: 4; cursor: crosshair; background: rgba(0,0,0,.25);
     display: flex; justify-content: center; align-items: flex-start; }
   .pick-layer span { margin-top: 10px; padding: 6px 10px; border-radius: 6px; background: rgba(0,0,0,.75); color: #fff; font-size: 13px; pointer-events: none; }
@@ -683,6 +684,24 @@
           <video id="laserVid" class="interp-vid" playsinline controls loop hidden></video>
           <div class="err" id="laserErr" hidden></div>
           <div class="hint" id="laserHint"></div>
+        </div>
+      </div>
+      <div class="grp" id="sfxGrp">
+        <h3>Sound effect</h3>
+        <div class="opt"><span>Sound</span><div class="chips" id="sfxSounds"></div></div>
+        <div class="opt"><button class="b" id="sfxHear" hidden><svg class="i" aria-hidden="true"><use href="#i-volume"/></svg>Hear it</button>
+          <button class="b" id="sfxUpload">Upload a sound</button><button class="b" id="sfxRemove" hidden>Remove it</button>
+          <span class="hint" id="sfxUpHint"></span></div>
+        <input type="file" id="sfxFile" accept="audio/*,.mp3,.m4a,.aac,.flac,.wav,.ogg,.opus" hidden>
+        <div id="sfxPart" hidden style="display:flex;flex-direction:column;gap:10px">
+          <div class="opt"><span>When</span><div class="chips" data-opt="sfxWhen"></div></div>
+          <div class="nudge" id="sfxMarkRow" hidden><span>At</span>
+            <button class="b" data-sfxnudge="-100" aria-label="The sound a tenth of a second earlier">−0.1</button>
+            <button class="b" id="sfxSetMark" aria-label="The sound plays here">Set</button>
+            <button class="b" data-sfxnudge="100" aria-label="The sound a tenth of a second later">+0.1</button></div>
+          <div class="opt" id="sfxDelayRow"><span>Delay</span><div class="chips" data-opt="sfxDelay"></div></div>
+          <div class="opt"><span>Volume</span><div class="chips" data-opt="sfxVol"></div></div>
+          <div class="hint" id="sfxHint"></div>
         </div>
       </div>
       <div class="hint">Lines: tap text to play from it · <b>Only</b> = clip just that line · <b>+</b> grow the clip to include it · <b>−</b> trim it off</div>
@@ -1366,7 +1385,7 @@ async function showEmpty() {
 
 /* ================= options + their rules ================= */
 const opts = { format: "mp4", aspect: "original", fit: "crop", res: 720, audio: "original",
-  slow: 1, slowSound: "deep", smooth: 0, laser: "off",
+  slow: 1, slowSound: "deep", smooth: 0, laser: "off", sfx: "off", sfxWhen: "lines", sfxDelay: 200, sfxVol: "medium",
   subsOn: true, captionSrc: "subs", look: "classic", fontClassic: "Inter", fontWord: "Inter Black",
   size: "m", colour: "white", hl: "yellow", caps: false, box: false, position: "bottom", tab: "cut", loop: false };
 const CHOICES = {
@@ -1379,6 +1398,9 @@ const CHOICES = {
   smooth: [[0, "Source"], [60, "60 fps"]],
   slowSound: [["deep", "Deep"], ["pitch", "Same pitch"], ["mute", "Silent"]],
   laser: [["off", "Off"], ["flare", "Flare"], ["beams", "Beams"]],
+  sfxWhen: [["lines", "After each line"], ["last", "After the last line"], ["laser", "With the lasers"], ["mark", "At a mark"]],
+  sfxDelay: [[0, "0"], [100, "0.1 s"], [200, "0.2 s"], [300, "0.3 s"], [500, "0.5 s"]],
+  sfxVol: [["low", "Low"], ["medium", "Medium"], ["high", "High"]],
   subsOn: [[true, "On"], [false, "Off"]],
   captionSrc: [["subs", "Subtitles"], ["speech", "Speech"]],
   look: [["classic", "Classic"], ["tiktok", "TikTok"], ["popin", "Pop-in"], ["bigword", "Big word"], ["poster", "Poster"], ["kinetic", "Kinetic"], ["intense", "Intense"]],
@@ -1411,6 +1433,7 @@ function disabledReason(key, v) {
   if (key === "smooth" && v && !SERVER.slowmo) return "Needs rife-ncnn-vulkan installed on the server (see README)";
   if (key === "smooth" && v && opts.format === "gif") return "GIFs play at 12 fps";
   if (key === "laser" && v !== "off" && !SERVER.laser) return "Needs MediaPipe and its face model on the server (see README)";
+  if (key === "sfxWhen" && v === "laser" && !laserOn()) return "Turn on Laser eyes first";
   return null;
 }
 function setOpt(key, v) {
@@ -1420,6 +1443,8 @@ function setOpt(key, v) {
   // follow-on rules
   if (key === "format" && v === "gif") opts.audio = "original";
   if (key === "slow") { if (v === 1) applySlowRate(); else fitSlow(true); drawTimeline(); }
+  if (key === "sfxWhen" && v === "mark" && ed.sfxMark === null) ed.sfxMark = Math.max(ed.inMs, Math.min(ed.outMs - 100, absNow()));
+  if (key === "laser" && v === "off" && opts.sfxWhen === "laser") opts.sfxWhen = "lines";
   if (key === "laser") { if (v !== "off" && ed.laserA === null) { ed.laserWhole = true; ed.laserA = ed.inMs; ed.laserB = ed.outMs; } drawTimeline(); }
   saveOpts(); refreshAll();
 }
@@ -1470,7 +1495,7 @@ function applyRules() {
   $("#gifHint").hidden = opts.format !== "gif";
   $("#audioGrp").classList.toggle("off", opts.format === "gif");
   $("#audioHint").hidden = opts.audio === "original" || opts.format === "gif";
-  drawSlow(); drawSmooth(); drawLaser();
+  drawSlow(); drawSmooth(); drawLaser(); drawSfx();
 }
 function refreshAll() { buildOptions(); applyRules(); drawCapShift(); drawStt(); drawSubText(); drawOverlay(); drawSummary(); schedulePoster(); autosave(); }
 function drawSummary() {
@@ -1478,7 +1503,7 @@ function drawSummary() {
   const cap = !capsOn() ? "no captions" : `${CHOICES.look.find(l => l[0] === opts.look)[1]} captions from ${speechMode() ? "speech" : "subtitles"}`;
   const shape = opts.aspect === "original" ? "original shape" : opts.aspect + (opts.fit === "pad" ? " bars" : "");
   const audio = opts.format === "gif" ? " · silent" : opts.audio === "original" ? "" : opts.audio === "dialogue" ? " · dialogue only" : " · no dialogue";
-  const slow = (slowOn() ? ` · ${opts.slow === 2 ? "½" : "¼"}× slow` : "") + (smoothOn() ? ` · ${opts.smooth} fps` : "") + (laserOn() ? " · laser eyes" : "");
+  const slow = (slowOn() ? ` · ${opts.slow === 2 ? "½" : "¼"}× slow` : "") + (smoothOn() ? ` · ${opts.smooth} fps` : "") + (laserOn() ? " · laser eyes" : "") + (sfxOn() ? " · sound effect" : "");
   $("#summary").textContent = `${(outLength() / 1000).toFixed(1)} s · ${opts.format.toUpperCase()} · ${shape} · ${cap}${slow}${audio}`;
   $("#capDot").hidden = !(needWords() && !sttCovers());
 }
@@ -1504,6 +1529,7 @@ function resetEd(h) {
     seekOnLoad: false, session: (ed.session || 0) + 1,
     slowA: null, slowB: null,   // the slowed part (media ms) while opts.slow is 2 or 4
     laserA: null, laserB: null, laserWhole: false,   // the part with laser eyes (media ms); Whole follows the cut
+    sfxMark: null,        // where the sound effect plays when it's At a mark (media ms)
     laserPick: null,      // the face tapped for them: {x, y}, fraction of the picture; null = the biggest face
     crop: null,           // the crop window placed by hand: {x, y (its centre, fraction of the picture), s (size,
                           // fraction of the largest that fits)} = media.crop_box; null = centred, full size
@@ -1517,7 +1543,7 @@ function captionDefaults() { opts.subsOn = true; opts.captionSrc = "subs"; opts.
 
 /* drafts: every edited clip is kept (Library > Recent edits); a hearted moment keeps the same state */
 const DRAFT_OPTS = ["subsOn", "captionSrc", "look", "fontClassic", "fontWord", "size", "colour", "hl", "caps", "box", "position",
-  "format", "aspect", "fit", "res", "audio", "slow", "slowSound", "smooth", "laser"];
+  "format", "aspect", "fit", "res", "audio", "slow", "slowSound", "smooth", "laser", "sfx", "sfxWhen", "sfxDelay", "sfxVol"];
 function edState() {
   const o = {}; DRAFT_OPTS.forEach(k => o[k] = opts[k]);
   return { v: 2, in_ms: Math.round(ed.inMs), out_ms: Math.round(ed.outMs), offset_ms: ed.offset, opts: o,
@@ -1525,7 +1551,8 @@ function edState() {
     crop: ed.crop || undefined,
     slow_a: slowOn() ? Math.round(ed.slowA) : undefined, slow_b: slowOn() ? Math.round(ed.slowB) : undefined,
     laser_a: laserOn() ? Math.round(ed.laserA) : undefined, laser_b: laserOn() ? Math.round(ed.laserB) : undefined,
-    laser_whole: laserOn() && ed.laserWhole || undefined, laser_pick: laserOn() && ed.laserPick || undefined };
+    laser_whole: laserOn() && ed.laserWhole || undefined, laser_pick: laserOn() && ed.laserPick || undefined,
+    sfx_mark: sfxOn() && opts.sfxWhen === "mark" ? Math.round(ed.sfxMark) : undefined };
 }
 function applyState(st) {
   ed.inMs = st.in_ms; ed.outMs = st.out_ms; ed.offset = st.offset_ms || 0;
@@ -1540,6 +1567,8 @@ function applyState(st) {
   if (opts.slow !== 1 && ed.slowA === null) opts.slow = 1;
   ed.laserA = st.laser_a ?? null; ed.laserB = st.laser_b ?? null; ed.laserWhole = !!st.laser_whole; ed.laserPick = st.laser_pick || null;
   if (opts.laser !== "off" && ed.laserA === null) opts.laser = "off";
+  ed.sfxMark = st.sfx_mark ?? null;
+  if (opts.sfxWhen === "mark" && ed.sfxMark === null) opts.sfxWhen = "lines";
   if (needWords() && !sttCovers()) captionDefaults();       // never reopen to a look with no text
   saveOpts();
 }
@@ -1581,7 +1610,7 @@ function offsetNote() {
 async function openEditor(h, cut, entryId, preset) {
   flushDraft();
   resetEd(h);
-  captionDefaults(); opts.slow = 1; opts.laser = "off";
+  captionDefaults(); opts.slow = 1; opts.laser = "off"; opts.sfx = "off";
   const seq = ed.loadSeq;
   const [known, draft] = await Promise.all([
     fetch(`/api/offset?item=${h.item_id}`).then(r => r.json()).then(j => j.offset_ms || 0).catch(() => 0),
@@ -1620,8 +1649,8 @@ function drawDraftNote(d) {
     <button class="b" id="startFresh">Start fresh</button>`;
   $("#startFresh").onclick = () => {
     $("#vid").pause();
-    captionDefaults(); opts.slow = 1; opts.laser = "off"; saveOpts();
-    ed.laserA = ed.laserB = ed.laserPick = null;
+    captionDefaults(); opts.slow = 1; opts.laser = "off"; opts.sfx = "off"; saveOpts();
+    ed.laserA = ed.laserB = ed.laserPick = ed.sfxMark = null;
     ed.stt = null; ed.poster = null; ed.lastFile = null; ed.subText = {}; ed.speech = null; ed.capShift = 0; ed.crop = null;
     defaultCut();
     ed.winA = Math.max(0, ed.inMs - WIN); ed.winB = ed.outMs + WIN;
@@ -1776,7 +1805,7 @@ function setSel(inMs, outMs, { seek, auto } = {}) {
   drawAll();
   if (seek === "in") showIn(); else if (seek === "out") showOut();
 }
-function drawAll() { fitSlow(); fitLaser(); drawSlow(); drawSmooth(); drawLaser(); drawTimeline(); drawShotRow(); drawLines(); drawSubText(); drawReadout(); drawOverlay(); drawSttHint(); drawSummary(); schedulePoster(); autosave(); }
+function drawAll() { fitSlow(); fitLaser(); drawSlow(); drawSmooth(); drawLaser(); drawSfx(); drawTimeline(); drawShotRow(); drawLines(); drawSubText(); drawReadout(); drawOverlay(); drawSttHint(); drawSummary(); schedulePoster(); autosave(); }
 /* slow motion: one part of the cut, 2× or 4× slower (frames made up by RIFE on the server) */
 const slowOn = () => opts.slow > 1 && ed.slowA !== null && ed.slowB !== null;
 const SLOW_MAX = () => SERVER.slow_max_ms || 5000;
@@ -1950,12 +1979,120 @@ $("#laserPrev").onclick = async () => {
     $("#laserErr").textContent = e.message; $("#laserErr").hidden = false;
   } finally { btn.disabled = false; btn.innerHTML = ic("play") + "Preview"; }
 };
+/* sound effects: a hit after each line, after the last, with the lasers or at a mark; presets and uploads */
+const SFX = { list: [], volumes: { low: 0.35, medium: 0.6, high: 0.9 }, gap: 400, buf: {}, ctx: null };
+async function loadSfx() {
+  try { const j = await (await fetch("/api/sfx")).json(); SFX.list = j.sounds || []; Object.assign(SFX.volumes, j.volumes || {}); SFX.gap = j.min_gap_ms || 400; } catch (e) {}
+  if (opts.sfx !== "off" && !SFX.list.some(x => x.id === opts.sfx)) opts.sfx = "off";
+  drawSfx();
+}
+const sfxOn = () => opts.sfx !== "off" && opts.format !== "gif" && SFX.list.some(x => x.id === opts.sfx) && !ed.studioClip;
+// = sfx.line_end: a line is over at its last word when it has word times, else when the subtitle goes
+const lineEnd = c => c.words && c.words.length ? c.words[c.words.length - 1].e : c.end_ms;
+// = sfx.times: the hits on the media timeline, inside the cut, one per MIN_GAP_MS
+function sfxTimes() {
+  if (!ed.hit || !sfxOn()) return [];
+  let ts = [];
+  if (opts.sfxWhen === "lines" || opts.sfxWhen === "last") {
+    const cues = needWords() && sttCovers() ? captionCues() : shiftCues(subCues(), ed.capShift);
+    const ends = cues.map(lineEnd).filter(e => e > ed.inMs && e <= ed.outMs).sort((a, b) => a - b);
+    ts = (opts.sfxWhen === "last" ? ends.slice(-1) : ends).map(e => e + opts.sfxDelay);
+  } else if (opts.sfxWhen === "laser") ts = laserOn() ? [ed.laserA + opts.sfxDelay] : [];
+  else if (ed.sfxMark !== null) ts = [ed.sfxMark];
+  const out = [];
+  ts.filter(t => t >= ed.inMs && t < ed.outMs).sort((a, b) => a - b).forEach(t => { if (!out.length || t - out[out.length - 1] >= SFX.gap) out.push(t); });
+  return out.slice(0, 60).map(Math.round);
+}
+function drawSfx() {
+  const g = $("#sfxGrp"); if (!g) return;
+  g.hidden = !!ed.studioClip;
+  g.classList.toggle("off", opts.format === "gif");
+  const box = $("#sfxSounds"); box.innerHTML = "";
+  [{ id: "off", name: "Off" }, ...SFX.list].forEach(x => {
+    const c = document.createElement("button");
+    c.type = "button"; c.className = "chip"; c.textContent = x.name;
+    c.setAttribute("aria-pressed", String(opts.sfx === x.id));
+    if (opts.format === "gif" && x.id !== "off") c.setAttribute("aria-disabled", "true");
+    c.onclick = () => {
+      if (opts.format === "gif" && x.id !== "off") return flash("GIFs have no sound");
+      opts.sfx = x.id; saveOpts(); refreshAll(); drawTimeline();
+      if (x.id !== "off") sfxPlay();
+    };
+    box.appendChild(c);
+  });
+  const up = SFX.list.find(x => x.id === opts.sfx && !x.preset);
+  $("#sfxHear").hidden = opts.sfx === "off";
+  $("#sfxRemove").hidden = !up;
+  if (!up) { $("#sfxRemove").textContent = "Remove it"; delete $("#sfxRemove").dataset.armed; }
+  if (!$("#sfxUpHint").dataset.busy) $("#sfxUpHint").textContent = opts.sfx === "off" ? "Your own: MP3, M4A, WAV and more, up to 8 s. It stays on your server." : "";
+  $("#sfxPart").hidden = !sfxOn();
+  if (!sfxOn()) return;
+  $("#sfxMarkRow").hidden = opts.sfxWhen !== "mark";
+  $("#sfxDelayRow").hidden = opts.sfxWhen === "mark";
+  const n = sfxTimes().length;
+  $("#sfxHint").textContent = (n ? `${n === 1 ? "One hit" : n + " hits"} in this clip (the purple ticks), played here as the clip plays.`
+    : opts.sfxWhen === "mark" ? "Set where it plays." : opts.sfxWhen === "laser" ? "The lasers start outside the clip." : "No line ends inside the clip.")
+    + (opts.sfxWhen === "lines" || opts.sfxWhen === "last" ? (needWords() && sttCovers() ? " Timed to the last word heard." : " Timed to when the subtitle goes; a word-timed look times it to the last word heard.") : "");
+}
+// the editor plays the hits itself, through Web Audio (an <audio> element lags too much)
+async function sfxBuffer(id) {
+  if (!SFX.ctx) SFX.ctx = new (window.AudioContext || window.webkitAudioContext)();
+  if (!SFX.buf[id]) SFX.buf[id] = fetch(`/sfx/${id}.wav`).then(r => r.arrayBuffer()).then(b => SFX.ctx.decodeAudioData(b)).catch(() => { delete SFX.buf[id]; return null; });
+  return SFX.buf[id];
+}
+async function sfxPlay() {
+  if (opts.sfx === "off" || opts.muted) return;
+  const b = await sfxBuffer(opts.sfx); if (!b) return;
+  if (SFX.ctx.state === "suspended") SFX.ctx.resume();
+  const src = SFX.ctx.createBufferSource(), g = SFX.ctx.createGain();
+  g.gain.value = SFX.volumes[opts.sfxVol] || 0.6;
+  src.buffer = b; src.connect(g); g.connect(SFX.ctx.destination); src.start();
+}
+// a tap unlocks the audio on phones, which only let a page make sound after one
+document.addEventListener("pointerdown", () => { if (opts.sfx !== "off") sfxBuffer(opts.sfx).then(() => SFX.ctx && SFX.ctx.state === "suspended" && SFX.ctx.resume()); }, true);
+let sfxLast = null;
+function sfxTick() {
+  const v = $("#vid"), now = absNow();
+  if (v.paused || !sfxOn()) { sfxLast = null; return; }
+  if (sfxLast !== null && now > sfxLast && now - sfxLast < 500) sfxTimes().forEach(t => { if (t > sfxLast && t <= now) sfxPlay(); });
+  sfxLast = now;
+}
+$("#sfxHear").onclick = () => sfxPlay();
+$("#sfxSetMark").onclick = () => { const p = frameOnScreen(); ed.sfxMark = p || absNow(); drawAll(); };
+$$("[data-sfxnudge]").forEach(b => b.onclick = () => { ed.sfxMark = Math.max(ed.inMs, Math.min(ed.outMs - 1, (ed.sfxMark ?? absNow()) + +b.dataset.sfxnudge)); seekTo(Math.max(ed.inMs, ed.sfxMark - 800)); drawAll(); });
+$("#sfxUpload").onclick = () => $("#sfxFile").click();
+$("#sfxFile").addEventListener("change", e => {
+  const f = e.target.files[0]; e.target.value = ""; if (!f) return;
+  const hint = $("#sfxUpHint"), xhr = new XMLHttpRequest();
+  hint.dataset.busy = "1";
+  xhr.open("POST", "/api/upload/sfx");
+  xhr.setRequestHeader("X-Name", encodeURIComponent(f.name));
+  xhr.upload.onprogress = ev => { if (ev.lengthComputable) hint.textContent = `Uploading ${Math.round(100 * ev.loaded / ev.total)}%…`; };
+  xhr.upload.onload = () => { hint.textContent = "Trimming it…"; };
+  xhr.onload = async () => {
+    delete hint.dataset.busy;
+    let j = {}; try { j = JSON.parse(xhr.responseText); } catch (err) {}
+    if (xhr.status !== 200) { hint.textContent = j.error || "That upload didn't work"; return; }
+    await loadSfx(); opts.sfx = j.id; saveOpts(); refreshAll(); drawTimeline(); sfxPlay();
+  };
+  xhr.onerror = () => { delete hint.dataset.busy; hint.textContent = "The upload was cut off: try again"; };
+  hint.textContent = "Uploading…"; xhr.send(f);
+});
+// two taps to remove an upload (from every clip that uses it)
+$("#sfxRemove").onclick = async () => {
+  const b = $("#sfxRemove");
+  if (!b.dataset.armed) { b.dataset.armed = "1"; b.textContent = "Tap again to remove"; setTimeout(() => { delete b.dataset.armed; b.textContent = "Remove it"; }, 3000); return; }
+  const id = opts.sfx;
+  await fetch(`/api/sfx/${id}/delete`, { method: "POST", body: "{}" }).catch(() => {});
+  delete SFX.buf[id]; opts.sfx = "off"; saveOpts(); await loadSfx(); refreshAll(); drawTimeline();
+};
 function pct(ms) { return ((ms - ed.winA) / Math.max(1, ed.winB - ed.winA)) * 100; }
 function clampPct(x) { return Math.max(0, Math.min(100, x)); }
 function drawTimeline() {
   $("#tl").innerHTML = ed.cues.map(c => `<div class="cue" style="left:${clampPct(pct(c.start_ms))}%;width:${clampPct(pct(c.end_ms)) - clampPct(pct(c.start_ms))}%"></div>`).join("")
     + `<div class="selbox" style="left:${clampPct(pct(ed.inMs))}%;width:${clampPct(pct(ed.outMs)) - clampPct(pct(ed.inMs))}%"></div>`
     + (slowOn() ? `<div class="slow" style="left:${clampPct(pct(ed.slowA))}%;width:${clampPct(pct(ed.slowB)) - clampPct(pct(ed.slowA))}%"></div>` : "")
+    + sfxTimes().map(t => `<div class="hit" style="left:${pct(t)}%"></div>`).join("")
     + (laserOn() ? `<div class="laser" style="left:${clampPct(pct(ed.laserA))}%;width:${clampPct(pct(ed.laserB)) - clampPct(pct(ed.laserA))}%"></div>` : "")
     + shotCuts().map(c => `<div class="shot" style="left:${pct(c)}%"></div>`).join("")
     + `<div class="ph" id="ph" style="left:${clampPct(pct(absNow()))}%"></div>`
@@ -2096,7 +2233,7 @@ function frameLoop() {
   applySlowRate();
   // the clip's current out point (it may be trimmed while playing): loop back or stop there
   if (!RVFC && ed.stopAt !== null && absNow() >= ed.outMs) endOfClip();
-  drawOverlay();
+  drawOverlay(); sfxTick();
   requestAnimationFrame(frameLoop);
 }
 $("#vid").addEventListener("play", () => { requestAnimationFrame(frameLoop); if (RVFC) watchFrames(); });
@@ -2771,6 +2908,8 @@ function renderBody() {
     smooth: smoothOn() ? opts.smooth : undefined,
     slow: slowOn() ? { factor: opts.slow, a_ms: Math.round(ed.slowA), b_ms: Math.round(ed.slowB), sound: opts.slowSound } : undefined,
     laser: laserOn() ? { style: opts.laser, a_ms: Math.round(ed.laserA), b_ms: Math.round(ed.laserB), pick: ed.laserPick || undefined } : undefined,
+    sfx: sfxOn() ? { id: opts.sfx, when: opts.sfxWhen, delay_ms: opts.sfxDelay, volume: opts.sfxVol, times_ms: sfxTimes(),
+                     mark_ms: opts.sfxWhen === "mark" ? Math.round(ed.sfxMark) : undefined } : undefined,
     caption_cues: needWords() && sttCovers() ? ed.stt.cues.map(c => ({ start_ms: c.start_ms, end_ms: c.end_ms, text: c.text, words: c.words || [] })) : undefined,
     subs: { on: capsOn(), font: curFont(), size: opts.size, colour: opts.colour, box: opts.box, position: opts.position,
             style: isWordLook() ? opts.look : "classic", hl: opts.hl, caps: opts.caps } };
@@ -4531,6 +4670,7 @@ const SERVER = { stems: true, slowmo: false, laser: false };          // what th
   if (p.get("edit")) openClipLink(p.get("edit"));
   try { const o = await (await fetch("/api/options")).json(); FONT_LIST = o.fonts; SERVER.stems = !!o.stems;
     Object.assign(SERVER, { slowmo: !!o.slowmo, laser: !!o.laser, slow_max_ms: o.slow_max_ms, slow_secs_per_mpix_frame: o.slow_secs_per_mpix_frame }); } catch (e) {}
+  loadSfx();
   buildOptions(); applyRules();
 })();
 </script>

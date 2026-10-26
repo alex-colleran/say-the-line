@@ -539,6 +539,13 @@ def _render(src, in_ms, out_ms, opts, cues, out, label, uniform, slow, progress,
             laser.need()
             cuts = [c - in_ms for c in slowmo.camera_cuts(src, in_ms + las[0], in_ms + las[1], slowmo.frame_rate(src))]
             las = (*las[:3], laser.to_output(info["width"], info["height"], opts, w, h, las[3]), cuts)
+    fx = None
+    if opts.get("sfx") and not uniform and fmt != "gif":
+        # the hits, from the cut's start, worked out before slow motion moves the lines
+        from . import sfx
+        fx = sfx.spec_of(opts)
+        if fx:
+            fx = (fx, [t - in_ms for t in sfx.times(fx, cues, in_ms, out_ms, in_ms + las[0] if las else None)])
     part = None
     if ramp:
         # the speed-ramped segment becomes the source: silent (the song carries it), or with the
@@ -626,6 +633,10 @@ def _render(src, in_ms, out_ms, opts, cues, out, label, uniform, slow, progress,
     mode = opts.get("audio", "original")
     if mode in ("dialogue", "nodialogue") and fmt != "gif" and info["has_audio"]:
         separate(out, mode, fmt)
+    if fx and fx[1]:             # after Dialogue only, which would take the hits out again
+        from . import sfx, slowmo
+        (sid, _, _, _, gain, _), hits = fx
+        sfx.mix(out, fmt, sfx.path(sid), [slowmo.timemap(t, *part) if part else t for t in hits], gain, info["has_audio"], dur)
     if fmt == "gif" and w > 480:                 # GIFs are scaled down to 480 wide after the chain
         w, h = 480, round(h * 480 / w / 2) * 2
     return dict(width=w, height=h, seconds=round(dur, 2), bytes=os.path.getsize(out))
