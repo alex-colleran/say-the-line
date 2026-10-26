@@ -124,7 +124,8 @@ It runs on the machine that has your media, next to Jellyfin, and is used from a
 - Optional, for slow motion: [rife-ncnn-vulkan](https://github.com/nihui/rife-ncnn-vulkan/releases)
   and a GPU with Vulkan (integrated is fine: about 13 s to slow 2 s to 4× at 480p on a Radeon 680M).
   Unzip it, keep its `rife-v4.6` model folder beside the binary, and set `[tools] rife` to the binary
-  (or put it on PATH). On a fast GPU, `[tools] rife_threads = "8:8:8"` keeps it fed.
+  (or put it on PATH). `[tools] rife_threads = "8:8:8"` keeps the GPU fed: RIFE ran 1.3-1.6x faster
+  on the Radeon 680M and 3.3x on a GTX 1660 Ti, with no hotter CPU.
 - Optional, an **Nvidia GPU** can also take speech, *Dialogue only* and video encoding off the CPU
   (`stt_device`, `demucs_device`, `encoder` in [`saytheline.example.toml`](saytheline.example.toml));
   [docs/windows.md](docs/windows.md#nvidia-gpu) has the setup and measured gains.
