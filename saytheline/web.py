@@ -1833,6 +1833,7 @@ class Handler(BaseHTTPRequestHandler):
 
 
 def main():
+    config.lower_priority()          # Windows: what `nice` does for the heavy children on Linux
     srv = ThreadingHTTPServer((HOST, PORT), Handler)
     srv.daemon_threads = True
     print(f"Say the Line web on http://{HOST}:{PORT}/  (index {INDEX})", flush=True)

@@ -7,17 +7,18 @@ objects starts a line at its PTS; the next one without objects ends it. Palettes
 Y Cr Cb A; objects (ODS) are run-length coded bitmaps, possibly split over several segments."""
 import os
 import re
-import shutil
 import struct
 import subprocess
 import tempfile
+
+from . import config
 
 try:
     from PIL import Image, ImageOps
 except ImportError:                 # optional, like the Poster look: no OCR without it
     Image = ImageOps = None
 
-TESSERACT = shutil.which("tesseract")
+TESSERACT = config.tesseract()
 PAD = 24                       # white border around each line: tesseract reads edges badly
 MIN_GAP_MS = 40
 WORKERS = 4                    # tesseract runs at once (the box's thermal rule: keep it modest)

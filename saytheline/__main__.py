@@ -59,6 +59,7 @@ def main():
         raise SystemExit(doctor.main())
 
     if a.cmd == "index":
+        config.lower_priority()          # Windows: what `nice` does for the heavy children on Linux
         t = time.time()
         st = idx.index(INDEX, a.series, a.movies, a.external_only,
                        log=(lambda *_: None) if a.quiet else print, ocr_minutes=a.ocr_minutes, only=a.item)

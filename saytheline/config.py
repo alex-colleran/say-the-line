@@ -9,6 +9,7 @@ variable and an explicit environment variable always wins over the file."""
 import os
 import shutil
 import sys
+import tempfile
 
 try:
     import tomllib
@@ -29,11 +30,18 @@ KEYS = {
     ("server", "public_url"): "SAYTHELINE_PUBLIC_URL",
     ("paths", "data"): "SAYTHELINE_DATA",
     ("paths", "preview_cache_gb"): "SAYTHELINE_PREVIEW_CACHE_GB",
+    ("paths", "tmp"): "SAYTHELINE_TMP",
     ("tools", "stt_python"): "SAYTHELINE_STT_PYTHON",
+    ("tools", "stt_device"): "SAYTHELINE_STT_DEVICE",
+    ("tools", "stt_threads"): "SAYTHELINE_STT_THREADS",
     ("tools", "demucs"): "SAYTHELINE_DEMUCS",
+    ("tools", "demucs_device"): "SAYTHELINE_DEMUCS_DEVICE",
     ("tools", "vaapi"): "SAYTHELINE_VAAPI",
+    ("tools", "encoder"): "SAYTHELINE_ENCODER",
     ("tools", "rife"): "SAYTHELINE_RIFE",
     ("tools", "rife_model"): "SAYTHELINE_RIFE_MODEL",
+    ("tools", "rife_threads"): "SAYTHELINE_RIFE_THREADS",
+    ("tools", "tesseract"): "SAYTHELINE_TESSERACT",
 }
 _loaded_from = None
 
@@ -57,15 +65,15 @@ def load():
     if tomllib is not None:
         for p in _candidates():
             if os.path.isfile(p):
-                with open(p, "rb") as f:
-                    data = tomllib.load(f)
+                with open(p, encoding="utf-8-sig") as f:    # -sig: Windows editors may add a BOM
+                    data = tomllib.loads(f.read())
                 base = os.path.dirname(os.path.abspath(p))
                 for (sec, key), env in KEYS.items():
                     v = (data.get(sec) or {}).get(key)
                     if v in (None, ""):
                         continue
                     v = _flat(v)
-                    if key in ("data", "db", "stt_python", "demucs", "rife", "rife_model"):    # relative to the file
+                    if key in ("data", "tmp", "db", "stt_python", "demucs", "rife", "rife_model", "tesseract"):    # relative to the file
                         v = os.path.normpath(os.path.join(base, os.path.expanduser(v)))
                     os.environ.setdefault(env, v)
                 _loaded_from = p
@@ -73,6 +81,12 @@ def load():
     # older variable name
     if os.environ.get("JELLYFIN_DB"):
         os.environ.setdefault("SAYTHELINE_JELLYFIN_DB", os.environ["JELLYFIN_DB"])
+    tmp = os.environ.get("SAYTHELINE_TMP")
+    if tmp:     # slow motion frames and stems can take GBs: keep them off a small system drive
+        os.makedirs(tmp, exist_ok=True)
+        tempfile.tempdir = tmp
+        for v in ("TMPDIR", "TMP", "TEMP"):    # and the children's (demucs, whisper)
+            os.environ[v] = tmp
 
 
 def data_dir():
@@ -84,8 +98,18 @@ def loaded_from():
 
 
 def nice():
-    """Lower the priority of heavy child processes where the OS has `nice` (not on Windows)."""
+    """Lower the priority of heavy child processes where the OS has `nice` (not on Windows: see
+    lower_priority)."""
     return ["nice", "-n", "10"] if shutil.which("nice") else []
+
+
+def lower_priority():
+    """Windows has no `nice`, but children inherit their parent's priority class: run the whole
+    server or indexer below normal, so a render never makes the desktop stutter."""
+    if os.name == "nt":
+        import ctypes
+        BELOW_NORMAL_PRIORITY_CLASS = 0x4000
+        ctypes.windll.kernel32.SetPriorityClass(ctypes.windll.kernel32.GetCurrentProcess(), BELOW_NORMAL_PRIORITY_CLASS)
 
 
 def stt_python():
@@ -93,10 +117,38 @@ def stt_python():
     return os.environ.get("SAYTHELINE_STT_PYTHON") or sys.executable
 
 
+def _beside_python(name):
+    """A tool installed into the running Python's venv: on PATH only while the venv is activated."""
+    return shutil.which(name, path=os.path.dirname(sys.executable))
+
+
 def demucs():
-    """Stem separation is optional: the configured binary, else `demucs` on PATH, else None."""
-    p = os.environ.get("SAYTHELINE_DEMUCS") or shutil.which("demucs")
+    """Stem separation is optional: the configured binary, else `demucs` on PATH or in this venv, else None."""
+    p = os.environ.get("SAYTHELINE_DEMUCS") or shutil.which("demucs") or _beside_python("demucs")
     return p if p and os.path.exists(p) else None
+
+
+def demucs_device():
+    """cpu (the default), or cuda for an Nvidia GPU with a CUDA build of PyTorch (several times faster)."""
+    return os.environ.get("SAYTHELINE_DEMUCS_DEVICE") or "cpu"
+
+
+def tesseract():
+    """OCR for picture subtitles: configured, else on PATH, else where the Windows installer puts it."""
+    p = os.environ.get("SAYTHELINE_TESSERACT") or shutil.which("tesseract")
+    if not p and os.name == "nt":
+        for base in (os.environ.get("ProgramFiles"), os.environ.get("ProgramFiles(x86)"),
+                     os.path.join(os.environ.get("LOCALAPPDATA", ""), "Programs")):
+            c = os.path.join(base or "", "Tesseract-OCR", "tesseract.exe")
+            if base and os.path.isfile(c):
+                return c
+    return p if p and os.path.exists(p) else None
+
+
+def encoder():
+    """H.264 encoder for previews and MP4 renders: "" (x264 on the CPU, the default) or "nvenc"
+    (an Nvidia GPU; the CPU is left for captions and filters)."""
+    return (os.environ.get("SAYTHELINE_ENCODER") or "").lower()
 
 
 def vaapi():
