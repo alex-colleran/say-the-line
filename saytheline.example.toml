@@ -1,9 +1,11 @@
 # Say the Line settings. Copy to saytheline.toml (next to this file) and edit.
 # Every key can instead be set as the environment variable shown, which wins over this file.
-# Relative paths are relative to this file.
+# Relative paths are relative to this file. On Windows, write paths in single quotes
+# ('C:\tools\rife\rife-ncnn-vulkan.exe'): inside double quotes a backslash starts an escape.
 
 [jellyfin]
-# Recommended: the Jellyfin API. Create a key in Dashboard -> API Keys.
+# Recommended: the Jellyfin API. Create a key in Dashboard -> API Keys, or run
+# `python -m saytheline login` to get a token by Quick Connect and have it saved here.
 url = "http://localhost:8096"          # SAYTHELINE_JELLYFIN_URL
 api_key = ""                           # SAYTHELINE_JELLYFIN_KEY
 
@@ -19,6 +21,8 @@ api_key = ""                           # SAYTHELINE_JELLYFIN_KEY
 # or on another computer with the media mounted here), map Jellyfin's prefix to the local one.
 # Longest prefix wins.                 # SAYTHELINE_PATH_MAP="/media=/srv/media,/tv=/mnt/tv"
 # path_map = { "/media" = "/srv/media" }
+# Windows, with the server's shares mapped as drive letters:
+# path_map = { "/srv/media" = "M:", "/data/media" = "S:" }
 
 [server]
 host = "127.0.0.1"                     # SAYTHELINE_HOST. No login: keep it private (see README)
@@ -27,14 +31,30 @@ port = 8765                            # SAYTHELINE_PORT
 [paths]
 data = "./data"                        # SAYTHELINE_DATA: index, previews, clips, library
 preview_cache_gb = 2                   # SAYTHELINE_PREVIEW_CACHE_GB: editor previews are a cache, oldest dropped past this
+# Scratch space for renders: slow motion frames and stems can take a few GB. Default: the system's
+# temp folder; point it at a roomier disk when that one is small.
+# tmp = "/mnt/scratch/saytheline"      # SAYTHELINE_TMP
 
 [tools]
 # Python with faster-whisper + spaCy (default: the Python running Say the Line).
 # stt_python = "/opt/stt-venv/bin/python"     # SAYTHELINE_STT_PYTHON
-# Optional stem separation (Dialogue only / No dialogue). Default: `demucs` on PATH.
+# Speech on an Nvidia GPU: "cuda" (needs cuBLAS 12 + cuDNN 9, which a CUDA build of PyTorch in the
+# same Python brings). Default "cpu". stt_threads: CPU threads for speech (default 4).
+# stt_device = "cuda"                         # SAYTHELINE_STT_DEVICE
+# stt_threads = 4                             # SAYTHELINE_STT_THREADS
+# Optional stem separation (Dialogue only / No dialogue). Default: `demucs` on PATH or in this venv.
 # demucs = "/opt/demucs/bin/demucs"           # SAYTHELINE_DEMUCS
+# demucs_device = "cuda"                      # SAYTHELINE_DEMUCS_DEVICE: default "cpu"; "cuda" needs a CUDA PyTorch
 # Hardware preview encoding on Linux. Default: /dev/dri/renderD128 if present; "" = CPU only.
 # vaapi = "/dev/dri/renderD128"               # SAYTHELINE_VAAPI
+# Nvidia: encode previews and MP4 renders on the GPU (NVENC), leaving the CPU to captions and
+# filters. Falls back to x264 when it fails (`doctor` says why: often a driver older than ffmpeg needs).
+# encoder = "nvenc"                           # SAYTHELINE_ENCODER
 # Optional slow motion: rife-ncnn-vulkan (Vulkan GPU). Default: on PATH; the model is rife-v4.6 beside it.
 # rife = "/opt/rife-ncnn-vulkan/rife-ncnn-vulkan"   # SAYTHELINE_RIFE
 # rife_model = "/opt/rife-ncnn-vulkan/rife-v4.6"   # SAYTHELINE_RIFE_MODEL
+# RIFE's load:process:save threads. Its default (1:2:2) can leave a fast GPU waiting on frame
+# decoding: "8:8:8" made a laptop GTX 1660 Ti 3.3x faster.
+# rife_threads = "8:8:8"                      # SAYTHELINE_RIFE_THREADS
+# Optional OCR for picture subtitles. Default: on PATH, else (Windows) where its installer puts it.
+# tesseract = 'C:\Program Files\Tesseract-OCR\tesseract.exe'   # SAYTHELINE_TESSERACT

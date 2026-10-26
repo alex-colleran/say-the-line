@@ -113,7 +113,8 @@ It runs on the machine that has your media, next to Jellyfin, and is used from a
 - **The media files readable** from the machine running Say the Line (same box, or a mounted share).
 - **Subtitles**: external `.srt/.ass/.vtt` files next to the videos and/or embedded *text* tracks.
   Blu-ray and DVD picture subtitles (PGS, VobSub) are read by OCR when **tesseract** is installed
-  (`apt install tesseract-ocr tesseract-ocr-eng`, `brew install tesseract`): only when a title has
+  (`apt install tesseract-ocr tesseract-ocr-eng`, `brew install tesseract`, on Windows
+  `winget install UB-Mannheim.TesseractOCR`): only when a title has
   no English text track, about 30 s a film, kept in `data/ocr` so each is read once, and at most an
   hour of it per index pass (`--ocr-minutes`).
   Bazarr is the easy way to fill the other gaps.
@@ -123,7 +124,10 @@ It runs on the machine that has your media, next to Jellyfin, and is used from a
 - Optional, for slow motion: [rife-ncnn-vulkan](https://github.com/nihui/rife-ncnn-vulkan/releases)
   and a GPU with Vulkan (integrated is fine: about 13 s to slow 2 s to 4× at 480p on a Radeon 680M).
   Unzip it, keep its `rife-v4.6` model folder beside the binary, and set `[tools] rife` to the binary
-  (or put it on PATH).
+  (or put it on PATH). On a fast GPU, `[tools] rife_threads = "8:8:8"` keeps it fed.
+- Optional, an **Nvidia GPU** can also take speech, *Dialogue only* and video encoding off the CPU
+  (`stt_device`, `demucs_device`, `encoder` in [`saytheline.example.toml`](saytheline.example.toml));
+  [docs/windows.md](docs/windows.md#nvidia-gpu) has the setup and measured gains.
 
 ### Platforms
 
@@ -131,7 +135,7 @@ It runs on the machine that has your media, next to Jellyfin, and is used from a
 |---|---|
 | **Linux** | Native, the main target. VAAPI hardware previews are used when present. |
 | **macOS** | Native should work (`brew install ffmpeg python`); previews encode on the CPU. Not yet tested. |
-| **Windows** | Use **Docker Desktop** or **WSL2** (run the Linux steps inside). Native Windows is untested. |
+| **Windows** | Native works (tested on Windows 11 with an Nvidia GPU): see **[docs/windows.md](docs/windows.md)**. Docker Desktop or WSL2 are the other way. |
 | **Docker** | `compose.yaml` included: one container, media mounted read-only. |
 
 ## Quick start (native)
@@ -147,6 +151,9 @@ python -m saytheline index                     # TV episodes (add --movies for f
 python -m saytheline serve                     # http://127.0.0.1:8765/
 ```
 
+On Windows (PowerShell) the same steps are `py -m venv .venv`, `.venv\Scripts\Activate.ps1` and
+`Copy-Item` for `cp`; [docs/windows.md](docs/windows.md) walks through it.
+
 ### Configure (`saytheline.toml`)
 
 The minimum is how to reach Jellyfin and, if Jellyfin sees your files under different paths
@@ -159,8 +166,11 @@ api_key = "…"            # Jellyfin Dashboard → API Keys → +
 path_map = { "/media" = "/srv/media" }   # Jellyfin's path = this machine's path
 ```
 
-The DB source (`db = ...`) is what the author runs day to day; the API source has so far only been
-tested against recorded Jellyfin responses, so please report anything odd.
+No easy way to copy a key onto this machine? Set `url`, then `python -m saytheline login`: it shows
+a Quick Connect code to approve in any signed-in Jellyfin app and saves the token as `api_key`.
+
+The DB source (`db = ...`) is what the author runs day to day; the API source has been used
+against a live Jellyfin 10.11 (from Windows, over the network), so please report anything odd.
 
 Every setting can also be an environment variable (`SAYTHELINE_JELLYFIN_URL`, …); see
 [`saytheline.example.toml`](saytheline.example.toml) for all of them.

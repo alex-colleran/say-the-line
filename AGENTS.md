@@ -33,6 +33,7 @@ saytheline/
   library.py     favourites, tags, drafts (data/library.db; separate from the index)
   web.py         HTTP server (stdlib ThreadingHTTPServer) + JSON API + job queue
   doctor.py      `python -m saytheline doctor`
+  login.py       `python -m saytheline login`: Jellyfin token by Quick Connect, saved as [jellyfin] api_key
   mcp_server.py  MCP server for agents (`python -m saytheline mcp`): a thin client of web.py's HTTP API;
                  the only module that needs a non-stdlib package (mcp, see requirements-mcp.txt)
   static/index.html   the whole UI: one file, vanilla JS, no build step
@@ -52,7 +53,12 @@ sed -n '/<script>/,/<\/script>/p' saytheline/static/index.html | sed '1d;$d' > /
 - **Media and Jellyfin are read-only.** Never write next to media files or into Jellyfin's DB.
   Everything Say the Line writes goes under the data dir (`config.data_dir()`).
 - **One heavy job at a time.** Renders, snaps, transcriptions, stills and supercuts all take
-  `web.RENDER_SLOT`. Don't add parallel ffmpeg/whisper work; heavy children go through `config.nice()`.
+  `web.RENDER_SLOT`. Don't add parallel ffmpeg/whisper work; heavy children go through `config.nice()`
+  (on Windows, which has no `nice`, `config.lower_priority()` lowers the server and indexer themselves).
+- **It runs on Windows too** (docs/windows.md). Subprocess output read as text passes
+  `encoding="utf-8", errors="replace"` (the locale's cp1252 breaks on OCR and tag text); a path inside
+  a filter graph goes through `media._fpath` (escaped for both ffmpeg parsers: `D:` needs it); new
+  machine-specific tools get a `[tools]` setting with a fallback, and GPU options stay opt-in.
 - **Never run two indexers at once** (they collide on `items.jf_id`).
 - **The web server stays standard-library only.** Heavy dependencies (faster-whisper, spaCy,
   demucs) run in child processes using `config.stt_python()` / `config.demucs()`, and every one of
