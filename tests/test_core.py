@@ -660,9 +660,11 @@ class BluraySubtitles(unittest.TestCase):
         ods = struct.pack(">HBB", 0, 0, 0xC0) + (len(rle) + 4).to_bytes(3, "big") + struct.pack(">HH", 4, 2) + rle
         sup = (seg(0x16, 1000, pcs(1)) + seg(0x14, 1000, pds) + seg(0x15, 1000, ods) + seg(0x80, 1000, b"")
                + seg(0x16, 2500, pcs(0)) + seg(0x80, 2500, b""))
-        with tempfile.NamedTemporaryFile(suffix=".sup") as f:
-            f.write(sup); f.flush()
-            lines = pgs.read_sup(f.name)
+        with tempfile.TemporaryDirectory() as d:          # not NamedTemporaryFile: Windows can't reopen it
+            path = os.path.join(d, "t.sup")
+            with open(path, "wb") as f:
+                f.write(sup)
+            lines = pgs.read_sup(path)
         self.assertEqual(len(lines), 1)
         a, b, pics = lines[0]
         self.assertEqual((a, b), (1000, 2500))

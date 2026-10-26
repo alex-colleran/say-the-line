@@ -24,6 +24,13 @@ while [ $# -gt 0 ]; do case "$1" in -i) i=$2;; -o) o=$2;; -n) n=$2;; esac; shift
 c=$(ls "$i" | wc -l)
 exec ffmpeg -v error -nostdin -y -framerate 1 -i "$i/%06d.png" -vf "fps=$n/$c" -frames:v "$n" "$o/%08d.jpg"
 """
+# the same on Windows, which cannot run a shell script: Python, started by a .cmd
+FAKE_RIFE_PY = """import os, subprocess, sys
+a = dict(zip(sys.argv[1::2], sys.argv[2::2]))
+c, n = len(os.listdir(a["-i"])), a["-n"]
+sys.exit(subprocess.call(["ffmpeg", "-v", "error", "-nostdin", "-y", "-framerate", "1", "-i", os.path.join(a["-i"], "%06d.png"),
+                          "-vf", f"fps={n}/{c}", "-frames:v", n, os.path.join(a["-o"], "%08d.jpg")]))
+"""
 
 
 class TimeMap(unittest.TestCase):
@@ -59,9 +66,16 @@ class Render(unittest.TestCase):
     def setUpClass(cls):
         cls.tmp = tempfile.mkdtemp(prefix="saytheline-slowtest-")
         rife = os.path.join(cls.tmp, "rife-ncnn-vulkan")
-        with open(rife, "w") as f:
-            f.write(FAKE_RIFE)
-        os.chmod(rife, os.stat(rife).st_mode | stat.S_IEXEC)
+        if os.name == "nt":
+            with open(rife + ".py", "w") as f:
+                f.write(FAKE_RIFE_PY)
+            rife += ".cmd"
+            with open(rife, "w") as f:
+                f.write(f'@"{sys.executable}" "%~dp0rife-ncnn-vulkan.py" %*\n')
+        else:
+            with open(rife, "w") as f:
+                f.write(FAKE_RIFE)
+            os.chmod(rife, os.stat(rife).st_mode | stat.S_IEXEC)
         os.makedirs(os.path.join(cls.tmp, "rife-v4.6"))
         cls.env = mock.patch.dict(os.environ, {"SAYTHELINE_RIFE": rife})
         cls.env.start()
