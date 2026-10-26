@@ -174,7 +174,14 @@ Design notes: what each part does and why it is built that way. For setup, see t
 - **Still:** seeks to the frame and shifts its timestamp so the caption track lines up. The word
   looks render without their pop, which a single frame could catch mid-grow.
 - **Shapes:** original / 16:9 / 4:3 / 1:1 / 9:16, crop or bars. Sizes by short side, never
-  upscaled.
+  upscaled (a zoomed-in crop window is scaled up to the output size).
+- **Crop window:** `crop` {x, y, s} is the window's centre (fractions of the picture) and its size
+  (fraction of the largest window of that shape, down to `MIN_CROP` 0.25); `media.crop_box` turns it
+  into source pixels, kept inside the picture, and the JS `cropIn` draws the same box. It is part of
+  a clip's draft and recipe, and of each Studio clip (a supercut at 16:9 otherwise shows whole
+  pictures with bars; a placed window crops that clip). The frame takes the taps on the picture: a
+  tap plays or pauses, a drag moves it, a corner resizes it about the opposite corner, pinch or the
+  wheel zooms about its centre, a double-tap centres it again.
 - **Audio (optional):** demucs `htdemucs --two-stems=vocals` replaces the clip's audio with the
   vocals (dialogue) stem or the rest (music + effects). About 1.6× the clip length on a CPU.
 

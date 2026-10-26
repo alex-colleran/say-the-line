@@ -12,6 +12,7 @@ from . import config
 VAAPI = config.vaapi()          # None = encode previews on the CPU
 
 ASPECTS = {"16:9": 16 / 9, "4:3": 4 / 3, "1:1": 1.0, "9:16": 9 / 16}
+MIN_CROP = 0.25              # the crop window can shrink to a quarter of the largest that fits
 # Caption size steps, each about 1.4x the one before (XS is half of M, XL twice it), and where a
 # caption block sits. Every look uses these, and the editor's preview the same numbers (= JS).
 SIZE_STEPS = {"xs": 0.5, "s": 0.71, "m": 1.0, "l": 1.41, "xl": 2.0}
@@ -159,9 +160,30 @@ def _even(x):
     return max(2, int(round(x / 2)) * 2)
 
 
-def geometry(src_w, src_h, aspect, fit, short_side, upscale=False):
+def crop_box(src_w, src_h, target, crop=None):
+    """The part of the picture a crop to `target` keeps: (w, h, x, y) in source pixels. `crop`
+    {"x", "y", "s"} moves and shrinks the window: its centre as a fraction of the picture's width
+    and height, and its size as a fraction of the largest window that fits (0.25-1). None = centred
+    and as large as fits."""
+    cw, ch = (src_h * target, src_h) if target < src_w / src_h else (src_w, src_w / target)
+    c = crop or {}
+    s = min(1.0, max(MIN_CROP, float(c.get("s") or 1)))
+    w, h = min(src_w, _even(cw * s)), min(src_h, _even(ch * s))
+    x = min(src_w - w, max(0, round(float(c.get("x", 0.5)) * src_w - w / 2)))
+    y = min(src_h - h, max(0, round(float(c.get("y", 0.5)) * src_h - h / 2)))
+    return w, h, x, y
+
+
+def moved_crop(crop):
+    """True when `crop` is anything but the plain centred, full-size window."""
+    return bool(crop) and (abs(float(crop.get("s") or 1) - 1) > 0.005 or abs(float(crop.get("x", 0.5)) - 0.5) > 0.005
+                           or abs(float(crop.get("y", 0.5)) - 0.5) > 0.005)
+
+
+def geometry(src_w, src_h, aspect, fit, short_side, upscale=False, crop=None):
     """Output size plus the filter chain that gets there. `short_side` 0 = keep the source's.
-    `upscale` is for supercuts, where every segment must come out the same size."""
+    `upscale` is for supercuts, where every segment must come out the same size. `crop`: where the
+    window sits and how big it is (crop_box), when `fit` is crop."""
     sar_src = src_w / src_h
     target = ASPECTS.get(aspect, sar_src)
     short = short_side or min(src_w, src_h)
@@ -171,11 +193,15 @@ def geometry(src_w, src_h, aspect, fit, short_side, upscale=False):
         w, h = _even(short * target), _even(short)
     else:
         w, h = _even(short), _even(short / target)
-    if aspect == "original" or abs(target - sar_src) < 0.01:
+    moved = aspect != "original" and fit != "pad" and moved_crop(crop)
+    if aspect == "original" or abs(target - sar_src) < 0.01 and not moved:
         return w, h, [f"scale={w}:{h}"]
     if fit == "pad":
         return w, h, [f"scale={w}:{h}:force_original_aspect_ratio=decrease",
                       f"pad={w}:{h}:(ow-iw)/2:(oh-ih)/2:black"]
+    if moved:                    # the window the owner placed, in source pixels
+        cw, ch, cx, cy = crop_box(src_w, src_h, target, crop)
+        return w, h, [f"crop={cw}:{ch}:{cx}:{cy}", f"scale={w}:{h}"]
     # centre crop to the target shape first, then scale
     if target < sar_src:
         crop = f"crop=ih*{target:.6f}:ih"
@@ -461,9 +487,10 @@ def _render(src, in_ms, out_ms, opts, cues, out, label, uniform, slow, progress,
     aspect = opts.get("aspect", "original")
     if uniform and aspect == "original":
         aspect = "16:9"          # sources differ, so a supercut needs one fixed shape
+    # (a supercut at 16:9 shows each whole picture, unless that clip's crop window was placed)
     w, h, chain = geometry(info["width"], info["height"], aspect,
-                           "pad" if uniform and aspect == "16:9" else opts.get("fit", "crop"),
-                           int(opts.get("res") or (720 if uniform else 0)), upscale=uniform)
+                           "pad" if uniform and aspect == "16:9" and not moved_crop(opts.get("crop")) else opts.get("fit", "crop"),
+                           int(opts.get("res") or (720 if uniform else 0)), upscale=uniform, crop=opts.get("crop"))
     fmt = "mp4" if uniform else opts.get("format", "mp4")
     if ramp:
         # the speed-ramped segment becomes the source: silent (the song carries it), or with the
@@ -579,7 +606,7 @@ def still(src, at_ms, in_ms, out_ms, opts, cues, out):
     if not info["width"]:
         raise RuntimeError("no video stream")
     w, h, chain = geometry(info["width"], info["height"], opts.get("aspect", "original"), opts.get("fit", "crop"),
-                           int(opts.get("res") or 0))
+                           int(opts.get("res") or 0), crop=opts.get("crop"))
     with tempfile.TemporaryDirectory(prefix="saytheline-still-") as tmp:
         st = dict(opts.get("subs") or {}, still=True)
         sub = caption_filter(st, cues, in_ms, out_ms, w, h, tmp) if in_ms <= at_ms < out_ms else None
@@ -620,7 +647,8 @@ def separate(path, mode, fmt):
 def supercut(segments, opts, out, progress=None):
     """Concatenate many hits into one MP4. Each segment is rendered `uniform` (same size, fps,
     audio layout) into a temp dir, then joined with the concat demuxer without re-encoding.
-    segments: [{"src", "in_ms", "out_ms", "cues", "label", "slow"?}] (slow: slowmo.part_of)."""
+    segments: [{"src", "in_ms", "out_ms", "cues", "label", "slow"?, "crop"?}] (slow: slowmo.part_of;
+    crop: that clip's own crop window, geometry)."""
     with tempfile.TemporaryDirectory(prefix="saytheline-sc-") as tmp:
         parts = []
         for i, sg in enumerate(segments):
@@ -628,7 +656,7 @@ def supercut(segments, opts, out, progress=None):
                 progress(i, len(segments))
             p = os.path.join(tmp, f"{i:04d}.mp4")
             try:
-                render(sg["src"], sg["in_ms"], sg["out_ms"], {**opts, "format": "mp4", "audio": "original"},
+                render(sg["src"], sg["in_ms"], sg["out_ms"], {**opts, "format": "mp4", "audio": "original", "crop": sg.get("crop")},
                        sg["cues"], p, label=sg.get("label"), uniform=True, slow=sg.get("slow"), ramp=sg.get("ramp"),
                        progress=(lambda d, t, i=i: progress(i, len(segments), d, t)) if progress and sg.get("ramp") else None)
                 parts.append(p)

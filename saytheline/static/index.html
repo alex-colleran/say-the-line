@@ -139,8 +139,15 @@
     background: repeating-linear-gradient(90deg, var(--accent) 0 10px, transparent 10px 14px);
     animation: loadbar 1.4s steps(14, end) infinite; }
   @keyframes loadbar { to { width: 100%; } }
-  .frame { position: absolute; pointer-events: none; box-shadow: 0 0 0 9999px rgba(0,0,0,.55);
-    outline: 1px dashed rgba(255,255,255,.5); }
+  .frame { position: absolute; box-shadow: 0 0 0 9999px rgba(0,0,0,.55); outline: 1px dashed rgba(255,255,255,.5);
+    touch-action: none; cursor: move; }
+  /* corner handles: drag one to resize the window, the opposite corner stays put */
+  .frame i { position: absolute; width: 22px; height: 22px; border: 3px solid #fff; filter: drop-shadow(0 0 1px #000); }
+  .frame i[data-c="nw"] { left: -3px; top: -3px; border-width: 3px 0 0 3px; cursor: nwse-resize; }
+  .frame i[data-c="ne"] { right: -3px; top: -3px; border-width: 3px 3px 0 0; cursor: nesw-resize; }
+  .frame i[data-c="sw"] { left: -3px; bottom: -3px; border-width: 0 0 3px 3px; cursor: nesw-resize; }
+  .frame i[data-c="se"] { right: -3px; bottom: -3px; border-width: 0 3px 3px 0; cursor: nwse-resize; }
+  .frame i::after { content: ""; position: absolute; inset: -12px; }      /* a bigger target for a finger */
   .cap { position: absolute; text-align: center; pointer-events: none; white-space: pre-wrap; }
   .cap.tt span { display: inline-block; margin: 0 .2em; transform-origin: 50% 70%; }
   .cap .pop { animation: pop 150ms ease-out; }
@@ -579,7 +586,7 @@
     <div class="note" id="draftNote" hidden></div>
     <div class="stage" id="stage">
       <video id="vid" playsinline preload="auto"></video>
-      <div class="frame" id="frame" hidden></div>
+      <div class="frame" id="frame" hidden title="Drag to choose what stays in · drag a corner or pinch to zoom · double-tap to centre"><i data-c="nw"></i><i data-c="ne"></i><i data-c="sw"></i><i data-c="se"></i></div>
       <div class="cap" id="cap" hidden></div>
       <div class="loadbar" id="vload" hidden><i></i></div>
     </div>
@@ -694,6 +701,8 @@
         <div class="opt"><span>Format</span><div class="chips" data-opt="format"></div></div>
         <div class="opt"><span>Shape</span><div class="chips" data-opt="aspect"></div></div>
         <div class="opt" id="fitOpt"><span>Fit</span><div class="chips" data-opt="fit"></div></div>
+        <div class="hint" id="cropHint" hidden>Drag the frame on the picture to choose what stays in; drag a corner (or pinch) to zoom in.
+          <button class="b" id="cropReset" hidden>Centre it again</button></div>
         <div class="opt"><span>Size</span><div class="chips" data-opt="res"></div></div>
         <div class="hint" id="gifHint" hidden>GIFs are silent, 12 fps and at most 480 px wide.</div>
       </div>
@@ -1423,6 +1432,8 @@ function applyRules() {
   $$(".word-only").forEach(e => e.hidden = !isWordLook());
   $$(".classic-only").forEach(e => e.hidden = isWordLook());
   $("#fitOpt").classList.toggle("disabled", opts.aspect === "original");
+  $("#cropHint").hidden = !cropOn();
+  $("#cropReset").hidden = !ed.crop;
   $("#gifHint").hidden = opts.format !== "gif";
   $("#audioGrp").classList.toggle("off", opts.format === "gif");
   $("#audioHint").hidden = opts.audio === "original" || opts.format === "gif";
@@ -1459,6 +1470,8 @@ function resetEd(h) {
     speech: null,        // the heard words' span after a snap: {a, b, offset}
     seekOnLoad: false, session: (ed.session || 0) + 1,
     slowA: null, slowB: null,   // the slowed part (media ms) while opts.slow is 2 or 4
+    crop: null,           // the crop window placed by hand: {x, y (its centre, fraction of the picture), s (size,
+                          // fraction of the largest that fits)} = media.crop_box; null = centred, full size
     studioClip: null,     // the Studio clip being edited (stEdit), which the edits go back into
     detached: false,      // edits don't go into the hearted moment (after Start fresh, or opened from a render)
     baseState: null });   // the state as opened: a draft is only written once something differs
@@ -1474,6 +1487,7 @@ function edState() {
   const o = {}; DRAFT_OPTS.forEach(k => o[k] = opts[k]);
   return { v: 2, in_ms: Math.round(ed.inMs), out_ms: Math.round(ed.outMs), offset_ms: ed.offset, opts: o,
     stt: ed.stt && ed.stt.item === ed.hit.item_id ? ed.stt : null, sub_text: ed.subText, cap_shift: ed.capShift, file: ed.lastFile,
+    crop: ed.crop || undefined,
     slow_a: slowOn() ? Math.round(ed.slowA) : undefined, slow_b: slowOn() ? Math.round(ed.slowB) : undefined };
 }
 function applyState(st) {
@@ -1484,6 +1498,7 @@ function applyState(st) {
   ed.lastFile = st.file || null;
   ed.subText = st.sub_text || {};
   ed.capShift = st.cap_shift || 0;
+  ed.crop = st.crop || null;
   ed.slowA = st.slow_a ?? null; ed.slowB = st.slow_b ?? null;
   if (opts.slow !== 1 && ed.slowA === null) opts.slow = 1;
   if (needWords() && !sttCovers()) captionDefaults();       // never reopen to a look with no text
@@ -1567,7 +1582,7 @@ function drawDraftNote(d) {
   $("#startFresh").onclick = () => {
     $("#vid").pause();
     captionDefaults(); opts.slow = 1; saveOpts();
-    ed.stt = null; ed.poster = null; ed.lastFile = null; ed.subText = {}; ed.speech = null; ed.capShift = 0;
+    ed.stt = null; ed.poster = null; ed.lastFile = null; ed.subText = {}; ed.speech = null; ed.capShift = 0; ed.crop = null;
     defaultCut();
     ed.winA = Math.max(0, ed.inMs - WIN); ed.winB = ed.outMs + WIN;
     const kept = !!savedMoment(ed.hit.item_id, ed.hit.start_ms);
@@ -1599,8 +1614,11 @@ function stEdit(c, i) {
   stStopPlay(); if (studio.audio) studio.audio.pause();
   const stt = c.caption_cues ? { item: c.item, from: c.in_ms, to: c.out_ms, source: wordSource(), offset: c.offset_ms || 0, cues: c.caption_cues, secs: 0 } : null;
   const preset = { v: 2, in_ms: c.in_ms, out_ms: c.out_ms, offset_ms: c.offset_ms || 0, stt, sub_text: c.sub_text || {}, cap_shift: c.caption_shift_ms || 0,
-    opts: c.slow ? { slow: c.slow.factor, slowSound: c.slow.sound || "deep" } : { slow: 1 },
+    // the Studio's shape while it is edited here, so the crop window is the one the Studio cut uses
+    opts: { aspect: studio.o.aspect || "16:9", fit: studio.o.fit || "crop", ...(c.slow ? { slow: c.slow.factor, slowSound: c.slow.sound || "deep" } : { slow: 1 }) },
+    crop: c.crop || null,
     slow_a: c.slow ? c.slow.a_ms : undefined, slow_b: c.slow ? c.slow.b_ms : undefined };
+  stShapeWas = { aspect: opts.aspect, fit: opts.fit };
   const off = c.offset_ms || 0;
   $("#stSheet").hidden = true;
   const opened = openEditor({ item_id: c.item, idx: -1, kind: "movie", label: c.label, title: "", text: c.text || "", start_ms: c.in_ms - off, end_ms: c.out_ms - off },
@@ -1609,14 +1627,18 @@ function stEdit(c, i) {
   opened.then(() => {
     if (ed.studioClip !== c) return;
     const n = $("#draftNote"); n.hidden = false;
-    n.innerHTML = `<span>${ic("movie")} <b>Clip ${i + 1} of your Studio cut.</b> Changes go back to the Studio when you close this. Caption look and shape come from the Studio's Settings.</span>
+    n.innerHTML = `<span>${ic("movie")} <b>Clip ${i + 1} of your Studio cut.</b> Changes go back to the Studio when you close this. Caption look and shape come from the Studio's Settings${cropOn() ? "; drag the frame to choose what this clip shows" : ""}.</span>
       <button class="b" id="stBack">Back to Studio</button>`;
     $("#stBack").onclick = () => history.back();
   });
 }
+let stShapeWas = null;               // the editor's own shape, back once a Studio clip's edit is done
 function stEdited() {
   const c = ed.studioClip; ed.studioClip = null;
+  const crop = cropOn() ? ed.crop : c.crop;
+  if (stShapeWas) { Object.assign(opts, stShapeWas); stShapeWas = null; saveOpts(); }
   Object.assign(c, { in_ms: Math.round(ed.inMs), out_ms: Math.round(ed.outMs), offset_ms: ed.offset, sub_text: ed.subText || {},
+    crop: crop || undefined,
     caption_shift_ms: ed.capShift || 0, caption_cues: sttCovers() ? ed.stt.cues : null, edited: true,
     slow: slowOn() ? { factor: opts.slow, a_ms: Math.round(ed.slowA), b_ms: Math.round(ed.slowB), sound: opts.slowSound } : null,
     thumb: `/thumb/${c.item}/${Math.round((ed.inMs + ed.outMs) / 2)}.jpg`,
@@ -2242,7 +2264,18 @@ function retime(cue, text) {                   // an edited line keeps its word 
 }
 
 /* ================= caption preview ================= */
-function cropRect() {
+function cropOn() { return opts.aspect !== "original" && opts.fit === "crop"; }
+const MIN_CROP = 0.25;                         // = media.MIN_CROP
+// the crop window inside the picture rect p: largest of the shape that fits, then moved and sized by ed.crop
+function cropIn(p, c, r = ASPECT[opts.aspect]) {
+  const wide = r < p.W / p.H;
+  const s = Math.min(1, Math.max(MIN_CROP, (c && c.s) || 1));
+  const w = (wide ? p.H * r : p.W) * s, h = (wide ? p.H : p.W / r) * s;
+  const x = Math.min(p.W - w, Math.max(0, (c ? c.x : .5) * p.W - w / 2)), y = Math.min(p.H - h, Math.max(0, (c ? c.y : .5) * p.H - h / 2));
+  return { left: p.left + x, top: p.top + y, W: w, H: h };
+}
+function cropRect() { const p = picRect(); return !p.W || !p.H || !cropOn() ? p : cropIn(p, ed.crop); }
+function picRect() {
   const v = $("#vid"); let W = v.clientWidth, H = v.clientHeight, left = v.offsetLeft, top = v.offsetTop;
   // the picture inside the element: on a wide screen the height cap pillarboxes it, and captions
   // sized to the whole element came out too big and too low
@@ -2250,16 +2283,78 @@ function cropRect() {
     const s = Math.min(W / v.videoWidth, H / v.videoHeight), pw = v.videoWidth * s, ph = v.videoHeight * s;
     left += (W - pw) / 2; top += (H - ph) / 2; W = pw; H = ph;
   }
-  if (!W || !H || opts.aspect === "original" || opts.fit === "pad") return { left, top, W, H };
-  const r = ASPECT[opts.aspect], src = W / H;
-  if (Math.abs(r - src) < 0.01) return { left, top, W, H };
-  if (r < src) { const w = H * r; return { left: left + (W - w) / 2, top, W: w, H }; }
-  const h = W / r; return { left, top: top + (H - h) / 2, W, H: h };
+  return { left, top, W, H };
 }
+/* the crop window by hand: drag it to move, a corner to resize (the opposite corner stays put),
+   pinch or the wheel to zoom about its centre, double-tap to centre it again; a tap plays/pauses */
+(() => {
+  const fr = $("#frame"), pts = new Map();
+  let g = null, lastTap = 0;
+  const set = c => {
+    const p = picRect(); if (!p.W) return;
+    // keep it inside the picture, as the server does, and drop it when it is back to the default
+    const k = cropIn(p, c), s = Math.min(1, Math.max(MIN_CROP, c.s));
+    const n = { x: +((k.left - p.left + k.W / 2) / p.W).toFixed(4), y: +((k.top - p.top + k.H / 2) / p.H).toFixed(4), s: +s.toFixed(4) };
+    ed.crop = Math.abs(n.s - 1) < 0.005 && Math.abs(n.x - .5) < 0.005 && Math.abs(n.y - .5) < 0.005 ? null : n;
+    $("#cropReset").hidden = !ed.crop;
+    drawOverlay();
+  };
+  const cur = () => ed.crop || { x: .5, y: .5, s: 1 };
+  const full = () => { const p = picRect(); return cropIn(p, { x: .5, y: .5, s: 1 }); };   // the largest window, for sizes
+  fr.addEventListener("pointerdown", e => {
+    e.preventDefault(); fr.setPointerCapture(e.pointerId);
+    pts.set(e.pointerId, [e.clientX, e.clientY]);
+    const p = picRect(), r = cropRect();
+    if (pts.size === 2) {
+      const [a, b] = [...pts.values()];
+      g = { kind: "pinch", d: Math.hypot(a[0] - b[0], a[1] - b[1]) || 1, c: { ...cur() }, moved: true };
+    } else if (e.target.dataset.c) {
+      const c = e.target.dataset.c;                  // the fixed corner is the opposite one, in screen px
+      g = { kind: "corner", fx: c.includes("w") ? r.left + r.W : r.left, fy: c.includes("n") ? r.top + r.H : r.top,
+            sx: c.includes("w") ? -1 : 1, sy: c.includes("n") ? -1 : 1, moved: true };
+    } else {
+      g = { kind: "move", x0: e.clientX, y0: e.clientY, c: { ...cur() }, p, moved: false };
+    }
+  });
+  fr.addEventListener("pointermove", e => {
+    if (!g || !pts.has(e.pointerId)) return;
+    pts.set(e.pointerId, [e.clientX, e.clientY]);
+    const box = $("#stage").getBoundingClientRect(), f = full(), p = picRect();
+    if (g.kind === "move") {
+      const dx = e.clientX - g.x0, dy = e.clientY - g.y0;
+      if (!g.moved && Math.hypot(dx, dy) < 6) return;
+      g.moved = true;
+      set({ x: g.c.x + dx / g.p.W, y: g.c.y + dy / g.p.H, s: g.c.s });
+    } else if (g.kind === "corner") {
+      // the size the pointer asks for, along whichever side it pulls further, kept to the shape
+      const px = e.clientX - box.left, py = e.clientY - box.top;
+      const s = Math.max(Math.max(0, (px - g.fx) * g.sx) / f.W, Math.max(0, (py - g.fy) * g.sy) / f.H);
+      const k = Math.min(1, Math.max(MIN_CROP, s)), w = f.W * k, h = f.H * k;
+      set({ x: (g.fx + g.sx * w / 2 - p.left) / p.W, y: (g.fy + g.sy * h / 2 - p.top) / p.H, s: k });
+    } else if (pts.size === 2) {
+      const [a, b] = [...pts.values()];
+      set({ ...g.c, s: g.c.s * Math.hypot(a[0] - b[0], a[1] - b[1]) / g.d });
+    }
+  });
+  const up = e => {
+    if (!pts.delete(e.pointerId) || !g) return;
+    if (g.kind === "pinch" && pts.size) return;      // one finger still down: wait for it
+    if (g.kind === "move" && !g.moved) {
+      const now = Date.now();
+      if (now - lastTap < 320) { ed.crop = null; lastTap = 0; refreshAll(); g = null; return; }
+      lastTap = now; togglePlay();
+    } else autosave();
+    g = null;
+  };
+  fr.addEventListener("pointerup", up);
+  fr.addEventListener("pointercancel", up);
+  fr.addEventListener("wheel", e => { e.preventDefault(); const c = cur(); set({ ...c, s: c.s * (e.deltaY > 0 ? 1.06 : 1 / 1.06) }); clearTimeout(fr._t); fr._t = setTimeout(autosave, 400); }, { passive: false });
+  $("#cropReset").onclick = () => { ed.crop = null; refreshAll(); };
+})();
 function drawOverlay() {
   if ($("#sheet").hidden || !ed.hit) return;
   const r = cropRect(), fr = $("#frame"), cap = $("#cap");
-  fr.hidden = !(opts.aspect !== "original" && opts.fit === "crop");
+  fr.hidden = !cropOn();
   Object.assign(fr.style, { left: r.left + "px", top: r.top + "px", width: r.W + "px", height: r.H + "px" });
   cap.removeAttribute("style");            // every look sets its own style from scratch
   cap.className = "cap";
@@ -2551,6 +2646,7 @@ function renderBody() {
   return { item: ed.hit.item_id, in_ms: Math.round(ed.inMs), out_ms: Math.round(ed.outMs),
     moment: { idx: ed.hit.idx, start_ms: ed.hit.start_ms, end_ms: ed.hit.end_ms, text: ed.hit.text },   // for re-opening it later
     format: opts.format, aspect: opts.aspect, fit: opts.fit, res: opts.res, audio: opts.format === "gif" ? "original" : opts.audio,
+    crop: cropOn() && ed.crop ? ed.crop : undefined,
     caption_source: speechMode() ? "speech" : "subs", offset_ms: ed.offset, caption_shift_ms: ed.capShift || undefined,
     sub_text: needWords() ? undefined : ed.subText,
     smooth: smoothOn() ? opts.smooth : undefined,
@@ -3316,6 +3412,8 @@ function stPlayOne(c, follow) {
   studio.now = c; studio.sel = c;
   if (v.parentNode !== sg) sg.insertBefore(v, $("#stBig"));
   v.hidden = false;
+  v.style.cssText = "";
+  v.onloadedmetadata = () => { if (studio.now === c) stFrame(v, c); };
   v.src = `/preview/${c.item}/${c.in_ms}-${c.out_ms}.mp4`;
   v.muted = !!(studio.queueAll && studio.music && (studio.music.clips === "mute" || rampOn()));
   studio.keep = rampKeep(c);
@@ -3346,11 +3444,20 @@ function drawStage() {
   sg.style.setProperty("--ar", w / h);
   sg.style.setProperty("--fit", studio.o.aspect === "original" || studio.o.fit === "pad" ? "contain" : "cover");
   const poster = $("#stPoster");
-  if (poster.getAttribute("src") !== c.thumb) poster.src = c.thumb;
+  if (poster.getAttribute("src") !== c.thumb) { poster.onload = () => stFrame(poster, studio.now || studio.sel); poster.src = c.thumb; }
+  stFrame(poster, c);
+  if (studio.vid && studio.now) stFrame(studio.vid, studio.now);
   sg.classList.toggle("playing", !!studio.now);
   const i = studio.clips.indexOf(c);
   $("#stNow").textContent = `${i + 1} of ${studio.clips.length} · ${c.label}${c.text ? " · " + c.text : ""}`;
   $("#stBig").setAttribute("aria-label", `Play clip ${i + 1}`);
+}
+// a clip's own crop window (placed in the editor) in the preview window, = media.crop_box
+function stFrame(el, c) {
+  const nw = el.videoWidth || el.naturalWidth, nh = el.videoHeight || el.naturalHeight;
+  if (!(c && c.crop && studio.o.aspect !== "original" && studio.o.fit !== "pad" && nw && nh)) { el.style.cssText = ""; return; }
+  const b = cropIn({ left: 0, top: 0, W: nw, H: nh }, c.crop, ASPECT[studio.o.aspect]), k = $("#stStage").clientWidth / b.W;
+  el.style.cssText = `inset:auto;left:${-b.left * k}px;top:${-b.top * k}px;width:${nw * k}px;height:${nh * k}px;object-fit:fill;max-width:none`;
 }
 function drawRibbon() {
   $("#stRibbon").innerHTML = studio.clips.map((c, i) => `<button type="button" class="rb${c === studio.sel ? " sel" : ""}${c === studio.now ? " on" : ""}" data-i="${i}"
@@ -4162,7 +4269,7 @@ function recipeState(c) {
   const stt = r.caption_cues ? { item: r.item, from: r.in_ms, to: r.out_ms, source: o.captionSrc, offset: r.offset_ms || 0,
     cues: r.caption_cues, secs: 0 } : null;
   return { v: 1, in_ms: r.in_ms, out_ms: r.out_ms, offset_ms: r.offset_ms || 0, opts: o, stt, sub_text: r.sub_text || {},
-    cap_shift: r.caption_shift_ms || 0, file: c.file };
+    cap_shift: r.caption_shift_ms || 0, crop: r.crop || null, file: c.file };
 }
 async function openClipLink(cid) {
   try {

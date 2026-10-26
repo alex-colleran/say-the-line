@@ -53,7 +53,8 @@ It runs on the machine that has your media, next to Jellyfin, and is used from a
   movable earlier or later for subtitles that run early or late.
   Five sizes (XS to XL, a 4x range) and five positions (Top, Upper, Middle, Lower, Bottom).
 - **Output**: MP4, WebM, GIF or a **still** (JPEG); original / 16:9 / 4:3 / 1:1 / 9:16 with
-  crop or bars; 480–1080 or source size.
+  crop or bars (drag the crop frame on the picture to choose what stays in, a corner or pinch to
+  zoom in); 480–1080 or source size.
 - **Audio** (optional): *Dialogue only* or *No dialogue* via demucs stem separation.
 - **Slow motion and 60 fps** (optional, Cut > Interpolation): mark part of a clip (up to 5 s) to play at ½× or ¼×. The missing
   frames are made by [RIFE](https://github.com/nihui/rife-ncnn-vulkan) on the GPU, so it stays smooth,

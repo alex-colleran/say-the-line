@@ -160,6 +160,22 @@ class Snap(unittest.TestCase):
         self.assertEqual((r["first_s"], self.calls, r.get("retimed")), (1000, [False, True], None))
 
 
+class CropWindow(unittest.TestCase):
+    def test_placed_window_moves_and_shrinks(self):
+        # 1920x1080 to 9:16: the largest window is 608x1080, centred
+        self.assertEqual(media.geometry(1920, 1080, "9:16", "crop", 720)[2][0], "crop=ih*0.562500:ih")
+        self.assertEqual(media.crop_box(1920, 1080, 9 / 16), (608, 1080, 656, 0))
+        # pushed to the right edge and half size: clamped inside the picture
+        self.assertEqual(media.crop_box(1920, 1080, 9 / 16, {"x": 1, "y": 0.5, "s": 0.5}), (304, 540, 1616, 270))
+        w, h, chain = media.geometry(1920, 1080, "9:16", "crop", 720, crop={"x": 0.25, "y": 0.4, "s": 0.5})
+        self.assertEqual((w, h, chain), (720, 1280, ["crop=304:540:328:162", "scale=720:1280"]))
+        # the same shape as the source can still be zoomed in; bars ignore the window
+        self.assertEqual(media.geometry(1920, 1080, "16:9", "crop", 720, crop={"s": 0.5})[2][0], "crop=960:540:480:270")
+        self.assertEqual(media.geometry(1920, 1080, "16:9", "crop", 720, crop={"s": 1})[2], ["scale=1280:720"])
+        self.assertTrue(media.geometry(1920, 1080, "1:1", "pad", 720, crop={"s": 0.5})[2][1].startswith("pad="))
+        self.assertEqual(media.crop_box(1920, 1080, 1, {"s": 0.01})[0], 270)        # never below a quarter
+
+
 class Paths(unittest.TestCase):
     def test_path_map_longest_prefix(self):
         os.environ["SAYTHELINE_PATH_MAP"] = "/media=/srv/media,/media/tv=/mnt/tv"

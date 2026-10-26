@@ -1229,7 +1229,7 @@ def run_studio(job_id, req):
             if not c.get("edited"):
                 cues = lines_mostly_in(cues, a, b)
             seg = dict(item=row["id"], src=row["path"], in_ms=a, out_ms=b, cues=cues,
-                       label=sc_label(row) if req.get("label") else None, slow=slow)
+                       label=sc_label(row) if req.get("label") else None, slow=slow, crop=c.get("crop"))
             if part:        # this clip's stretch of the cut, and the beats in it on its own timeline
                 t0 = (total - seg_len) / 1000
                 lines = ramp.keep_spans(spoken, a, b) if spoken is not None else []
