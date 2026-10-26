@@ -546,6 +546,10 @@ def _render(src, in_ms, out_ms, opts, cues, out, label, uniform, slow, progress,
         fx = sfx.spec_of(opts)
         if fx:
             fx = (fx, [t - in_ms for t in sfx.times(fx, cues, in_ms, out_ms, in_ms + las[0] if las else None)])
+    wz = None
+    if opts.get("wasted") and not uniform:
+        from . import wasted
+        wz = wasted.spec_of(opts, in_ms, out_ms)
     part = None
     if ramp:
         # the speed-ramped segment becomes the source: silent (the song carries it), or with the
@@ -580,6 +584,8 @@ def _render(src, in_ms, out_ms, opts, cues, out, label, uniform, slow, progress,
         in_ms, out_ms = 0, out_ms - in_ms
         chain, info = [], probe(src)
     dur = (out_ms - in_ms) / 1000
+    if wz and part:              # its start, on the slowed cut's timeline
+        wz = (slowmo.timemap(wz[0] * 1000, *part) / 1000, *wz[1:])
     # The input -t below is not exact: depending on where the start falls between frames it lets one
     # frame past the out point through, and with a cut there that frame is the next shot. The trim
     # keeps exactly the frames before the out point (times here are relative to the -ss point).
@@ -589,6 +595,9 @@ def _render(src, in_ms, out_ms, opts, cues, out, label, uniform, slow, progress,
     sub = caption_filter(opts.get("subs") or {}, cues, in_ms, out_ms, w, h, tmp)
     if sub:
         chain.append(sub)
+    if wz:                       # the banner goes over the captions
+        from . import wasted
+        chain += wasted.filters(wz, w, h, tmp, dur)
     if label:
         tf = os.path.join(tmp, "label.txt")
         with open(tf, "w", encoding="utf-8") as f:
@@ -615,6 +624,8 @@ def _render(src, in_ms, out_ms, opts, cues, out, label, uniform, slow, progress,
     else:
         cmd += ["-map", "0:v:0", "-map", "1:a:0" if silent else f"0:a:{audio_track(src)}?", "-vf", ",".join(chain),
                 "-sn", "-dn", "-map_chapters", "-1"]
+        if wz and info["has_audio"]:
+            cmd += ["-af", ",".join(wasted.audio_filters(wz, dur))]
         if uniform:
             # Sources differ wildly in level (a quiet drama next to a loud sitcom) and every hard
             # cut clicks. Even out loudness per segment and fade the audio a few ms at each end.
@@ -639,7 +650,13 @@ def _render(src, in_ms, out_ms, opts, cues, out, label, uniform, slow, progress,
     if fx and fx[1]:             # after Dialogue only, which would take the hits out again
         from . import sfx, slowmo
         (sid, _, _, _, gain, _), hits = fx
-        sfx.mix(out, fmt, sfx.path(sid), [slowmo.timemap(t, *part) if part else t for t in hits], gain, info["has_audio"], dur)
+        sfx.mix(out, fmt, sfx.path(sid), [slowmo.timemap(t, *part) if part else t for t in hits], gain, info["has_audio"],
+                dur + (wz[1] if wz else 0))
+    if wz and wz[3] and fmt != "gif":         # the fall, landing with the banner
+        from . import sfx
+        sfx.mix(out, fmt, sfx.path("fall"), [round(wz[0] * 1000)], 0.8, info["has_audio"], dur + wz[1])
+    if wz:
+        dur += wz[1]
     if fmt == "gif" and w > 480:                 # GIFs are scaled down to 480 wide after the chain
         w, h = 480, round(h * 480 / w / 2) * 2
     return dict(width=w, height=h, seconds=round(dur, 2), bytes=os.path.getsize(out))
@@ -694,6 +711,11 @@ def still(src, at_ms, in_ms, out_ms, opts, cues, out):
         shift = f"setpts=PTS-STARTPTS+{(at_ms - in_ms) / 1000:.3f}/TB"
         from . import aesthetic
         aes = aesthetic.filters(aesthetic.of(opts), w, h)
+        if opts.get("wasted"):           # the ending, as it looks at this moment (no hold in one frame)
+            from . import wasted
+            wz = wasted.spec_of(opts, in_ms, out_ms)
+            if wz:
+                sub = ",".join(([sub] if sub else []) + wasted.filters((*wz[:1], 0, *wz[2:]), w, h, tmp, (out_ms - in_ms) / 1000))
         if las:          # the frame alone first, then its lasers, then the caption over them
             frame = os.path.join(tmp, "frame.png")
             _frame(src, at_ms, [shift] + chain, frame)

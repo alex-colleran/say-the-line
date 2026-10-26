@@ -44,6 +44,7 @@ KEYS = {
     ("tools", "tesseract"): "SAYTHELINE_TESSERACT",
     ("tools", "laser_python"): "SAYTHELINE_LASER_PYTHON",
     ("tools", "laser_model"): "SAYTHELINE_LASER_MODEL",
+    ("tools", "wasted_font"): "SAYTHELINE_WASTED_FONT",
 }
 _loaded_from = None
 
@@ -76,7 +77,7 @@ def load():
                         continue
                     v = _flat(v)
                     if key in ("data", "tmp", "db", "stt_python", "demucs", "rife", "rife_model", "tesseract",
-                               "laser_python", "laser_model"):    # relative to the file
+                               "laser_python", "laser_model", "wasted_font"):    # relative to the file
                         v = os.path.normpath(os.path.join(base, os.path.expanduser(v)))
                     os.environ.setdefault(env, v)
                 _loaded_from = p

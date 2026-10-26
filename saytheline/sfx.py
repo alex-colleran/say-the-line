@@ -38,6 +38,9 @@ PRESETS = {
                          "afade=t=in:d=0.5:curve=exp,afade=t=out:st=0.5:d=0.4"),
     "ding": ("Ding", "aevalsrc='0.5*sin(2*PI*1760*t)*exp(-3*t)+0.25*sin(2*PI*3520*t)*exp(-6*t)"
                      "+0.12*sin(2*PI*5280*t)*exp(-9*t)':s=48000:d=1.5,afade=t=out:st=1.2:d=0.3"),
+    # a long fall: the pitch sweeps down from ~600 Hz, then a low thud as it lands (0.9 s in)
+    "fall": ("Fall", "aevalsrc='0.45*min(1,t/0.08)*exp(-1.2*t)*sin(2*PI*(50*t+183*(1-exp(-3*t))))*lt(t,0.95)"
+                     "+gte(t,0.9)*0.95*tanh(2*sin(2*PI*45*(t-0.9)))*exp(-5*(t-0.9))':s=48000:d=2.2,afade=t=out:st=1.8:d=0.4"),
     "pop": ("Pop", "aevalsrc='0.9*sin(2*PI*(220*t+12.5*(1-exp(-40*t))))*exp(-25*t)':s=48000:d=0.3"),
 }
 

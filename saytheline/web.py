@@ -322,7 +322,7 @@ def preview_file(item_id, start_ms, end_ms):
     return out
 
 
-def clip_name(row, in_ms, text, fmt, aspect="original", audio="original", slow=None, smooth=0, lasers=False, fx=False):
+def clip_name(row, in_ms, text, fmt, aspect="original", audio="original", slow=None, smooth=0, lasers=False, fx=False, wasted=False):
     if row["kind"] == "episode":
         who = f"{row['series']} - S{row['season'] or 0:02d}E{row['episode'] or 0:02d}"
     else:
@@ -341,6 +341,8 @@ def clip_name(row, in_ms, text, fmt, aspect="original", audio="original", slow=N
         shape += " [laser eyes]"
     if fx:
         shape += " [sfx]"
+    if wasted:
+        shape += " [wasted]"
     return f"{base}{shape}.{fmt}"
 
 
@@ -386,7 +388,7 @@ def run_render(job_id, req):
         else:
             os.makedirs(CLIPS, exist_ok=True)
             name = version_name(clip_name(row, in_ms, " ".join(c["text"] for c in cues) or "clip", fmt, req.get("aspect"),
-                                          req.get("audio"), slow, smooth, bool(lasers), bool(fx)), req)
+                                          req.get("audio"), slow, smooth, bool(lasers), bool(fx), bool(req.get("wasted"))), req)
             out = os.path.join(CLIPS, name)
         job["state"] = "queued"
 

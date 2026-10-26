@@ -1060,3 +1060,20 @@ class Aesthetics(unittest.TestCase):
         self.assertNotEqual(small, big)                     # the clarity radius follows the size
         self.assertTrue(all("unsharp=lx=" not in f or int(f.split("lx=")[1].split(":")[0]) % 2 for f in small + big))
         self.assertIn("rgbashift=rh=-3:bh=3", aesthetic.filters("grunge", 1920, 1080))
+
+
+class Wasted(unittest.TestCase):
+    def test_the_ending_starts_inside_the_cut(self):
+        from saytheline import wasted
+        self.assertIsNone(wasted.spec_of({}, 1000, 9000))
+        self.assertEqual(wasted.spec_of({"wasted": {}}, 1000, 9000), (6.5, 1.5, "WASTED", True))
+        self.assertEqual(wasted.spec_of({"wasted": {"text": "  so   busted ", "at_ms": 3000, "hold_ms": 99999, "sound": False}}, 1000, 9000),
+                         (2.0, 4.0, "so busted", False))
+        self.assertIsNone(wasted.spec_of({"wasted": {"at_ms": 500}}, 1000, 9000))       # a preview elsewhere
+        self.assertEqual(wasted.spec_of({"wasted": {}}, 1000, 1800)[0], 0)              # short clip: from the start
+        with tempfile.TemporaryDirectory() as tmp:
+            fs = wasted.filters((2.0, 1.5, "busted", True), 1280, 720, tmp, 5.0)
+            with open(os.path.join(tmp, "wasted.txt")) as f:
+                self.assertEqual(f.read(), "BUSTED")
+        self.assertTrue(fs[-1].startswith("tpad=") and "crop=1280:720" in fs)
+        self.assertEqual(wasted.audio_filters((2.0, 1.5, "x", True), 5.0)[0], "apad=whole_dur=6.500")

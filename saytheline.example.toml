@@ -60,5 +60,7 @@ preview_cache_gb = 2                   # SAYTHELINE_PREVIEW_CACHE_GB: editor pre
 # Defaults: the Python running Say the Line; data/models/face_landmarker.task.
 # laser_python = "/opt/laser-venv/bin/python"     # SAYTHELINE_LASER_PYTHON
 # laser_model = "/opt/models/face_landmarker.task" # SAYTHELINE_LASER_MODEL
+# The Wasted ending's font: any font file (default: the bundled League Spartan Black).
+# wasted_font = "/usr/share/fonts/truetype/custom/pricedown.ttf"   # SAYTHELINE_WASTED_FONT
 # Optional OCR for picture subtitles. Default: on PATH, else (Windows) where its installer puts it.
 # tesseract = 'C:\Program Files\Tesseract-OCR\tesseract.exe'   # SAYTHELINE_TESSERACT

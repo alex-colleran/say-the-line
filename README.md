@@ -55,6 +55,11 @@ It runs on the machine that has your media, next to Jellyfin, and is used from a
 - **Output**: MP4, WebM, GIF or a **still** (JPEG); original / 16:9 / 4:3 / 1:1 / 9:16 with
   crop or bars (drag the crop frame on the picture to choose what stays in, a corner or pinch to
   zoom in); 480–1080 or source size.
+- **Wasted ending** (Cut > Ending): the game-over meme, in a look of its own. Near the end the
+  picture drains to grey and pushes slowly in, a big red word (WASTED, or your own) slams in over a
+  dark band, the last frame holds a beat and the sound falls away under a low "fall" hit. The editor
+  shows the grey and the word as you play. Works for clips, GIFs and stills. The word is set in the
+  bundled League Spartan Black; `[tools] wasted_font` points it at any font file you have.
 - **Aesthetic** (Output): a grade for the whole picture, under the captions. *Punchy* is the
   shared-clip look (richer colour and contrast, crisper detail, a touch warmer); *Grunge* is dark and
   dirty (faded blacks, drained green-teal colour, moving film grain, a heavy vignette). The editor
