@@ -929,3 +929,33 @@ class SayAnything(unittest.TestCase):
         got = sayany.pick(pool, ["eat"])
         self.assertEqual([h["item_id"] for h in got[:2]], [10, 9])
         self.assertEqual(sum(h["item_id"] == 7 for h in got), sayany.PER_TITLE)
+
+
+class Settings(unittest.TestCase):
+    def test_toml_with_a_bom_loads(self):
+        # Windows editors (and PowerShell 5's Set-Content -Encoding utf8) start the file with a BOM
+        from unittest import mock
+        with tempfile.TemporaryDirectory() as d:
+            p = os.path.join(d, "saytheline.toml")
+            with open(p, "w", encoding="utf-8-sig") as f:
+                f.write('[server]\nport = 9876\n[paths]\ntmp = "t"\n')
+            with mock.patch.dict(os.environ, {"SAYTHELINE_CONFIG": p}), mock.patch.object(config.tempfile, "tempdir"):
+                for k in ("SAYTHELINE_PORT", "SAYTHELINE_TMP"):
+                    os.environ.pop(k, None)
+                config.load()
+                self.assertEqual(os.environ["SAYTHELINE_PORT"], "9876")
+                self.assertEqual(os.environ["SAYTHELINE_TMP"], os.path.join(d, "t"), "relative to the file")
+                self.assertEqual(config.tempfile.tempdir, os.path.join(d, "t"))
+
+    def test_gpu_settings_default_off(self):
+        from unittest import mock
+        with mock.patch.dict(os.environ):
+            for k in ("SAYTHELINE_DEMUCS_DEVICE", "SAYTHELINE_ENCODER"):
+                os.environ.pop(k, None)
+            self.assertEqual(config.demucs_device(), "cpu")
+            self.assertEqual(config.encoder(), "")
+        cpu = ["-c:v", "libx264", "-crf", "20"]
+        with mock.patch.object(media, "ENCODER", ""):
+            media.nvenc_check.cache_clear()
+            self.assertEqual(media.h264(20, cpu), cpu)
+        media.nvenc_check.cache_clear()

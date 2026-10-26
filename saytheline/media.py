@@ -10,6 +10,38 @@ import tempfile
 from . import config
 
 VAAPI = config.vaapi()          # None = encode previews on the CPU
+ENCODER = config.encoder()      # "nvenc": previews and MP4 renders on an Nvidia GPU
+
+
+@functools.lru_cache(maxsize=None)
+def nvenc_check():
+    """'' when NVENC is asked for and works here (this ffmpeg has it and the GPU and driver take it),
+    else why not. Checked once. A new ffmpeg can need a newer Nvidia driver than is installed."""
+    if ENCODER != "nvenc":
+        return "not asked for"
+    r = subprocess.run(["ffmpeg", "-v", "error", "-nostdin", "-f", "lavfi", "-i", "color=s=256x144:d=0.2",
+                        "-c:v", "h264_nvenc", "-f", "null", "-"], capture_output=True, text=True,
+                       encoding="utf-8", errors="replace", timeout=30)
+    if r.returncode == 0:
+        return ""
+    lines = [re.sub(r"^\[[^]]*\] ", "", l) for l in r.stderr.splitlines()]
+    return next((l for l in lines if "minimum required" in l.lower()),
+                next((l for l in lines if "driver" in l.lower()), lines[0] if lines else "h264_nvenc failed"))
+
+
+def nvenc():
+    return nvenc_check() == ""
+
+
+def h264(crf, cpu):
+    """Video encoder arguments for an H.264 file: `cpu` (the x264 recipe), or NVENC at the same
+    quality number when it is on. NVENC frees the CPU for the filters and captions, which then set
+    the pace; its files come out somewhat larger for the same look."""
+    if nvenc():
+        return ["-c:v", "h264_nvenc", "-preset", "p5", "-tune", "hq", "-rc", "vbr", "-cq", str(crf), "-b:v", "0",
+                "-pix_fmt", "yuv420p"]
+    return cpu
+
 
 ASPECTS = {"16:9": 16 / 9, "4:3": 4 / 3, "1:1": 1.0, "9:16": 9 / 16}
 MIN_CROP = 0.25              # the crop window can shrink to a quarter of the largest that fits
@@ -151,7 +183,10 @@ def preview(src, start_ms, end_ms, out):
                        "-vf", "scale=-2:480,format=nv12,hwupload", "-c:v", "h264_vaapi", "-qp", "26"] + common_out
     cpu = common_in + ["-i", src, "-vf", "scale=-2:480", "-c:v", "libx264", "-preset", "ultrafast",
                        "-crf", "26", "-pix_fmt", "yuv420p"] + common_out
-    for cmd in ((gpu, cpu) if VAAPI else (cpu,)):
+    if not VAAPI and nvenc():
+        gpu = common_in + ["-i", src, "-vf", "scale=-2:480", "-c:v", "h264_nvenc", "-preset", "p1",
+                           "-rc", "constqp", "-qp", "26", "-pix_fmt", "yuv420p"] + common_out
+    for cmd in ((gpu, cpu) if VAAPI or nvenc() else (cpu,)):
         r = subprocess.run(cmd, capture_output=True, timeout=120)
         if r.returncode == 0 and os.path.getsize(out) > 0:
             return out
@@ -561,7 +596,7 @@ def _render(src, in_ms, out_ms, opts, cues, out, label, uniform, slow, progress,
             cmd += ["-c:v", "libvpx-vp9", "-deadline", "realtime", "-cpu-used", "8", "-row-mt", "1",
                     "-b:v", "0", "-crf", "33", "-c:a", "libopus", "-b:a", "128k", out]
         else:
-            cmd += ["-c:v", "libx264", "-preset", "veryfast", "-crf", "20", "-pix_fmt", "yuv420p",
+            cmd += [*h264(20, ["-c:v", "libx264", "-preset", "veryfast", "-crf", "20", "-pix_fmt", "yuv420p"]),
                     "-c:a", "aac", "-b:a", "160k", "-ac", "2", "-movflags", "+faststart", out]
     r = subprocess.run(cmd, capture_output=True, timeout=600)
     if r.returncode != 0:
@@ -624,7 +659,8 @@ def still(src, at_ms, in_ms, out_ms, opts, cues, out):
 def separate(path, mode, fmt):
     """Replace a rendered clip's audio with one demucs stem, in place. `--two-stems=vocals` splits
     into vocals (on film/TV audio that is the dialogue) and everything else (music + effects).
-    CPU only: about 2x the clip length (8 s took 14 s), so clips only, never whole episodes."""
+    On the CPU about 2x the clip length (8 s took 14 s), so clips only, never whole episodes;
+    `[tools] demucs_device = "cuda"` runs it on an Nvidia GPU instead."""
     if not DEMUCS:
         raise RuntimeError("Dialogue only / No dialogue need demucs (pip install demucs, or set tools.demucs)")
     with tempfile.TemporaryDirectory(prefix="saytheline-stem-") as tmp:
@@ -632,7 +668,7 @@ def separate(path, mode, fmt):
         subprocess.run(["ffmpeg", "-v", "error", "-nostdin", "-y", "-i", path, "-vn", "-ac", "2",
                         "-ar", "44100", wav], check=True, capture_output=True, timeout=120)
         r = subprocess.run([*config.nice(), DEMUCS, "-n", "htdemucs", "--two-stems=vocals",
-                            "-d", "cpu", "-j", "1", "-o", tmp, wav],
+                            "-d", config.demucs_device(), "-j", "1", "-o", tmp, wav],
                            capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=900,
                            env={**os.environ, "OMP_NUM_THREADS": "4", "MKL_NUM_THREADS": "4"})
         if r.returncode != 0:

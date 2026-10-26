@@ -15,7 +15,7 @@ import shutil
 import subprocess
 import time
 
-from . import config
+from . import config, media
 
 FACTORS = (2, 4)
 SOUNDS = ("deep", "pitch", "mute")   # pitched down like slowed tape / stretched at the same pitch / silent
@@ -128,8 +128,11 @@ def _interpolate(tool, frames_in, frames_out, want, tmp, progress):
         return
     log = os.path.join(tmp, "rife.log")       # a file, not a pipe: nothing reads it until the end
     with open(log, "wb") as lf:
+        # -j load:proc:save threads. RIFE's own 1:2:2 can leave a fast GPU waiting on PNG decoding:
+        # 8:8:8 made a GTX 1660 Ti 3.3x faster (17 s -> 5 s for 96 frames at 720p)
+        j = ["-j", os.environ["SAYTHELINE_RIFE_THREADS"]] if os.environ.get("SAYTHELINE_RIFE_THREADS") else []
         p = subprocess.Popen([*config.nice(), tool[0], "-i", frames_in, "-o", frames_out, "-m", tool[1], "-n", str(want),
-                              "-f", "jpg"], stdout=subprocess.DEVNULL, stderr=lf)
+                              "-f", "jpg", *j], stdout=subprocess.DEVNULL, stderr=lf)
         t0 = time.time()
         while p.poll() is None:
             time.sleep(0.5)
@@ -249,7 +252,7 @@ def master(src, in_ms, out_ms, part, chain, size, audio, tmp, progress=None, smo
     out = os.path.join(tmp, "master.mkv")
     r = subprocess.run([*config.nice(), "ffmpeg", "-v", "error", "-nostdin", "-y", *src_in, *inputs,
                         "-filter_complex", ";".join(graph), *maps,
-                        "-c:v", "libx264", "-preset", "veryfast", "-crf", "12", "-pix_fmt", "yuv420p", out],
+                        *media.h264(12, ["-c:v", "libx264", "-preset", "veryfast", "-crf", "12", "-pix_fmt", "yuv420p"]), out],
                        capture_output=True, timeout=900)
     if r.returncode != 0:
         raise RuntimeError(r.stderr.decode(errors="replace").strip()[-500:])

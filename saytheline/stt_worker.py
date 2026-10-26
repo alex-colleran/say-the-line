@@ -2,7 +2,8 @@
 
 Runs in the Python that has faster-whisper (tools.stt_python), as a child process:
   python -I stt_worker.py clip.wav [--careful]
-Model: small.en, CPU int8 (downloaded once, ~500 MB, on first use).
+Model: small.en, CPU int8 (downloaded once, ~500 MB, on first use); SAYTHELINE_STT_DEVICE=cuda puts it
+on an Nvidia GPU (float16), SAYTHELINE_STT_THREADS sets the CPU threads (default 4).
 
 --careful decodes with beam search (5) instead of greedily. Given a window holding several lines
 with silence between them, greedy decoding can drop a line and stretch the others over the gap
@@ -20,7 +21,10 @@ Each word also gets "loud": how much louder (+) or quieter (-) than the clip's t
 in dB, from the loudest part of the word. The laid-out caption looks size shouts up and whispers
 down with it.
 """
+import glob
+import importlib.util
 import json
+import os
 import sys
 import wave
 
@@ -124,9 +128,35 @@ def transcribe(model, pcm, beam):
             for s in segs for w in (s.words or [])]
 
 
-if __name__ == "__main__":
+def _cuda_libs():
+    """On Windows ctranslate2 finds cuBLAS and cuDNN only on PATH. A CUDA build of PyTorch (or the
+    nvidia-cublas-cu12 / nvidia-cudnn-cu12 wheels) in this Python carries them: add their folders."""
+    if os.name != "nt":
+        return
+    for mod, sub in (("torch", "lib"), ("nvidia", os.path.join("*", "bin"))):
+        spec = importlib.util.find_spec(mod)
+        for base in (spec.submodule_search_locations or []) if spec else []:
+            for d in glob.glob(os.path.join(base, sub)):
+                os.add_dll_directory(d)
+                os.environ["PATH"] = d + os.pathsep + os.environ.get("PATH", "")
+
+
+def load_model():
+    """small.en on the CPU (int8), or on an Nvidia GPU when asked (float16). A GPU that won't load
+    falls back to the CPU: slower, never broken."""
     from faster_whisper import WhisperModel
-    model = WhisperModel("small.en", device="cpu", compute_type="int8", cpu_threads=4)
+    if os.environ.get("SAYTHELINE_STT_DEVICE") == "cuda":
+        _cuda_libs()
+        try:
+            return WhisperModel("small.en", device="cuda", compute_type="float16")
+        except Exception as e:
+            print(f"speech on the CPU: CUDA did not load ({e})", file=sys.stderr)
+    return WhisperModel("small.en", device="cpu", compute_type="int8",
+                        cpu_threads=int(os.environ.get("SAYTHELINE_STT_THREADS") or 4))
+
+
+if __name__ == "__main__":
+    model = load_model()
     # No VAD: the window is short and VAD can clip the first word, which is the one we need.
     pcm, rate = read_wav(sys.argv[1])
     words = transcribe(model, pcm, 5 if "--careful" in sys.argv[2:] else 1)

@@ -21,7 +21,7 @@ import math
 import os
 import subprocess
 
-from . import config, slowmo
+from . import config, media, slowmo
 
 STRENGTH = {"subtle": (1.8, 0.55), "strong": (3.5, 0.3), "extreme": (6.0, 0.15)}   # (fastest, slowest)
 SHAPES = ("smooth", "sharp")
@@ -320,7 +320,8 @@ def master(src, in_ms, out_ms, length_out, beats, opts, chain, size, tmp, progre
         sound = ["-i", wav, "-map", "0:v", "-map", "1:a", "-c:a", "copy"]
     r = subprocess.run([*config.nice(), "ffmpeg", "-v", "error", "-nostdin", "-y", "-framerate", str(OUT_FPS),
                         "-i", os.path.join(seq, f"%08d{ext}"), *sound, "-vf", "setsar=1,format=yuv420p",
-                        "-c:v", "libx264", "-preset", "veryfast", "-crf", "12", out], capture_output=True, timeout=600)
+                        *media.h264(12, ["-c:v", "libx264", "-preset", "veryfast", "-crf", "12"]), out],
+                       capture_output=True, timeout=600)
     if r.returncode != 0:
         raise RuntimeError(r.stderr.decode(errors="replace").strip()[-400:])
     if progress:

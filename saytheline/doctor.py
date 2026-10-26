@@ -31,11 +31,23 @@ def checks():
             yield OK, "ffmpeg with libass"
         if config.vaapi():
             yield OK, f"hardware previews via VAAPI ({config.vaapi()}), with CPU fallback"
+        if config.encoder() == "nvenc":
+            yield (OK, "previews and MP4 renders encoded on the Nvidia GPU (NVENC)") if media.nvenc() else \
+                (WARN, f"encoder = nvenc, but h264_nvenc fails here ({media.nvenc_check()}): using x264 on the CPU")
 
     py = config.stt_python()
     r = _run([py, "-c", "import faster_whisper, numpy; print('ok')"])
     yield (OK, f"speech: faster-whisper in {py}") if r.returncode == 0 else \
         (WARN, f"speech features off: {py} has no faster-whisper (pip install -r requirements.txt)")
+    if r.returncode == 0 and os.environ.get("SAYTHELINE_STT_DEVICE") == "cuda":
+        here = os.path.dirname(os.path.abspath(__file__))
+        r = _run([py, "-I", "-c", "import sys, os, ctypes; sys.path.insert(0, sys.argv[1]); import stt_worker; "
+                  "stt_worker._cuda_libs(); import ctranslate2; n = ctranslate2.get_cuda_device_count(); "
+                  "[ctypes.CDLL(x) for x in (('cublas64_12.dll', 'cudnn64_9.dll') if os.name == 'nt' else ())]; "
+                  "print(n)", here])
+        yield (OK, "speech on the Nvidia GPU (CUDA)") if r.returncode == 0 and r.stdout.strip() not in ("", "0") else \
+            (WARN, "stt_device = cuda, but CUDA or cuBLAS/cuDNN won't load: speech stays on the CPU "
+                   "(install a CUDA build of PyTorch, or pip install nvidia-cublas-cu12 nvidia-cudnn-cu12)")
     r = _run([py, "-c", "import spacy; spacy.load('en_core_web_sm'); print('ok')"])
     yield (OK, "Poster look: spaCy + en_core_web_sm") if r.returncode == 0 else \
         (WARN, "Poster look off: python -m spacy download en_core_web_sm")
@@ -46,6 +58,12 @@ def checks():
         yield WARN, "Poster look off: pip install pillow"
     yield (OK, f"stem audio: {config.demucs()}") if config.demucs() else \
         (WARN, "Dialogue only / No dialogue off (optional: pip install -r requirements-stems.txt)")
+    if config.demucs() and config.demucs_device() != "cpu":
+        dpy = shutil.which("python", path=os.path.dirname(config.demucs()))     # the venv demucs lives in
+        r = _run([dpy, "-c", "import torch; print(torch.cuda.is_available())"]) if dpy else None
+        yield (OK, f"stem audio on the GPU ({config.demucs_device()})") if r and r.stdout.strip() == "True" else \
+            (WARN, f"demucs_device = {config.demucs_device()}, but its PyTorch sees no CUDA GPU "
+                   "(install a CUDA build: pytorch.org/get-started)")
     from . import pgs
     yield (OK, f"Blu-ray and DVD picture subtitles read by OCR: {pgs.TESSERACT}") if pgs.available() else \
         (WARN, "Blu-ray and DVD picture subtitles can't be searched (optional: apt install tesseract-ocr tesseract-ocr-eng, pip install pillow)")
