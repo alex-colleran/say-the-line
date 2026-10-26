@@ -163,4 +163,5 @@ def index(index_path, series=None, movies=False, external_only=False, log=print,
                  if it["kind"] == "episode" else it["title"])
         log(f"  {label}: {len(cues)} cues ({source if source.startswith(('embedded', 'pgs')) else 'external'})")
     c.commit()
+    c.close()                   # an open handle keeps Windows from moving or deleting the index
     return stats
