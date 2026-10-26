@@ -35,7 +35,10 @@ def _call(url, method, path, body=None):
 def save_key(path, url, token):
     """Put api_key (and url, if missing) under [jellyfin] in the TOML at `path`, leaving the rest
     of the file as it is. Creates the file when there is none."""
-    text = open(path, encoding="utf-8-sig").read() if os.path.isfile(path) else ""
+    text = ""
+    if os.path.isfile(path):
+        with open(path, encoding="utf-8-sig") as f:
+            text = f.read()
     line = f'api_key = "{token}"'
     if re.search(r'(?m)^\s*api_key\s*=.*$', text):
         text = re.sub(r'(?m)^\s*api_key\s*=.*$', lambda m: line, text, count=1)

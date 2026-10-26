@@ -206,14 +206,35 @@ def transcribe_cues(src, in_ms, out_ms, margin_ms=1000):
     return group_words(words)
 
 
+def _tags(ws):
+    """Which of a line's words are a speaker label or sound note ("[Swiper]", "-[man 2]", "(laughs)"):
+    shown, never said. A bracket left open marks nothing."""
+    out, start = [False] * len(ws), None
+    for k, w in enumerate(ws):
+        if start is None and w.lstrip("-♪")[:1] in "[(":
+            start = k
+        if start is not None and re.search(r"[\])][:.,!?]*$", w):
+            out[start:k + 1] = [True] * (k + 1 - start)
+            start = None
+    return out
+
+
 def align_words(sub_cues, words):
     """Word times for the SUBTITLE's own text: match its words against the transcript and take
     the spoken times; words Whisper missed are spread evenly between their matched neighbours
-    (or across their line when nothing in it matched, e.g. sung lyrics)."""
-    disp = []                                   # (display word, cue) in reading order
+    (or across their line when nothing in it matched, e.g. sung lyrics). A speaker label or sound
+    note in brackets isn't matched or timed as speech: it comes up just before the word after it."""
+    disp = []                                   # (display word, cue) in reading order, said words only
+    tags = {}                                   # id(cue) -> [(place among the line's words, label)]
     for c in sub_cues:
-        for w in c["text"].split():
-            if norm(w):
+        ws = [w for w in c["text"].split() if norm(w)]
+        tg = _tags(ws)
+        if all(tg):                             # a line that is only a note ("[laughs]"): timed as words
+            tg = [False] * len(ws)
+        for k, (w, t) in enumerate(zip(ws, tg)):
+            if t:
+                tags.setdefault(id(c), []).append((k, w))
+            else:
                 disp.append((w, c))
     heard = [norm(w["w"]) for w in words]
     m = difflib.SequenceMatcher(None, [norm(w) for w, _ in disp], heard, autojunk=False)
@@ -258,7 +279,9 @@ def align_words(sub_cues, words):
         # among the previous line's spoken words, so a missed first word showed in the wrong caption
         if i:
             lo = max(lo, times[i - 1][1])
-        if hi <= lo:
+        if hi <= lo and j < len(disp) and disp[j][1] is cue:
+            lo = hi - (j - i)                    # voice ahead of the subtitle: just before the next heard word
+        elif hi <= lo:
             hi = lo + 120 * (j - i)
         nxt = next((times[k][0] for k in range(j, len(disp)) if times[k]), None)
         if nxt is not None and lo < nxt < hi:
@@ -272,6 +295,13 @@ def align_words(sub_cues, words):
         mine = [k for k, (_, cc) in enumerate(disp) if cc is c]
         ws = [dict(w=disp[k][0], s=times[k][0], e=times[k][1], **({"loud": loud[k]} if k in matched and k in loud else {}))
               for k in mine]
+        for at, w in tags.get(id(c), []):       # labels back in place, in reading order
+            nxt, prev = (ws[at] if at < len(ws) else None), (ws[at - 1] if at else None)
+            if nxt:
+                s = max(nxt["s"] - media.MIN_WORD_MS, prev["e"] if prev else nxt["s"] - media.MIN_WORD_MS)
+                ws.insert(at, dict(w=w, s=min(s, nxt["s"]), e=nxt["s"]))
+            else:                               # a note at the end ("Swiper, no-- [gasps]")
+                ws.insert(at, dict(w=w, s=prev["e"], e=prev["e"] + media.MIN_WORD_MS))
         # a line's time is when it is said, not when its subtitle shows
         a, b = (ws[0]["s"], ws[-1]["e"]) if ws else (c["start_ms"], c["end_ms"])
         out.append(dict(idx=c.get("idx", 0), start_ms=a, end_ms=b, text=c["text"], words=ws,

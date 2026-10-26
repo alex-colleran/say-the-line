@@ -104,6 +104,25 @@ class Words(unittest.TestCase):
         flat = [w["s"] for c in out for w in c["words"]]
         self.assertEqual(flat, sorted(flat))
 
+    def test_speaker_label_comes_up_with_its_line(self):
+        # "[Swiper]" is never said; the voice comes before the subtitle. The label used to take the
+        # subtitle's own start, after "Huh?", and pop on its own once the line was over.
+        cues = [dict(idx=1, start_ms=4457453, end_ms=4458442, text="[Swiper] Huh?"),
+                dict(idx=2, start_ms=4458500, end_ms=4460000, text="-Swiper, no-- [gasps]")]
+        heard = [dict(w="Huh", s=4457300, e=4457500), dict(w="Swiper", s=4458600, e=4458900),
+                 dict(w="no", s=4458900, e=4459100)]
+        out = snap.align_words(cues, heard)
+        self.assertEqual([w["w"] for w in out[0]["words"]], ["[Swiper]", "Huh?"])
+        label, huh = out[0]["words"]
+        self.assertEqual((huh["s"], out[0]["heard"]), (4457300, 1))
+        self.assertTrue(huh["s"] - media.MIN_WORD_MS <= label["s"] <= label["e"] <= huh["s"], label)
+        flat = [w for c in out for w in c["words"]]
+        self.assertEqual([w["w"] for w in media.normalize_words(flat)], [w["w"] for w in flat])
+        self.assertEqual(snap._tags("-[man 2] (laughs) Hey [x".split()), [True, True, True, False, False])
+        # a line that is only a note is still timed as words
+        self.assertEqual([w["w"] for w in snap.align_words([dict(idx=3, start_ms=0, end_ms=900, text="[laughs]")], [])[0]["words"]],
+                         ["[laughs]"])
+
     def test_matched_words_keep_their_loudness(self):
         cues = [dict(idx=1, start_ms=0, end_ms=1000, text="Get out!")]
         heard = [dict(w="Get", s=0, e=200, loud=2.0), dict(w="out", s=200, e=500, loud=9.5)]
@@ -961,6 +980,11 @@ class Settings(unittest.TestCase):
         media.nvenc_check.cache_clear()
 
 
+def _read(p):
+    with open(p, encoding="utf-8") as f:
+        return f.read()
+
+
 class Login(unittest.TestCase):
     def test_token_goes_under_jellyfin_and_nothing_else_moves(self):
         from saytheline import login
@@ -969,8 +993,8 @@ class Login(unittest.TestCase):
             with open(p, "w", encoding="utf-8") as f:
                 f.write('[jellyfin]\nurl = "http://jf:8096"\napi_key = ""   # paste\n\n[server]\nport = 8765\n')
             login.save_key(p, "http://jf:8096", "abc123")
-            self.assertEqual(open(p, encoding="utf-8").read(),
+            self.assertEqual(_read(p),
                              '[jellyfin]\nurl = "http://jf:8096"\napi_key = "abc123"\n\n[server]\nport = 8765\n')
             os.remove(p)
             login.save_key(p, "http://jf:8096", "abc123")       # no file yet: a minimal one
-            self.assertEqual(open(p, encoding="utf-8").read(), '[jellyfin]\nurl = "http://jf:8096"\napi_key = "abc123"\n\n')
+            self.assertEqual(_read(p), '[jellyfin]\nurl = "http://jf:8096"\napi_key = "abc123"\n\n')
