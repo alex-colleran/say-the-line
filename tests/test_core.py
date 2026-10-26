@@ -3,6 +3,8 @@
   python -m unittest discover -s tests
 """
 import os
+import shutil
+import subprocess
 import sys
 import tempfile
 import unittest
@@ -191,7 +193,22 @@ class Paths(unittest.TestCase):
         self.assertEqual(config._flat({"/a": "/b", "/c": "/d"}), "/a=/b,/c=/d")
 
     def test_filter_path_escaping(self):
-        self.assertEqual(media._fpath("C:\\x\\it's.ass"), "C\\:/x/it\\'s.ass")
+        # escaped for the option parser (C\:, it\'s), then again for the graph parser (\ and ')
+        self.assertEqual(media._fpath("C:\\x\\it's.ass"), "C\\\\:/x/it\\\\\\'s.ass")
+
+    @unittest.skipUnless(shutil.which("ffmpeg"), "needs ffmpeg")
+    def test_filter_path_reaches_ffmpeg_intact(self):
+        # a quote, a comma and brackets in the folder; on Windows the drive colon as well
+        with tempfile.TemporaryDirectory() as d:
+            folder = os.path.join(d, "it's, [x]")
+            os.makedirs(folder)
+            srt = os.path.join(folder, "a.srt")
+            with open(srt, "w", encoding="utf-8") as f:
+                f.write("1\n00:00:00,000 --> 00:00:01,000\nHi\n")
+            r = subprocess.run(["ffmpeg", "-v", "error", "-nostdin", "-f", "lavfi", "-i", "color=s=160x90:d=0.5",
+                                "-vf", f"subtitles={media._fpath(srt)}:fontsdir={media._fpath(media.FONT_DIR)}",
+                                "-f", "null", "-"], capture_output=True, text=True, encoding="utf-8", errors="replace")
+            self.assertEqual(r.returncode, 0, r.stderr[-300:])
 
 
 class Index(unittest.TestCase):

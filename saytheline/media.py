@@ -129,9 +129,11 @@ def ass_size(family, size):
 
 
 def _fpath(p):
-    """A path inside an ffmpeg filter argument: escape the characters the filter parser treats
-    specially (a Windows drive colon among them)."""
-    return p.replace("\\", "/").replace(":", "\\:").replace("'", "\\'")
+    """A path as an option value inside a filter graph (-vf / -filter_complex). ffmpeg unescapes it
+    twice: the graph parser first (\\ ' [ ] , ;), then the filter's option parser (\\ : '), so it is
+    escaped for both, option level first. A Windows drive colon (D:) needs both levels."""
+    p = re.sub(r"([\\:'])", r"\\\1", p.replace("\\", "/"))
+    return re.sub(r"([\\'\[\],;])", r"\\\1", p)
 
 
 def preview(src, start_ms, end_ms, out):
