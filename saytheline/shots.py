@@ -172,7 +172,7 @@ def loose_timing(src):
     """True when the video's packets have no presentation times (see the module docstring)."""
     try:
         r = subprocess.run(["ffprobe", "-v", "error", "-select_streams", "v:0", "-read_intervals", "%+#60",
-                            "-show_entries", "packet=pts", "-of", "csv=p=0", src], capture_output=True, text=True, timeout=30)
+                            "-show_entries", "packet=pts", "-of", "csv=p=0", src], capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=30)
         return "N/A" in r.stdout
     except (OSError, subprocess.TimeoutExpired):
         return False

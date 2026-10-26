@@ -92,7 +92,7 @@ def estimate_s(part_ms, factor, w, h, fps):
 
 def frame_rate(src):
     r = subprocess.run(["ffprobe", "-v", "error", "-select_streams", "v:0", "-show_entries", "stream=avg_frame_rate,r_frame_rate",
-                        "-of", "json", src], capture_output=True, text=True, timeout=30)
+                        "-of", "json", src], capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=30)
     s = (json.loads(r.stdout or "{}").get("streams") or [{}])[0]
     for k in ("avg_frame_rate", "r_frame_rate"):
         n, _, d = (s.get(k) or "0/0").partition("/")

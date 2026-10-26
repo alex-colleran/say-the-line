@@ -20,14 +20,14 @@ DEFAULT_LUMA = [0, 255, 0, 128]
 
 def _probe(mkv):
     r = subprocess.run(["ffprobe", "-v", "error", "-show_streams", "-show_data", "-of", "json", mkv],
-                       capture_output=True, text=True, timeout=300)
+                       capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=300)
     st = (json.loads(r.stdout or "{}").get("streams") or [{}])[0]
     raw = bytes.fromhex("".join(re.sub(r"\s", "", l[10:50]) for l in (st.get("extradata") or "").splitlines()
                                 if re.match(r"[0-9a-f]{8}:", l)))
     m = re.search(r"palette:\s*([0-9a-fA-F, ]+)", raw.decode("latin-1"))
     palette = [int(x, 16) for x in m.group(1).replace(" ", "").split(",") if x][:16] if m else None
     r = subprocess.run(["ffprobe", "-v", "error", "-show_entries", "packet=pts_time,duration_time,size",
-                        "-of", "csv=p=0", mkv], capture_output=True, text=True, timeout=300)
+                        "-of", "csv=p=0", mkv], capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=300)
     packets = []
     for line in r.stdout.split():
         pts, dur, size = (line.split(",") + ["", "", ""])[:3]

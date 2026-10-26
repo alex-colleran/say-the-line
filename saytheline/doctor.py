@@ -11,7 +11,7 @@ OK, WARN, BAD = "ok  ", "warn", "FAIL"
 
 def _run(cmd, **kw):
     try:
-        return subprocess.run(cmd, capture_output=True, text=True, timeout=60, **kw)
+        return subprocess.run(cmd, capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=60, **kw)
     except (OSError, subprocess.TimeoutExpired) as e:
         return subprocess.CompletedProcess(cmd, 1, "", str(e))
 

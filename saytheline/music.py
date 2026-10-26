@@ -47,7 +47,7 @@ def path(sid):
 
 def _duration(p):
     r = subprocess.run(["ffprobe", "-v", "error", "-select_streams", "a:0", "-show_entries", "stream=codec_type:format=duration",
-                        "-of", "json", p], capture_output=True, text=True, timeout=30)
+                        "-of", "json", p], capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=30)
     d = json.loads(r.stdout or "{}")
     if not d.get("streams"):
         return None
@@ -100,7 +100,7 @@ def analyse(p):
         wav = os.path.join(tmp, "a.wav")
         subprocess.run(["ffmpeg", "-v", "error", "-nostdin", "-y", "-t", str(ANALYSE_SECONDS), "-i", p,
                         "-ac", "1", "-ar", "22050", "-c:a", "pcm_s16le", wav], check=True, capture_output=True, timeout=120)
-        r = subprocess.run([*config.nice(), config.stt_python(), "-I", WORKER, wav], capture_output=True, text=True, timeout=300)
+        r = subprocess.run([*config.nice(), config.stt_python(), "-I", WORKER, wav], capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=300)
         if r.returncode != 0:
             raise RuntimeError("couldn't find the beat: " + r.stderr.strip()[-200:])
         d = json.loads(r.stdout)
@@ -145,7 +145,7 @@ def mix(video, song_path, opts, out):
     """The cut's audio with the song under it, as `out` (video copied as is). opts: offset_s (where in
     the song to start), level (low/medium/high), clips (duck/mute/keep)."""
     r = subprocess.run(["ffprobe", "-v", "error", "-show_entries", "format=duration", "-of", "csv=p=0", video],
-                       capture_output=True, text=True, timeout=30)
+                       capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=30)
     dur = float(r.stdout.strip() or 0)
     if dur <= 0:
         raise RuntimeError("the cut has no length")

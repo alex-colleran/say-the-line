@@ -46,7 +46,7 @@ def transcribe(src, a_ms, b_ms, careful=False):
                         "-vn", "-ac", "1", "-ar", "16000", wav],
                        check=True, capture_output=True, timeout=60)
         r = subprocess.run([*config.nice(), STT_PY, "-I", WORKER, wav, *(["--careful"] if careful else [])],
-                           capture_output=True, text=True, timeout=300)
+                           capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=300)
         if r.returncode != 0:
             raise RuntimeError(r.stderr.strip()[-300:])
     return [dict(w, s=w["s"] + a_ms, e=w["e"] + a_ms) for w in json.loads(r.stdout or "[]")]

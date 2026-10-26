@@ -56,7 +56,7 @@ AUDIO_MODES = ("original", "dialogue", "nodialogue")
 def probe(path):
     r = subprocess.run(["ffprobe", "-v", "error", "-show_entries",
                         "stream=codec_type,width,height:format=duration", "-of", "json", path],
-                       capture_output=True, text=True, timeout=30)
+                       capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=30)
     d = json.loads(r.stdout or "{}")
     streams = d.get("streams") or []
     v = next((s for s in streams if s.get("codec_type") == "video"), {})
@@ -77,7 +77,7 @@ def audio_tracks(path):
     """Language tags of the file's audio tracks, in order ("" = untagged)."""
     try:
         r = subprocess.run(["ffprobe", "-v", "error", "-select_streams", "a", "-show_entries",
-                            "stream_tags=language", "-of", "json", path], capture_output=True, text=True, timeout=30)
+                            "stream_tags=language", "-of", "json", path], capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=30)
         return tuple(((s.get("tags") or {}).get("language") or "").lower()
                      for s in json.loads(r.stdout or "{}").get("streams") or [])
     except (OSError, ValueError, subprocess.TimeoutExpired):
@@ -103,7 +103,7 @@ def font_path(family="Inter"):
     if FONT_FILES.get(family) and os.path.isfile(p):
         return p
     try:                       # not shipped: whatever fontconfig has
-        r = subprocess.run(["fc-match", "--format=%{file}", f"{family}:bold"], capture_output=True, text=True)
+        r = subprocess.run(["fc-match", "--format=%{file}", f"{family}:bold"], capture_output=True, text=True, encoding="utf-8", errors="replace")
         return r.stdout.strip()
     except OSError:
         return ""
@@ -631,7 +631,7 @@ def separate(path, mode, fmt):
                         "-ar", "44100", wav], check=True, capture_output=True, timeout=120)
         r = subprocess.run([*config.nice(), DEMUCS, "-n", "htdemucs", "--two-stems=vocals",
                             "-d", "cpu", "-j", "1", "-o", tmp, wav],
-                           capture_output=True, text=True, timeout=900,
+                           capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=900,
                            env={**os.environ, "OMP_NUM_THREADS": "4", "MKL_NUM_THREADS": "4"})
         if r.returncode != 0:
             raise RuntimeError("stem separation failed: " + r.stderr.strip()[-300:])
@@ -665,10 +665,10 @@ def supercut(segments, opts, out, progress=None):
         if not parts:
             raise RuntimeError("no segment rendered")
         lst = os.path.join(tmp, "list.txt")
-        with open(lst, "w") as f:
+        with open(lst, "w", encoding="utf-8") as f:
             for p in parts:              # each part lasts exactly its video (AAC pads its last frame)
                 r = subprocess.run(["ffprobe", "-v", "error", "-select_streams", "v:0", "-show_entries", "stream=duration",
-                                    "-of", "csv=p=0", p], capture_output=True, text=True, timeout=30)
+                                    "-of", "csv=p=0", p], capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=30)
                 f.write(f"file '{p}'\n" + (f"duration {float(r.stdout.strip()):.4f}\n" if r.stdout.strip() else ""))
         r = subprocess.run(["ffmpeg", "-v", "error", "-nostdin", "-y", "-f", "concat", "-safe", "0",
                             "-i", lst, "-c", "copy", "-movflags", "+faststart", out],

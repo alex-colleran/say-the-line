@@ -35,7 +35,7 @@ def tiers(words):
     if not words:
         return []
     r = subprocess.run([*config.nice(), STT_PY, "-I", WORKER], input=json.dumps({"words": words}),
-                       capture_output=True, text=True, timeout=120)
+                       capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=120)
     if r.returncode != 0:
         raise RuntimeError("tagging failed: " + r.stderr.strip()[-300:])
     return json.loads(r.stdout)

@@ -191,10 +191,11 @@ def ocr(subs, lang="eng"):
         runs = []
         for j in range(k):
             lst = os.path.join(tmp, f"list{j}.txt")
-            with open(lst, "w") as f:
+            with open(lst, "w", encoding="utf-8") as f:
                 f.write("\n".join(names[j * size:(j + 1) * size]) + "\n")
             runs.append(subprocess.Popen([TESSERACT, lst, "stdout", "-l", lang, "--psm", "6"],
-                                         stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,
+                                         stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                                         text=True, encoding="utf-8", errors="replace",     # not the locale's (cp1252 on Windows)
                                          env={**os.environ, "OMP_THREAD_LIMIT": "1"}))
         pages = []
         for j, r in enumerate(runs):

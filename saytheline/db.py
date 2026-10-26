@@ -79,5 +79,5 @@ def jellyfin_query(db_path, sql):
         if not (shutil.which("sudo") and shutil.which("sqlite3")):
             raise RuntimeError(f"cannot read {db_path}: use the Jellyfin API instead (url + api_key)")
         r = subprocess.run(["sudo", "-n", "sqlite3", "-readonly", "-json", db_path, sql],
-                           capture_output=True, text=True, check=True)
+                           capture_output=True, text=True, encoding="utf-8", errors="replace", check=True)
         return json.loads(r.stdout or "[]")
