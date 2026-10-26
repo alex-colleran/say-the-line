@@ -39,6 +39,12 @@ def _drop_cues(c, item_id):
     c.execute("DELETE FROM cues WHERE item_id = ?", (item_id,))
 
 
+def _kind(sub_source):
+    """'embedded' or 'pgs' for a file's own track ('embedded:3'), else the external file's path,
+    whole: a path can hold a colon of its own (D:/..., "Star Trek: Picard"), so no splitting it."""
+    return sub_source.split(":")[0] if sub_source.startswith(("embedded:", "pgs:")) else sub_source
+
+
 def cached_ocr(jf_id, src):
     return os.path.exists(os.path.join(OCR_DIR, f"{jf_id}-{src[4:]}.srt"))
 
@@ -75,7 +81,7 @@ def index(index_path, series=None, movies=False, external_only=False, log=print,
 
         row = c.execute("SELECT id, sub_source, sub_mtime FROM items WHERE jf_id = ?",
                         (it["jf_id"],)).fetchone()
-        was = row[1].split(":")[0] if row else None
+        was = _kind(row[1]) if row else None
         # (a file's own tracks, text or pictures, count as one source: the same file, unchanged)
         # (read by OCR: its kept text must still be there, so deleting it reads the track again)
         if row and (was == source or {was, source} <= {"embedded", "pgs"}) and row[2] == mtime \

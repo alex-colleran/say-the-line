@@ -868,6 +868,32 @@ class IndexOrder(unittest.TestCase):
                 index.index(os.path.join(d, "cues.db"), movies=True, log=seen.append)
         self.assertEqual([s.split(":")[0].strip() for s in seen], ["new-file", "old-file", "new-track"])
 
+    def test_a_second_pass_reads_nothing_again(self):
+        # external subtitle paths may hold a colon (a Windows drive, "Star Trek: Picard"): still unchanged
+        from unittest import mock
+        from saytheline import index
+        srt = "1\n00:00:01,000 --> 00:00:02,000\nWalter, you're the only one I can trust.\n"
+        with tempfile.TemporaryDirectory() as d:
+            folder = os.path.join(d, "Show" if os.name == "nt" else "Show: Part Two")
+            os.makedirs(folder)
+            items = []
+            for name, embedded in (("a", False), ("b", True)):
+                path = os.path.join(folder, name + ".mkv")
+                open(path, "w").close()
+                if not embedded:
+                    with open(os.path.join(folder, name + ".en.srt"), "w") as f:
+                        f.write(srt)
+                items.append(dict(jf_id=name, kind="movie", series=None, season=None, episode=None, title=name,
+                                  year=None, path=path, runtime_s=None, added="2026",
+                                  embedded=[(2, "subrip")] if embedded else []))
+            with mock.patch.object(index.jellyfin, "list_items", return_value=items), \
+                    mock.patch.object(index.subs, "extract_embedded", return_value=srt), \
+                    mock.patch.object(index.subs, "is_dialogue", return_value=True), \
+                    mock.patch.object(index.db, "path_map", return_value=[]):
+                first = index.index(os.path.join(d, "cues.db"), movies=True, log=lambda *_: None)
+                again = index.index(os.path.join(d, "cues.db"), movies=True, log=lambda *_: None)
+        self.assertEqual((first["indexed"], again["indexed"], again["unchanged"]), (2, 0, 2))
+
 
 class JellyfinSubtitleCache(unittest.TestCase):
     def test_uses_a_cached_track_only_when_newer_than_the_video(self):
