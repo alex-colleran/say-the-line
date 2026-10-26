@@ -29,7 +29,7 @@ def main():
     pi.add_argument("--external-only", action="store_true",
                     help="skip embedded tracks (they need ffmpeg to read the whole file)")
     pi.add_argument("--ocr-minutes", type=float, default=60,
-                    help="at most this long reading Blu-ray picture subtitles by OCR per pass (default 60)")
+                    help="at most this long reading Blu-ray and DVD picture subtitles by OCR per pass (default 60)")
     pi.add_argument("--item", help="just this Jellyfin item id")
     pi.add_argument("-q", "--quiet", action="store_true")
     ps = sub.add_parser("search")

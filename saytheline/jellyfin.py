@@ -68,7 +68,7 @@ def _rank(lang, forced, title):
 def list_items(src=None, series=None, movies=False):
     """[{jf_id, kind, series, season, episode, title, year, path, runtime_s, added, embedded, images}]
     where embedded = [(stream index, codec)] of text subtitle tracks, best first, and images = the
-    stream indexes of English (or untagged) Blu-ray picture tracks, best first, for OCR. Newest added first, so a
+    same for English (or untagged) Blu-ray and DVD picture tracks, best first, for OCR. Newest added first, so a
     pass cut short by its time cap has done the media the owner just got."""
     src = src or source()
     items = _api_items(src[1], src[2], series, movies) if src[0] == "api" else _db_items(src[1], series, movies)
@@ -76,7 +76,7 @@ def list_items(src=None, series=None, movies=False):
         i["kind"] = "movie" if movies else "episode"
         st = sorted(i.pop("streams"))
         i["embedded"] = [(x, c) for _, x, c in st if c in subs.TEXT_CODECS]
-        i["images"] = [x for r, x, c in st if c in subs.IMAGE_CODECS and r < 2]
+        i["images"] = [(x, c) for r, x, c in st if c in subs.IMAGE_CODECS and r < 2]
     items.sort(key=lambda i: i.get("added") or "", reverse=True)
     return items
 

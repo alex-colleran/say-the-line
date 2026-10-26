@@ -111,10 +111,10 @@ It runs on the machine that has your media, next to Jellyfin, and is used from a
 - **Jellyfin** with your media (10.10+; tested on 10.11).
 - **The media files readable** from the machine running Say the Line (same box, or a mounted share).
 - **Subtitles**: external `.srt/.ass/.vtt` files next to the videos and/or embedded *text* tracks.
-  Blu-ray picture subtitles (PGS) are read by OCR when **tesseract** is installed
+  Blu-ray and DVD picture subtitles (PGS, VobSub) are read by OCR when **tesseract** is installed
   (`apt install tesseract-ocr tesseract-ocr-eng`, `brew install tesseract`): only when a title has
   no English text track, about 30 s a film, kept in `data/ocr` so each is read once, and at most an
-  hour of it per index pass (`--ocr-minutes`). DVD picture subtitles (VobSub) can't be searched yet.
+  hour of it per index pass (`--ocr-minutes`).
   Bazarr is the easy way to fill the other gaps.
 - **Python 3.11+** and **ffmpeg** built with libass (most distro and Homebrew builds are).
 - About 2 GB of disk for the speech model and Python packages. A modern 4-core CPU is plenty;

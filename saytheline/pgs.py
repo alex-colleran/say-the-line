@@ -133,7 +133,7 @@ def _sheet(pics):
 
 
 # what tesseract makes of a ♪ at either end of a sung line ("J City of stars I")
-_NOTE = r"(?:J|f|ff|ft|Jf|fJ|d|<|¢|£|&|I|♪|♫)"
+_NOTE = r"(?:J|f|ff|ft|Jf|fJ|d|<|¢|£|&|I|\?|♪|♫)"
 _SUNG = re.compile(rf"^(- )?({_NOTE})\s+(.*?)(?:\s+({_NOTE}))?$")
 
 
@@ -162,11 +162,20 @@ def _clean(t):
     return "\n".join(lines)
 
 
-def to_srt(sup_path, lang="eng", progress=None):
+def to_srt(sup_path, lang="eng"):
     """The track as SRT text, read by tesseract. Raises RuntimeError without tesseract."""
+    _need()
+    return ocr(read_sup(sup_path), lang)
+
+
+def _need():
     if not available():
-        raise RuntimeError("PGS subtitles need tesseract (apt install tesseract-ocr tesseract-ocr-eng) and pillow")
-    subs = read_sup(sup_path)
+        raise RuntimeError("picture subtitles need tesseract (apt install tesseract-ocr tesseract-ocr-eng) and pillow")
+
+
+def ocr(subs, lang="eng"):
+    """[(start_ms, end_ms, [(x, y, picture)])] (from read_sup, or vobsub.read_track) as SRT text."""
+    _need()
     if not subs:
         return ""
     with tempfile.TemporaryDirectory(prefix="saytheline-ocr-") as tmp:

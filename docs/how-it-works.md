@@ -27,8 +27,8 @@ Design notes: what each part does and why it is built that way. For setup, see t
 - **Self-overlapping tracks:** a track where over a quarter of the lines start before the previous
   one ends holds more than this episode (one release muxed every earlier episode into each file);
   another track is used when one reads as dialogue (`subs.overlap`).
-- Bitmap subtitles (PGS / VobSub) can't be searched; those items need text subtitles (Bazarr) or
-  speech-to-text.
+- Picture subtitles (Blu-ray PGS, DVD VobSub) are read by OCR (below) when no text track reads
+  as dialogue.
 
 ## Web server
 - Python standard library only (`ThreadingHTTPServer`). The UI is one HTML file with vanilla JS
@@ -328,7 +328,7 @@ each with a short hash of the exact request: the same hash twice is work a cache
 Job polls and `/api/busy` are left out. The file rolls to `perf.1.jsonl` at 10 MB. `summary()` sorts
 routes by the total time spent on them, which is where a cache would pay back most.
 
-## Blu-ray picture subtitles
+## Blu-ray and DVD picture subtitles
 
 Many discs carry English only as PGS: each line is a picture. `pgs.py` reads a `.sup` stream
 (ffmpeg `-c copy` of the track): presentation segments start and end each line, palettes are Y Cr Cb
@@ -340,3 +340,10 @@ marks go back to ♪ (a lone "I" only when the other end is a note too). The ind
 (or untagged) picture tracks only after every text track, keeps the text in `data/ocr/<id>-<stream>.srt`,
 and treats a file's text and picture tracks as one source, so an unchanged file is not read again;
 deleting its OCR file reads it again.
+
+DVD tracks (VobSub, `vobsub.py`) are copied out into a small `.mkv`, which keeps the track's `.idx`
+text (and so its 16-colour palette) as codec private data. ffprobe lists each packet's time and size,
+and `ffmpeg -f data` gives the packets end to end; each is one subpicture: 2-bit run-length coded
+fields (even rows, then odd rows) and control sequences for when it shows and hides, its area, and
+which four palette colours and opacities it uses. Each is drawn the same way as a Blu-ray line, and
+the same tesseract step reads them (`pgs.ocr`). Both kinds are kept as `pgs:<stream>` in the index.

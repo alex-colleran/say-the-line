@@ -13,6 +13,8 @@ saytheline/
   jellyfin.py    list items + embedded subtitle tracks (Jellyfin API, or its SQLite DB read-only)
   db.py          our index schema (SQLite FTS5: cues_fts, pairs_fts), path_map
   subs.py        find/parse/clean subtitles (srt/ass/vtt, embedded via ffmpeg), English check
+  pgs.py         Blu-ray picture subtitles (.sup) -> text by tesseract OCR; `ocr()` is shared
+  vobsub.py      DVD picture subtitles (VobSub, via a one-track .mkv) -> pictures for `pgs.ocr`
   index.py       incremental indexer (re-reads an item only if its subtitle source/mtime changed)
   search.py      FTS queries, context lines
   media.py       ffmpeg: probe, preview, geometry, caption ASS/SRT writers, render, still, supercut

@@ -6,25 +6,27 @@ import subprocess
 import tempfile
 import time
 
-from . import config, db, jellyfin, pgs, subs
+from . import config, db, jellyfin, pgs, subs, vobsub
 
-OCR_DIR = os.path.join(config.data_dir(), "ocr")      # Blu-ray picture tracks read once, kept as SRT
+OCR_DIR = os.path.join(config.data_dir(), "ocr")      # Blu-ray and DVD picture tracks read once, kept as SRT
 
 
-def ocr_track(path, jf_id, stream):
-    """An English Blu-ray picture track as SRT text, read by OCR once and kept in data/ocr."""
+def ocr_track(path, jf_id, stream, codec="hdmv_pgs_subtitle"):
+    """An English Blu-ray or DVD picture track as SRT text, read by OCR once and kept in data/ocr."""
     out = os.path.join(OCR_DIR, f"{jf_id}-{stream}.srt")
     if os.path.exists(out) and os.path.getmtime(out) >= os.path.getmtime(path):
         with open(out, encoding="utf-8") as f:
             return f.read()
     os.makedirs(OCR_DIR, exist_ok=True)
     with tempfile.TemporaryDirectory(prefix="saytheline-pgs-") as tmp:
-        sup = os.path.join(tmp, "t.sup")
+        dvd = codec in subs.VOBSUB_CODECS
+        # (a DVD track goes into a small .mkv, which keeps its palette with it)
+        one = os.path.join(tmp, "t.mkv" if dvd else "t.sup")
         r = subprocess.run(["ffmpeg", "-v", "error", "-nostdin", "-y", "-i", path, "-map", f"0:{stream}",
-                            "-c", "copy", sup], capture_output=True, timeout=1800)
+                            "-c", "copy", one], capture_output=True, timeout=1800)
         if r.returncode != 0:
             raise RuntimeError(r.stderr.decode(errors="replace").strip()[:300])
-        text = pgs.to_srt(sup)
+        text = vobsub.to_srt(one) if dvd else pgs.to_srt(one)
     with open(out + ".tmp", "w", encoding="utf-8") as f:
         f.write(text)
     os.replace(out + ".tmp", out)
@@ -85,8 +87,9 @@ def index(index_path, series=None, movies=False, external_only=False, log=print,
         cands = [(ext, os.path.splitext(ext)[1][1:].lower(), None)] if ext else []
         cands += [] if external_only else [(f"embedded:{x}", "ass" if cdc in ("ass", "ssa") else "srt", (x, cdc))
                   for x, cdc in it["embedded"]] if os.path.exists(path) else []
-        # then English picture tracks, by OCR: only when no text track reads as dialogue
-        cands += [(f"pgs:{x}", "srt", None) for x in it.get("images") or []] if use_ocr and os.path.exists(path) else []
+        # then English picture tracks (Blu-ray or DVD; both kept as "pgs:N"), by OCR: only when no
+        # text track reads as dialogue
+        cands += [(f"pgs:{x}", "srt", cdc) for x, cdc in it.get("images") or []] if use_ocr and os.path.exists(path) else []
         cues, err, fallback, later = None, None, None, False
         for src, kind, emb in cands:
             try:
@@ -94,7 +97,7 @@ def index(index_path, series=None, movies=False, external_only=False, log=print,
                     if not cached_ocr(it["jf_id"], src) and time.time() > ocr_until:
                         later = True                # this pass's OCR time is used up: next time
                         break
-                    text = ocr_track(path, it["jf_id"], int(src[4:]))
+                    text = ocr_track(path, it["jf_id"], int(src[4:]), emb)
                     stats["ocr"] += 1
                     got = subs.tidy(subs.parse(text, kind))
                     if subs.is_dialogue(got, it["runtime_s"]) and subs.overlap(got) <= subs.MAX_OVERLAP:

@@ -655,6 +655,27 @@ class BluraySubtitles(unittest.TestCase):
         self.assertEqual(list(im.getdata()), [255, 255, 20, 20, 20, 20, 20, 20])   # white letters drawn black
         self.assertEqual(pgs._ts(3723456), "01:02:03,456")
 
+    def test_dvd_picture_decodes_with_its_times(self):
+        import struct
+        from saytheline import pgs, vobsub
+        if pgs.Image is None:
+            self.skipTest("needs pillow")
+        # 4x2 picture, fields apart: top row = two clear then two of colour 1 (runs 2<<2|0, 2<<2|1),
+        # bottom row = four of colour 1 (a two-nibble run, 4<<2|1)
+        fields = bytes([0x89, 0x11])
+        x1, x2, y1, y2 = 100, 103, 900, 901
+        area = bytes([x1 >> 4, (x1 & 15) << 4 | x2 >> 8, x2 & 255, y1 >> 4, (y1 & 15) << 4 | y2 >> 8, y2 & 255])
+        ctrl = 4 + len(fields)
+        cmds = (bytes([0x03, 0x32, 0x10, 0x04, 0xFF, 0xF0, 0x05]) + area + bytes([0x06]) + struct.pack(">HH", 4, 5)
+                + bytes([0x01, 0xFF]))
+        hide_at = ctrl + 4 + len(cmds)
+        spu = (struct.pack(">HH", 0, ctrl) + fields + struct.pack(">HH", 0, hide_at) + cmds
+               + struct.pack(">HH", 90, hide_at) + bytes([0x02, 0xFF]))            # hidden 90 x 1024/90000 s on
+        got = vobsub._spu(spu)
+        self.assertEqual(got[:6], (0, 1024, 100, 900, 4, 2))
+        im = vobsub._picture(spu, got, [0x000000, 0xFFFFFF])
+        self.assertEqual(list(im.getdata()), [255, 255, 0, 0, 0, 0, 0, 0])   # white letters drawn black
+
 
 class TimingLog(unittest.TestCase):
     def test_summary_finds_slow_routes_repeats_and_cache_misses(self):
