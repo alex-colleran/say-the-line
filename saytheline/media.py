@@ -550,6 +550,10 @@ def _render(src, in_ms, out_ms, opts, cues, out, label, uniform, slow, progress,
     if opts.get("wasted") and not uniform:
         from . import wasted
         wz = wasted.spec_of(opts, in_ms, out_ms)
+    spark = None
+    if opts.get("sparkles") and not uniform:
+        from . import laser
+        spark = laser.sparkles_of(opts)
     part = None
     if ramp:
         # the speed-ramped segment becomes the source: silent (the song carries it), or with the
@@ -571,15 +575,15 @@ def _render(src, in_ms, out_ms, opts, cues, out, label, uniform, slow, progress,
         cues = slowmo.remap_cues(cues, in_ms, *part)
         in_ms, out_ms = 0, round(slowmo.timemap(out_ms - in_ms, *part))
         chain, info = [], probe(src)
-    if las:
-        # the cut with lasers becomes the source (after any slow motion, so the glow isn't
-        # interpolated): captions still go on top
+    if las or spark:
+        # the cut with lasers and/or sparkles becomes the source (after any slow motion, so the
+        # glow isn't interpolated): captions still go on top
         from . import laser, slowmo
-        a, b, style, pick, cuts = las
         m = (lambda t: round(slowmo.timemap(t, *part))) if part else (lambda t: t)
+        a, b, style, pick, cuts = las or (0, 0, None, None, [])
         src = laser.master(src, in_ms, out_ms - in_ms, chain, (w, h), audio_track(src) if info["has_audio"] else None,
-                           (m(a), m(b), style, pick), [m(c) for c in cuts], tmp,
-                           progress and (lambda done, total: progress(done, total, "lasering")))
+                           (m(a), m(b), style, pick) if las else None, [m(c) for c in cuts], tmp,
+                           progress and (lambda done, total: progress(done, total, "lasering")), sparkles=spark)
         cues = slowmo.remap_cues(cues, in_ms, 0, 0, 1)        # onto the new source's timeline, from 0
         in_ms, out_ms = 0, out_ms - in_ms
         chain, info = [], probe(src)
@@ -698,8 +702,9 @@ def still(src, at_ms, in_ms, out_ms, opts, cues, out):
     w, h, chain = geometry(info["width"], info["height"], opts.get("aspect", "original"), opts.get("fit", "crop"),
                            int(opts.get("res") or 0), crop=opts.get("crop"))
     las = None
+    from . import laser
+    spark = laser.sparkles_of(opts)
     if opts.get("laser"):
-        from . import laser
         las = laser.part_of(opts, in_ms, out_ms)
         if las and las[0] <= at_ms - in_ms < las[1]:
             laser.need()
@@ -716,10 +721,11 @@ def still(src, at_ms, in_ms, out_ms, opts, cues, out):
             wz = wasted.spec_of(opts, in_ms, out_ms)
             if wz:
                 sub = ",".join(([sub] if sub else []) + wasted.filters((*wz[:1], 0, *wz[2:]), w, h, tmp, (out_ms - in_ms) / 1000))
-        if las:          # the frame alone first, then its lasers, then the caption over them
+        if las or spark:          # the frame alone first, then its lasers and sparkles, then the caption over them
             frame = os.path.join(tmp, "frame.png")
             _frame(src, at_ms, [shift] + chain, frame)
-            laser.still(frame, las[2], laser.to_output(info["width"], info["height"], opts, w, h, las[3]), frame)
+            laser.still(frame, las[2] if las else None,
+                        laser.to_output(info["width"], info["height"], opts, w, h, las[3]) if las else None, frame, spark)
             _frame(frame, None, [shift] + aes + ([sub] if sub else []), out)
         else:
             _frame(src, at_ms, [shift] + chain + aes + ([sub] if sub else []), out)

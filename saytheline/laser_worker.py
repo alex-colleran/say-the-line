@@ -8,6 +8,7 @@ JSON on stdin:
    "out": the cut with lasers (.mkv), "a_ms", "b_ms": the part with lasers (from the cut's start),
    "cuts": [camera cuts, ms from the cut's start]}
 or, for one picture, {"model", "style", "pick", "image": in.png, "out": out.png}.
+Either can also ask for "sparkles": "subtle" | "lots" (and leave out "style" for sparkles alone).
 Prints "frames done total" lines while it works.
 
 Faces come from MediaPipe's Face Landmarker: the iris centres place the glow, the eye corners size
@@ -16,6 +17,7 @@ again zoomed in when that face is small); without one it is the largest face. Ea
 picks again, so the lasers never jump onto someone else mid-shot.
 """
 import json
+import random
 import subprocess
 import sys
 
@@ -152,6 +154,105 @@ def glow(rgb, face, style, strength=1.0):
     return out
 
 
+# Sparkles: four-point star glints that twinkle on the brightest small spots (chrome, windows,
+# eyes, jewellery), each living well under a second. (max at once, new ones a second, size x h)
+SPARKLES = {"subtle": (3, 2.5, 0.05), "lots": (8, 7.0, 0.075)}
+
+
+def bright_spots(rgb, k=12):
+    """Up to k small bright highlights, strongest first: [(x, y, strength 0..1)] in pixels.
+    Found at a quarter size: bright, brighter than around them, and a local peak."""
+    h, w = rgb.shape[:2]
+    q = 4
+    g = cv2.cvtColor(cv2.resize(rgb, (max(8, w // q), max(8, h // q)), interpolation=cv2.INTER_AREA), cv2.COLOR_RGB2GRAY).astype(np.float32)
+    top = g - cv2.GaussianBlur(g, (0, 0), 6)
+    peak = (g >= cv2.dilate(g, np.ones((7, 7), np.uint8))) & (g > 190) & (top > 18)
+    ys, xs = np.nonzero(peak)
+    if not len(xs):
+        return []
+    score = top[ys, xs] * g[ys, xs]
+    out, gap = [], (w / q) / 14
+    for i in np.argsort(-score):
+        x, y = xs[i], ys[i]
+        if all((x - a) ** 2 + (y - b) ** 2 > gap * gap for a, b, _ in out):
+            out.append((x, y, float(min(1, score[i] / (60 * 255)))))
+            if len(out) >= k:
+                break
+    return [(x * q + q / 2, y * q + q / 2, st) for x, y, st in out]
+
+
+def glint(rgb, x, y, size, strength):
+    """One star glint added over the picture: long thin rays across, shorter on the diagonals,
+    a hot core, a pink-white glow. Drawn small in its own box, blurred, scaled up."""
+    h, w = rgb.shape[:2]
+    L = size
+    x0, x1, y0, y1 = int(max(0, x - L)), int(min(w, x + L)), int(max(0, y - L)), int(min(h, y + L))
+    if x1 - x0 < 3 or y1 - y0 < 3 or strength <= 0.02:
+        return rgb
+    q = min(1.0, 48 / L)
+    bw, bh = max(3, int((x1 - x0) * q)), max(3, int((y1 - y0) * q))
+    core, ray = np.zeros((bh, bw), np.float32), np.zeros((bh, bw), np.float32)
+
+    def pt(px, py):
+        return (int(round((px - x0) * q * 16)), int(round((py - y0) * q * 16)))
+    t = max(1, int(L * 0.035 * q))
+    for (dx, dy, k) in ((1, 0, 1), (0, 1, 1), (0.7, 0.7, 0.4), (0.7, -0.7, 0.4)):
+        cv2.line(ray, pt(x - dx * L * k, y - dy * L * k), pt(x + dx * L * k, y + dy * L * k), 1.0, t, cv2.LINE_AA, shift=4)
+    cv2.circle(core, pt(x, y), max(1, int(L * 0.09 * q * 16)), 1.0, -1, cv2.LINE_AA, shift=4)
+    r = cv2.GaussianBlur(ray, (0, 0), max(0.6, L * 0.02 * q))
+    rays_far = cv2.GaussianBlur(ray, (0, 0), max(0.8, L * 0.06 * q))
+    c = cv2.GaussianBlur(core, (0, 0), max(0.8, L * 0.08 * q))
+    lt = (r[..., None] * np.array((1.4, 1.35, 1.4), np.float32) + rays_far[..., None] * np.array((0.6, 0.35, 0.55), np.float32)
+          + c[..., None] * np.array((1.6, 1.4, 1.5), np.float32)) * strength
+    if q < 1:
+        lt = cv2.resize(lt, (x1 - x0, y1 - y0), interpolation=cv2.INTER_LINEAR)
+    out = rgb if rgb.flags.writeable else rgb.copy()
+    a = out[y0:y1, x0:x1].astype(np.float32) / 255
+    out[y0:y1, x0:x1] = (np.clip(1 - (1 - a) * np.exp(-lt), 0, 1) * 255).astype(np.uint8)
+    return out
+
+
+class Sparkles:
+    """Glints born on bright spots, each following its spot while it lives (dying early once the
+    spot is gone, as at a camera cut), twinkling in and out. Seeded, so a render repeats."""
+    def __init__(self, level, h, fps):
+        self.most, self.rate, k = SPARKLES.get(level, SPARKLES["subtle"])
+        self.size, self.fps, self.live, self.rng = h * k, fps, [], random.Random(7)
+
+    def step(self, rgb, k):
+        spots = bright_spots(rgb) if k % 2 == 0 or not hasattr(self, "_spots") else self._spots
+        self._spots = spots
+        for sp in self.live:                       # follow the spot, or start dying
+            near = min(spots, key=lambda p: (p[0] - sp["x"]) ** 2 + (p[1] - sp["y"]) ** 2, default=None)
+            if near and (near[0] - sp["x"]) ** 2 + (near[1] - sp["y"]) ** 2 < (self.size * 0.6) ** 2:
+                sp["x"], sp["y"], sp["lost"] = near[0], near[1], 0
+            else:
+                sp["lost"] += 1
+                if sp["lost"] > 2:
+                    sp["life"] = min(sp["life"], sp["age"] + 3)
+            sp["age"] += 1
+        self.live = [sp for sp in self.live if sp["age"] < sp["life"]]
+        if len(self.live) < self.most and spots and self.rng.random() < self.rate / self.fps:
+            free = [p for p in spots if all((p[0] - s["x"]) ** 2 + (p[1] - s["y"]) ** 2 > self.size ** 2 for s in self.live)]
+            if free:
+                x, y, st = free[min(len(free) - 1, int(self.rng.random() ** 2 * len(free)))]
+                self.live.append(dict(x=x, y=y, st=0.6 + 0.4 * st, age=0, lost=0, size=self.size * self.rng.uniform(0.6, 1.25),
+                                      life=int(self.fps * self.rng.uniform(0.45, 0.9))))
+        for sp in self.live:
+            env = np.sin(np.pi * min(1, sp["age"] / max(1, sp["life"]))) ** 1.5
+            rgb = glint(rgb, sp["x"], sp["y"], sp["size"] * (0.7 + 0.3 * env), sp["st"] * env)
+        return rgb
+
+
+def sparkle_still(rgb, level):
+    """A few glints at full brightness on the strongest spots of one picture."""
+    most, _, k = SPARKLES.get(level, SPARKLES["subtle"])
+    rng = random.Random(7)
+    for x, y, st in bright_spots(rgb, most):
+        rgb = glint(rgb, x, y, rgb.shape[0] * k * rng.uniform(0.7, 1.2), 0.6 + 0.4 * st)
+    return rgb
+
+
 class Follow:
     """Whose eyes, frame to frame: the pick (or the largest face) at the start of each shot, then
     the same face, smoothed so the glow doesn't shiver with the landmarks."""
@@ -185,9 +286,13 @@ class Follow:
 def image(spec):
     bgr = cv2.imread(spec["image"])
     rgb = cv2.cvtColor(bgr, cv2.COLOR_BGR2RGB)
-    lm = landmarker(spec["model"])
     h, w = rgb.shape[:2]
-    f = find(lm, rgb, None if spec.get("pick") is None else np.array(spec["pick"], float), np.hypot(w, h) * 0.18)
+    if spec.get("sparkles"):
+        rgb = sparkle_still(np.ascontiguousarray(rgb), spec["sparkles"])
+    f = None
+    if spec.get("style"):
+        lm = landmarker(spec["model"])
+        f = find(lm, rgb, None if spec.get("pick") is None else np.array(spec["pick"], float), np.hypot(w, h) * 0.18)
     if f is not None:
         rgb = glow(rgb, f, spec.get("style", "flare"))
     cv2.imwrite(spec["out"], cv2.cvtColor(rgb, cv2.COLOR_RGB2BGR))
@@ -205,9 +310,9 @@ def video(spec):
                             "-r", f"{fps:.5f}", "-i", "-", *src_in, "-map", "0:v", *audio,
                             "-c:v", "libx264", "-preset", "veryfast", "-crf", "14", "-pix_fmt", "yuv420p", "-shortest", spec["out"]],
                            stdin=subprocess.PIPE)
-    lm = landmarker(spec["model"])
-    follow = Follow(lm, spec.get("pick"), w, h)
-    a, b = spec["a_ms"], spec["b_ms"]
+    follow = Follow(landmarker(spec["model"]), spec.get("pick"), w, h) if spec.get("style") else None
+    spark = Sparkles(spec["sparkles"], h, fps) if spec.get("sparkles") else None
+    a, b = spec.get("a_ms", 0), spec.get("b_ms", 0)
     cuts = sorted(spec.get("cuts") or [])
     total = max(1, int(round(spec["t"] * fps)))
     fade = max(1e-3, min(FADE_S * 1000, (b - a) / 4))
@@ -219,7 +324,9 @@ def video(spec):
                 break
             rgb = np.frombuffer(buf, np.uint8).reshape(h, w, 3)
             t = k * 1000 / fps
-            if a <= t < b:
+            if spark:
+                rgb = spark.step(np.array(rgb), k)
+            if follow and a <= t < b:
                 while cuts and cuts[0] <= t:               # a new shot: pick again
                     cuts.pop(0)
                     follow.cut()

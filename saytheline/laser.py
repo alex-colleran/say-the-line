@@ -37,6 +37,32 @@ def need():
         raise ValueError("laser eyes need MediaPipe and its face model on the server (see README)")
 
 
+SPARKLES = ("subtle", "lots")
+
+
+@functools.lru_cache(maxsize=1)
+def sparkles_available():
+    """Sparkles need only OpenCV and NumPy, which MediaPipe brings, in the same Python."""
+    py = config.laser_python()
+    try:
+        return bool(py and os.path.exists(py)) and subprocess.run([py, "-I", "-c", "import cv2, numpy"], capture_output=True,
+                                                                  timeout=60).returncode == 0
+    except (OSError, subprocess.SubprocessError):
+        return False
+
+
+def sparkles_of(req):
+    """The request's sparkles ("subtle" or "lots"), or None. Raises ValueError when they can't be made."""
+    v = req.get("sparkles")
+    if not v or v == "off":
+        return None
+    if v not in SPARKLES:
+        raise ValueError("sparkles are Subtle or Lots")
+    if not sparkles_available():
+        raise ValueError("sparkles need OpenCV in the laser eyes Python on the server (see README)")
+    return v
+
+
 def part_of(req, in_ms, out_ms):
     """The request's laser part as (a, b, style, pick), a and b from the in point, or None."""
     las = req.get("laser")
@@ -97,22 +123,26 @@ def _run(spec, progress=None, timeout=900):
     return last
 
 
-def master(src, in_ms, dur_ms, chain, size, track, part, cuts, tmp, progress=None):
+def master(src, in_ms, dur_ms, chain, size, track, part, cuts, tmp, progress=None, sparkles=None):
     """The cut as tmp/laser.mkv, ready for media.render: the source from in_ms for dur_ms through the
-    geometry chain, with lasers over part = (a, b, style, pick in output pixels), its times and
-    the camera `cuts` from the cut's start. `track`: the source's audio track index, or None."""
+    geometry chain, with lasers over part = (a, b, style, pick in output pixels) or None, its times
+    and the camera `cuts` from the cut's start, and/or `sparkles`. `track`: the source's audio
+    track index, or None."""
     from . import slowmo
     out = os.path.join(tmp, "laser.mkv")
-    a, b, style, pick = part
-    _run(dict(src=src, ss=in_ms / 1000, t=dur_ms / 1000, vf=",".join(chain) if chain else "null",
-              w=size[0], h=size[1], fps=slowmo.frame_rate(src), audio=track, out=out,
-              a_ms=a, b_ms=b, cuts=list(cuts), style=style, pick=pick), progress)
+    spec = dict(src=src, ss=in_ms / 1000, t=dur_ms / 1000, vf=",".join(chain) if chain else "null",
+                w=size[0], h=size[1], fps=slowmo.frame_rate(src), audio=track, out=out, sparkles=sparkles)
+    if part:
+        a, b, style, pick = part
+        spec.update(a_ms=a, b_ms=b, cuts=list(cuts), style=style, pick=pick)
+    _run(spec, progress)
     return out
 
 
-def still(png, style, pick, out):
-    """One picture with lasers, if it has a face: True when one was found."""
-    last = _run(dict(image=png, out=out, style=style, pick=pick), timeout=120)
+def still(png, style, pick, out, sparkles=None):
+    """One picture with lasers (style None: none), if it has a face, and/or sparkles: True when a
+    face was found."""
+    last = _run(dict(image=png, out=out, style=style, pick=pick, sparkles=sparkles), timeout=120)
     try:
         return bool(json.loads(last).get("face"))
     except ValueError:

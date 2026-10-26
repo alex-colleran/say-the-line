@@ -376,12 +376,13 @@ def run_render(job_id, req):
             laser.need()
         fx = sfx.spec_of(req) if fmt != "gif" else None
         aesthetic.of(req)                    # an unknown one fails here, before the queue
+        spark = laser.sparkles_of(req)       # the same frame pass as lasers
         cues = clip_captions(row, in_ms, out_ms, req)
         if req.get("preview"):
             # a quick look at the interpolation or the lasers before the real render: small, with
             # the previews (pruned like them), never in All rendered
-            if not (slow or smooth or lasers):
-                raise ValueError("a preview is for slow motion, 60 fps or laser eyes")
+            if not (slow or smooth or lasers or spark):
+                raise ValueError("a preview is for slow motion, 60 fps, laser eyes or sparkles")
             fmt, req = "mp4", {**req, "res": min(int(req.get("res") or 360), 360), "audio": "original"}
             os.makedirs(INTERP, exist_ok=True)
             name, out = f"{job_id}.mp4", os.path.join(INTERP, f"{job_id}.mp4")
@@ -395,7 +396,7 @@ def run_render(job_id, req):
         def progress(done, total, stage="slowing"):     # RIFE making the slow part's frames, or the lasers
             job.update(state=stage if done < total else "rendering", done=done, total=total)
         with RENDER_SLOT:
-            job["state"] = "slowing" if slow or smooth else "lasering" if lasers else "rendering"
+            job["state"] = "slowing" if slow or smooth else "lasering" if lasers or spark else "rendering"
             t = time.time()
             info = media.render(row["path"], in_ms, out_ms, {**req, "format": fmt}, cues, out + ".tmp." + fmt,
                                 slow=slow, progress=progress, smooth=smooth)
@@ -507,7 +508,7 @@ def job_size(kind, req):
             return 1.0
     if kind == "render":
         interp = (req.get("slow") or {}).get("factor", 1) > 1 if isinstance(req.get("slow"), dict) else bool(req.get("smooth"))
-        lasers = isinstance(req.get("laser"), dict) and bool(req["laser"].get("style"))
+        lasers = isinstance(req.get("laser"), dict) and bool(req["laser"].get("style")) or req.get("sparkles") in ("subtle", "lots")
         key = "render" + (":interp" if interp else "") + (":laser" if lasers else "") \
             + (":stems" if req.get("audio") in ("dialogue", "nodialogue") else "") + (":preview" if req.get("preview") else "")
         return key, secs("in_ms", "out_ms"), PHASES["render" + (":interp" if interp else "") + (":laser" if lasers else "")]
@@ -1714,12 +1715,19 @@ class Handler(BaseHTTPRequestHandler):
                                                 int(q.get("offset_ms") or 0)))
             if u.path == "/api/options":
                 return self.send(200, dict(fonts=media.FONTS, sizes=list(media.SIZES), stems=bool(config.demucs()),
-                                           slowmo=bool(slowmo.rife()), slow_max_ms=slowmo.MAX_PART_MS, laser=laser.available(),
+                                           slowmo=bool(slowmo.rife()), slow_max_ms=slowmo.MAX_PART_MS, laser=laser.available(), sparkles=laser.sparkles_available(),
                                            slow_secs_per_mpix_frame=slowmo.SECS_PER_MPIX_FRAME, rates=dict(RATES),
                                            colours=list(media.COLOURS), aspects=["original", *media.ASPECTS]),
                                  cache="max-age=300")
             if u.path == "/api/sfx":
                 return self.send(200, {"sounds": sfx.library(), "volumes": sfx.VOLUMES, "min_gap_ms": sfx.MIN_GAP_MS})
+            m = re.fullmatch(r"/y2k/(\d{2,4})x(\d{2,4})\.png", u.path)            # the Y2K frame, for the editor
+            if m:
+                from . import y2k
+                w, h = int(m.group(1)), int(m.group(2))
+                if not (64 <= w <= 2160 and 64 <= h <= 2160) or w % 2 or h % 2:
+                    return self.send(400, {"error": "frame sizes are even, 64 to 2160"})
+                return self.send_file(y2k.frame(w, h), "image/png")
             m = re.fullmatch(r"/sfx/([a-z]{2,12}|[0-9a-f]{16})\.wav", u.path)        # a sound effect, for the editor
             if m:
                 try:

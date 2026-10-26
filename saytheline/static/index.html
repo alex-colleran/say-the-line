@@ -599,6 +599,7 @@
       <video id="vid" playsinline preload="auto"></video>
       <div class="frame" id="frame" hidden title="Drag to choose what stays in · drag a corner or pinch to zoom · double-tap to centre"><i data-c="nw"></i><i data-c="ne"></i><i data-c="sw"></i><i data-c="se"></i></div>
       <div class="aes-vig" id="aesVig" hidden></div>
+      <img class="aes-vig" id="aesFrame" alt="" hidden>
       <div class="wasted" id="wastedCap" hidden><b></b></div>
       <div class="cap" id="cap" hidden></div>
       <div class="pick-dot" id="pickDot" hidden></div>
@@ -778,6 +779,8 @@
       <div class="grp">
         <div class="opt"><span>Aesthetic</span><div class="chips" data-opt="aesthetic"></div></div>
         <div class="hint" id="aesHint"></div>
+        <div class="opt"><span>Sparkles</span><div class="chips" data-opt="sparkles"></div></div>
+        <div class="hint" id="sparkHint" hidden>Star glints that twinkle on the brightest small spots: chrome, windows, snow, eyes. Not shown while editing: Still or Render shows them.</div>
       </div>
       <div class="grp" id="audioGrp">
         <div class="opt"><span>Audio</span><div class="chips" data-opt="audio"></div></div>
@@ -1409,7 +1412,7 @@ async function showEmpty() {
 
 /* ================= options + their rules ================= */
 const opts = { format: "mp4", aspect: "original", fit: "crop", res: 720, audio: "original",
-  slow: 1, slowSound: "deep", smooth: 0, laser: "off", sfx: "off", sfxWhen: "lines", sfxDelay: 200, sfxVol: "medium", aesthetic: "none", wasted: "off", wastedText: "WASTED", wastedHold: 1500, wastedSound: true,
+  slow: 1, slowSound: "deep", smooth: 0, laser: "off", sfx: "off", sfxWhen: "lines", sfxDelay: 200, sfxVol: "medium", aesthetic: "none", sparkles: "off", wasted: "off", wastedText: "WASTED", wastedHold: 1500, wastedSound: true,
   subsOn: true, captionSrc: "subs", look: "classic", fontClassic: "Inter", fontWord: "Inter Black",
   size: "m", colour: "white", hl: "yellow", caps: false, box: false, position: "bottom", tab: "cut", loop: false };
 const CHOICES = {
@@ -1425,7 +1428,8 @@ const CHOICES = {
   sfxWhen: [["lines", "After each line"], ["last", "After the last line"], ["laser", "With the lasers"], ["mark", "At a mark"]],
   sfxDelay: [[0, "0"], [100, "0.1 s"], [200, "0.2 s"], [300, "0.3 s"], [500, "0.5 s"]],
   sfxVol: [["low", "Low"], ["medium", "Medium"], ["high", "High"]],
-  aesthetic: [["none", "None"], ["punchy", "Punchy"], ["grunge", "Grunge"]],
+  aesthetic: [["none", "None"], ["punchy", "Punchy"], ["grunge", "Grunge"], ["y2k", "Y2K"]],
+  sparkles: [["off", "Off"], ["subtle", "Subtle"], ["lots", "Lots"]],
   wasted: [["off", "Off"], ["on", "Wasted"]],
   wastedHold: [[0, "None"], [1000, "1 s"], [1500, "1.5 s"], [2500, "2.5 s"]],
   wastedSound: [[true, "Fall"], [false, "Off"]],
@@ -1462,6 +1466,7 @@ function disabledReason(key, v) {
   if (key === "smooth" && v && opts.format === "gif") return "GIFs play at 12 fps";
   if (key === "laser" && v !== "off" && !SERVER.laser) return "Needs MediaPipe and its face model on the server (see README)";
   if (key === "sfxWhen" && v === "laser" && !laserOn()) return "Turn on Laser eyes first";
+  if (key === "sparkles" && v !== "off" && !SERVER.sparkles) return "Needs OpenCV in the laser eyes Python on the server (see README)";
   return null;
 }
 function setOpt(key, v) {
@@ -1525,6 +1530,7 @@ function applyRules() {
   $("#audioHint").hidden = opts.audio === "original" || opts.format === "gif";
   drawSlow(); drawSmooth(); drawLaser(); drawSfx(); drawWasted();
   $("#aesHint").textContent = AES_HINT[opts.aesthetic] || "";
+  $("#sparkHint").hidden = opts.sparkles === "off";
 }
 function refreshAll() { buildOptions(); applyRules(); drawCapShift(); drawStt(); drawSubText(); drawOverlay(); drawSummary(); schedulePoster(); autosave(); }
 function drawSummary() {
@@ -1573,7 +1579,7 @@ function captionDefaults() { opts.subsOn = true; opts.captionSrc = "subs"; opts.
 
 /* drafts: every edited clip is kept (Library > Recent edits); a hearted moment keeps the same state */
 const DRAFT_OPTS = ["subsOn", "captionSrc", "look", "fontClassic", "fontWord", "size", "colour", "hl", "caps", "box", "position",
-  "format", "aspect", "fit", "res", "audio", "slow", "slowSound", "smooth", "laser", "sfx", "sfxWhen", "sfxDelay", "sfxVol", "aesthetic", "wasted", "wastedText", "wastedHold", "wastedSound"];
+  "format", "aspect", "fit", "res", "audio", "slow", "slowSound", "smooth", "laser", "sfx", "sfxWhen", "sfxDelay", "sfxVol", "aesthetic", "sparkles", "wasted", "wastedText", "wastedHold", "wastedSound"];
 function edState() {
   const o = {}; DRAFT_OPTS.forEach(k => o[k] = opts[k]);
   return { v: 2, in_ms: Math.round(ed.inMs), out_ms: Math.round(ed.outMs), offset_ms: ed.offset, opts: o,
@@ -2016,15 +2022,24 @@ $("#laserPrev").onclick = async () => {
 const AES_CSS = {
   punchy: { filter: "saturate(1.38) contrast(1.05) brightness(1.03)", vig: 0.22 },
   grunge: { filter: "saturate(0.55) sepia(0.18) hue-rotate(75deg) contrast(0.9) brightness(0.88)", vig: 0.45 },
+  y2k: { filter: "sepia(0.2) hue-rotate(-28deg) saturate(1.25) brightness(1.06) contrast(0.94)", vig: 0, frame: true },
 };
 const AES_HINT = {
   punchy: "The shared-clip look: richer colour and contrast, crisper detail, a touch warmer. Shown roughly here; the render is exact.",
   grunge: "Dark and dirty: faded blacks, drained green-teal colour, moving film grain, a heavy vignette. Shown roughly here (without the grain); the render is exact.",
+  y2k: "Pink and lilac with a soft glow, in a bedazzled frame of low-poly facets and rhinestones drawn to fit the shape. Shown roughly here; the render is exact.",
 };
 function drawAesVig(r) {
-  const v = $("#aesVig"), a = AES_CSS[opts.aesthetic];
-  v.hidden = !a;
-  if (!a) return;
+  const v = $("#aesVig"), a = AES_CSS[opts.aesthetic], f = $("#aesFrame");
+  f.hidden = !(a && a.frame && r.W && r.H);
+  if (!f.hidden) {
+    // the frame the render draws, at this shape (short side 720: the border is a share of it)
+    const k = 720 / Math.min(r.W, r.H), fw = Math.round(r.W * k / 2) * 2, fh = Math.round(r.H * k / 2) * 2, src = `/y2k/${fw}x${fh}.png`;
+    if (f.getAttribute("src") !== src) f.src = src;
+    Object.assign(f.style, { left: r.left + "px", top: r.top + "px", width: r.W + "px", height: r.H + "px" });
+  }
+  v.hidden = !(a && a.vig);
+  if (v.hidden) return;
   Object.assign(v.style, { left: r.left + "px", top: r.top + "px", width: r.W + "px", height: r.H + "px",
     background: `radial-gradient(ellipse at center, rgba(0,0,0,0) 55%, rgba(0,0,0,${a.vig}) 100%)` });
 }
@@ -2991,6 +3006,7 @@ function renderBody() {
     slow: slowOn() ? { factor: opts.slow, a_ms: Math.round(ed.slowA), b_ms: Math.round(ed.slowB), sound: opts.slowSound } : undefined,
     laser: laserOn() ? { style: opts.laser, a_ms: Math.round(ed.laserA), b_ms: Math.round(ed.laserB), pick: ed.laserPick || undefined } : undefined,
     aesthetic: opts.aesthetic !== "none" ? opts.aesthetic : undefined,
+    sparkles: opts.sparkles !== "off" && SERVER.sparkles ? opts.sparkles : undefined,
     wasted: wastedOn() ? { text: opts.wastedText || "WASTED", at_ms: Math.round(wastedStart()), hold_ms: opts.wastedHold, sound: opts.wastedSound } : undefined,
     sfx: sfxOn() ? { id: opts.sfx, when: opts.sfxWhen, delay_ms: opts.sfxDelay, volume: opts.sfxVol, times_ms: sfxTimes(),
                      mark_ms: opts.sfxWhen === "mark" ? Math.round(ed.sfxMark) : undefined } : undefined,
@@ -4753,7 +4769,7 @@ const SERVER = { stems: true, slowmo: false, laser: false };          // what th
   run();
   if (p.get("edit")) openClipLink(p.get("edit"));
   try { const o = await (await fetch("/api/options")).json(); FONT_LIST = o.fonts; SERVER.stems = !!o.stems;
-    Object.assign(SERVER, { slowmo: !!o.slowmo, laser: !!o.laser, slow_max_ms: o.slow_max_ms, slow_secs_per_mpix_frame: o.slow_secs_per_mpix_frame }); } catch (e) {}
+    Object.assign(SERVER, { slowmo: !!o.slowmo, laser: !!o.laser, sparkles: !!o.sparkles, slow_max_ms: o.slow_max_ms, slow_secs_per_mpix_frame: o.slow_secs_per_mpix_frame }); } catch (e) {}
   loadSfx();
   buildOptions(); applyRules();
 })();

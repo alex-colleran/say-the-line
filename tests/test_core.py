@@ -1077,3 +1077,19 @@ class Wasted(unittest.TestCase):
                 self.assertEqual(f.read(), "BUSTED")
         self.assertTrue(fs[-1].startswith("tpad=") and "crop=1280:720" in fs)
         self.assertEqual(wasted.audio_filters((2.0, 1.5, "x", True), 5.0)[0], "apad=whole_dur=6.500")
+
+
+class Y2K(unittest.TestCase):
+    def test_frame_and_sparkle_requests(self):
+        from saytheline import aesthetic, laser, y2k
+        self.assertIn("y2k", aesthetic.NAMES)
+        for ch in "rgba":
+            e = y2k._frame_expr(1280, 720, ch)
+            self.assertEqual(e.count("("), e.count(")"))          # one balanced geq expression per channel
+            self.assertNotIn("'", e)
+        self.assertEqual(y2k._frame_expr(1280, 720, "r"), y2k._frame_expr(720, 1280, "r"))    # W and H come from geq
+        self.assertNotEqual(y2k._frame_expr(1280, 720, "r"), y2k._frame_expr(1920, 1080, "r"))  # the border follows the size
+        self.assertIsNone(laser.sparkles_of({}))
+        self.assertIsNone(laser.sparkles_of({"sparkles": "off"}))
+        with self.assertRaises(ValueError):
+            laser.sparkles_of({"sparkles": "glitter"})

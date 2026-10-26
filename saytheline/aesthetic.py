@@ -6,11 +6,12 @@ captions keep their own colours). Plain ffmpeg filters, so they add next to noth
           vignette
   grunge  dark and dirty: blacks crushed and whites held down, colour drained towards green-teal,
           film grain that moves, a heavy vignette and a slight red/blue fringe
+  y2k     pink and lilac with a soft glow, in a bedazzled frame drawn to fit the shape (y2k.py)
 
 Sizes (the clarity radius, the fringe) follow the output size, so 480p and 1080p look alike.
 The editor shows an approximation with CSS filters (= JS AES_CSS); the render is exact."""
 
-NAMES = {"none": "None", "punchy": "Punchy", "grunge": "Grunge"}
+NAMES = {"none": "None", "punchy": "Punchy", "grunge": "Grunge", "y2k": "Y2K"}
 
 
 def _odd(x, lo, hi):
@@ -28,6 +29,9 @@ def filters(name, w, h):
                 f"unsharp=lx={k}:ly={k}:la=0.55:cx=5:cy=5:ca=0",
                 "cas=strength=0.35",
                 "vignette=angle=PI/8"]
+    if name == "y2k":
+        from . import y2k
+        return y2k.filters(w, h)
     if name == "grunge":
         px = max(1, round(short / 360))               # the fringe, ~2 px at 720p
         return ["curves=all='0/0.04 0.15/0.1 0.5/0.47 0.85/0.8 1/0.9'",

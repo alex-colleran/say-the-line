@@ -64,6 +64,10 @@ It runs on the machine that has your media, next to Jellyfin, and is used from a
   shared-clip look (richer colour and contrast, crisper detail, a touch warmer); *Grunge* is dark and
   dirty (faded blacks, drained green-teal colour, moving film grain, a heavy vignette). The editor
   shows it roughly as you edit; plain ffmpeg filters, so it adds a second or two to a render.
+  *Y2K* is pink and lilac with a soft glow, inside a bedazzled frame (low-poly facets, rhinestones,
+  corner stars) drawn by ffmpeg to fit each shape, so no artwork ships. **Sparkles** (Subtle or Lots,
+  with any aesthetic) twinkle star glints on the brightest small spots, chrome, windows, snow, eyes;
+  they need OpenCV in the laser eyes Python, and show in stills and renders.
 - **Audio** (optional): *Dialogue only* or *No dialogue* via demucs stem separation.
 - **Slow motion and 60 fps** (optional, Cut > Interpolation): mark part of a clip (up to 5 s) to play at ½× or ¼×. The missing
   frames are made by [RIFE](https://github.com/nihui/rife-ncnn-vulkan) on the GPU, so it stays smooth,
