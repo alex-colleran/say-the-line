@@ -5,7 +5,8 @@
   python -m saytheline stats
   python -m saytheline serve                              # the web UI (same as python -m saytheline.web)
   python -m saytheline doctor                             # check the setup
-  python -m saytheline mcp                                # MCP server for AI agents (stdio; needs the web server running)
+  python -m saytheline login [--url URL]                  # Jellyfin token by Quick Connect, saved as api_key
+  python -m saytheline mcp                               # MCP server for AI agents (stdio; needs the web server running)
 """
 import argparse
 import os
@@ -41,8 +42,14 @@ def main():
     sub.add_parser("stats")
     sub.add_parser("serve")
     sub.add_parser("doctor")
+    pl = sub.add_parser("login", help="get a Jellyfin token by Quick Connect and save it as [jellyfin] api_key")
+    pl.add_argument("--url", help="Jellyfin's address, if saytheline.toml has none yet")
     sub.add_parser("mcp")
     a = ap.parse_args()
+
+    if a.cmd == "login":
+        from . import login
+        return login.main(a.url)
 
     if a.cmd == "mcp":
         try:

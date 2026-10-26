@@ -959,3 +959,18 @@ class Settings(unittest.TestCase):
             media.nvenc_check.cache_clear()
             self.assertEqual(media.h264(20, cpu), cpu)
         media.nvenc_check.cache_clear()
+
+
+class Login(unittest.TestCase):
+    def test_token_goes_under_jellyfin_and_nothing_else_moves(self):
+        from saytheline import login
+        with tempfile.TemporaryDirectory() as d:
+            p = os.path.join(d, "saytheline.toml")
+            with open(p, "w", encoding="utf-8") as f:
+                f.write('[jellyfin]\nurl = "http://jf:8096"\napi_key = ""   # paste\n\n[server]\nport = 8765\n')
+            login.save_key(p, "http://jf:8096", "abc123")
+            self.assertEqual(open(p, encoding="utf-8").read(),
+                             '[jellyfin]\nurl = "http://jf:8096"\napi_key = "abc123"\n\n[server]\nport = 8765\n')
+            os.remove(p)
+            login.save_key(p, "http://jf:8096", "abc123")       # no file yet: a minimal one
+            self.assertEqual(open(p, encoding="utf-8").read(), '[jellyfin]\nurl = "http://jf:8096"\napi_key = "abc123"\n\n')
