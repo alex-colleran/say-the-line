@@ -30,7 +30,7 @@ from . import ramp
 from . import sayany
 from . import search as srch
 from . import shots as shotcuts
-from . import laser, sfx, slowmo
+from . import aesthetic, laser, sfx, slowmo
 from . import snap as snapper
 
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -373,6 +373,7 @@ def run_render(job_id, req):
         if lasers:
             laser.need()
         fx = sfx.spec_of(req) if fmt != "gif" else None
+        aesthetic.of(req)                    # an unknown one fails here, before the queue
         cues = clip_captions(row, in_ms, out_ms, req)
         if req.get("preview"):
             # a quick look at the interpolation or the lasers before the real render: small, with

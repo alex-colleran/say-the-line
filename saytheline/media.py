@@ -576,6 +576,7 @@ def _render(src, in_ms, out_ms, opts, cues, out, label, uniform, slow, progress,
         src = laser.master(src, in_ms, out_ms - in_ms, chain, (w, h), audio_track(src) if info["has_audio"] else None,
                            (m(a), m(b), style, pick), [m(c) for c in cuts], tmp,
                            progress and (lambda done, total: progress(done, total, "lasering")))
+        cues = slowmo.remap_cues(cues, in_ms, 0, 0, 1)        # onto the new source's timeline, from 0
         in_ms, out_ms = 0, out_ms - in_ms
         chain, info = [], probe(src)
     dur = (out_ms - in_ms) / 1000
@@ -583,6 +584,8 @@ def _render(src, in_ms, out_ms, opts, cues, out, label, uniform, slow, progress,
     # frame past the out point through, and with a cut there that frame is the next shot. The trim
     # keeps exactly the frames before the out point (times here are relative to the -ss point).
     chain.insert(0, f"trim=end={dur:.3f}")
+    from . import aesthetic
+    chain += aesthetic.filters(aesthetic.of(opts), w, h)      # graded under the captions
     sub = caption_filter(opts.get("subs") or {}, cues, in_ms, out_ms, w, h, tmp)
     if sub:
         chain.append(sub)
@@ -689,13 +692,15 @@ def still(src, at_ms, in_ms, out_ms, opts, cues, out):
         st = dict(opts.get("subs") or {}, still=True)
         sub = caption_filter(st, cues, in_ms, out_ms, w, h, tmp) if in_ms <= at_ms < out_ms else None
         shift = f"setpts=PTS-STARTPTS+{(at_ms - in_ms) / 1000:.3f}/TB"
+        from . import aesthetic
+        aes = aesthetic.filters(aesthetic.of(opts), w, h)
         if las:          # the frame alone first, then its lasers, then the caption over them
             frame = os.path.join(tmp, "frame.png")
             _frame(src, at_ms, [shift] + chain, frame)
             laser.still(frame, las[2], laser.to_output(info["width"], info["height"], opts, w, h, las[3]), frame)
-            _frame(frame, None, [shift] + ([sub] if sub else []), out)
+            _frame(frame, None, [shift] + aes + ([sub] if sub else []), out)
         else:
-            _frame(src, at_ms, [shift] + chain + ([sub] if sub else []), out)
+            _frame(src, at_ms, [shift] + chain + aes + ([sub] if sub else []), out)
     return dict(width=w, height=h, bytes=os.path.getsize(out))
 
 

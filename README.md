@@ -55,6 +55,10 @@ It runs on the machine that has your media, next to Jellyfin, and is used from a
 - **Output**: MP4, WebM, GIF or a **still** (JPEG); original / 16:9 / 4:3 / 1:1 / 9:16 with
   crop or bars (drag the crop frame on the picture to choose what stays in, a corner or pinch to
   zoom in); 480–1080 or source size.
+- **Aesthetic** (Output): a grade for the whole picture, under the captions. *Punchy* is the
+  shared-clip look (richer colour and contrast, crisper detail, a touch warmer); *Grunge* is dark and
+  dirty (faded blacks, drained green-teal colour, moving film grain, a heavy vignette). The editor
+  shows it roughly as you edit; plain ffmpeg filters, so it adds a second or two to a render.
 - **Audio** (optional): *Dialogue only* or *No dialogue* via demucs stem separation.
 - **Slow motion and 60 fps** (optional, Cut > Interpolation): mark part of a clip (up to 5 s) to play at ½× or ¼×. The missing
   frames are made by [RIFE](https://github.com/nihui/rife-ncnn-vulkan) on the GPU, so it stays smooth,

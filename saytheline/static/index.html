@@ -162,6 +162,7 @@
     background: repeating-linear-gradient(135deg, rgba(90, 170, 255, .5) 0 6px, rgba(90, 170, 255, .22) 6px 12px); }
   .timeline .laser { position: absolute; top: 0; height: 5px; pointer-events: none; background: #ff3b2a; box-shadow: 0 0 6px #ff3b2a; }
   .timeline .hit { position: absolute; top: 29px; height: 19px; width: 3px; margin-left: -1px; pointer-events: none; background: #b98cff; }
+  .aes-vig { position: absolute; pointer-events: none; z-index: 1; }
   .pick-layer { position: absolute; inset: 0; z-index: 4; cursor: crosshair; background: rgba(0,0,0,.25);
     display: flex; justify-content: center; align-items: flex-start; }
   .pick-layer span { margin-top: 10px; padding: 6px 10px; border-radius: 6px; background: rgba(0,0,0,.75); color: #fff; font-size: 13px; pointer-events: none; }
@@ -594,6 +595,7 @@
     <div class="stage" id="stage">
       <video id="vid" playsinline preload="auto"></video>
       <div class="frame" id="frame" hidden title="Drag to choose what stays in · drag a corner or pinch to zoom · double-tap to centre"><i data-c="nw"></i><i data-c="ne"></i><i data-c="sw"></i><i data-c="se"></i></div>
+      <div class="aes-vig" id="aesVig" hidden></div>
       <div class="cap" id="cap" hidden></div>
       <div class="pick-dot" id="pickDot" hidden></div>
       <div class="pick-layer" id="pickLayer" hidden><span>Tap the face that gets the lasers</span></div>
@@ -754,6 +756,10 @@
           <button class="b" id="cropReset" hidden>Centre it again</button></div>
         <div class="opt"><span>Size</span><div class="chips" data-opt="res"></div></div>
         <div class="hint" id="gifHint" hidden>GIFs are silent, 12 fps and at most 480 px wide.</div>
+      </div>
+      <div class="grp">
+        <div class="opt"><span>Aesthetic</span><div class="chips" data-opt="aesthetic"></div></div>
+        <div class="hint" id="aesHint"></div>
       </div>
       <div class="grp" id="audioGrp">
         <div class="opt"><span>Audio</span><div class="chips" data-opt="audio"></div></div>
@@ -1385,7 +1391,7 @@ async function showEmpty() {
 
 /* ================= options + their rules ================= */
 const opts = { format: "mp4", aspect: "original", fit: "crop", res: 720, audio: "original",
-  slow: 1, slowSound: "deep", smooth: 0, laser: "off", sfx: "off", sfxWhen: "lines", sfxDelay: 200, sfxVol: "medium",
+  slow: 1, slowSound: "deep", smooth: 0, laser: "off", sfx: "off", sfxWhen: "lines", sfxDelay: 200, sfxVol: "medium", aesthetic: "none",
   subsOn: true, captionSrc: "subs", look: "classic", fontClassic: "Inter", fontWord: "Inter Black",
   size: "m", colour: "white", hl: "yellow", caps: false, box: false, position: "bottom", tab: "cut", loop: false };
 const CHOICES = {
@@ -1401,6 +1407,7 @@ const CHOICES = {
   sfxWhen: [["lines", "After each line"], ["last", "After the last line"], ["laser", "With the lasers"], ["mark", "At a mark"]],
   sfxDelay: [[0, "0"], [100, "0.1 s"], [200, "0.2 s"], [300, "0.3 s"], [500, "0.5 s"]],
   sfxVol: [["low", "Low"], ["medium", "Medium"], ["high", "High"]],
+  aesthetic: [["none", "None"], ["punchy", "Punchy"], ["grunge", "Grunge"]],
   subsOn: [[true, "On"], [false, "Off"]],
   captionSrc: [["subs", "Subtitles"], ["speech", "Speech"]],
   look: [["classic", "Classic"], ["tiktok", "TikTok"], ["popin", "Pop-in"], ["bigword", "Big word"], ["poster", "Poster"], ["kinetic", "Kinetic"], ["intense", "Intense"]],
@@ -1496,6 +1503,8 @@ function applyRules() {
   $("#audioGrp").classList.toggle("off", opts.format === "gif");
   $("#audioHint").hidden = opts.audio === "original" || opts.format === "gif";
   drawSlow(); drawSmooth(); drawLaser(); drawSfx();
+  $("#aesHint").textContent = AES_HINT[opts.aesthetic] || "";
+  $("#vid").style.filter = (AES_CSS[opts.aesthetic] || {}).filter || "";
 }
 function refreshAll() { buildOptions(); applyRules(); drawCapShift(); drawStt(); drawSubText(); drawOverlay(); drawSummary(); schedulePoster(); autosave(); }
 function drawSummary() {
@@ -1503,7 +1512,7 @@ function drawSummary() {
   const cap = !capsOn() ? "no captions" : `${CHOICES.look.find(l => l[0] === opts.look)[1]} captions from ${speechMode() ? "speech" : "subtitles"}`;
   const shape = opts.aspect === "original" ? "original shape" : opts.aspect + (opts.fit === "pad" ? " bars" : "");
   const audio = opts.format === "gif" ? " · silent" : opts.audio === "original" ? "" : opts.audio === "dialogue" ? " · dialogue only" : " · no dialogue";
-  const slow = (slowOn() ? ` · ${opts.slow === 2 ? "½" : "¼"}× slow` : "") + (smoothOn() ? ` · ${opts.smooth} fps` : "") + (laserOn() ? " · laser eyes" : "") + (sfxOn() ? " · sound effect" : "");
+  const slow = (slowOn() ? ` · ${opts.slow === 2 ? "½" : "¼"}× slow` : "") + (smoothOn() ? ` · ${opts.smooth} fps` : "") + (laserOn() ? " · laser eyes" : "") + (sfxOn() ? " · sound effect" : "") + (opts.aesthetic !== "none" ? " · " + CHOICES.aesthetic.find(a => a[0] === opts.aesthetic)[1] : "");
   $("#summary").textContent = `${(outLength() / 1000).toFixed(1)} s · ${opts.format.toUpperCase()} · ${shape} · ${cap}${slow}${audio}`;
   $("#capDot").hidden = !(needWords() && !sttCovers());
 }
@@ -1543,7 +1552,7 @@ function captionDefaults() { opts.subsOn = true; opts.captionSrc = "subs"; opts.
 
 /* drafts: every edited clip is kept (Library > Recent edits); a hearted moment keeps the same state */
 const DRAFT_OPTS = ["subsOn", "captionSrc", "look", "fontClassic", "fontWord", "size", "colour", "hl", "caps", "box", "position",
-  "format", "aspect", "fit", "res", "audio", "slow", "slowSound", "smooth", "laser", "sfx", "sfxWhen", "sfxDelay", "sfxVol"];
+  "format", "aspect", "fit", "res", "audio", "slow", "slowSound", "smooth", "laser", "sfx", "sfxWhen", "sfxDelay", "sfxVol", "aesthetic"];
 function edState() {
   const o = {}; DRAFT_OPTS.forEach(k => o[k] = opts[k]);
   return { v: 2, in_ms: Math.round(ed.inMs), out_ms: Math.round(ed.outMs), offset_ms: ed.offset, opts: o,
@@ -1979,6 +1988,23 @@ $("#laserPrev").onclick = async () => {
     $("#laserErr").textContent = e.message; $("#laserErr").hidden = false;
   } finally { btn.disabled = false; btn.innerHTML = ic("play") + "Preview"; }
 };
+/* aesthetics: a grade for the whole picture (aesthetic.py); the editor shows it roughly with CSS
+   filters on the video and a vignette over it (= aesthetic.filters, which the render uses exactly) */
+const AES_CSS = {
+  punchy: { filter: "saturate(1.38) contrast(1.05) brightness(1.03)", vig: 0.22 },
+  grunge: { filter: "saturate(0.55) sepia(0.18) hue-rotate(75deg) contrast(0.9) brightness(0.88)", vig: 0.45 },
+};
+const AES_HINT = {
+  punchy: "The shared-clip look: richer colour and contrast, crisper detail, a touch warmer. Shown roughly here; the render is exact.",
+  grunge: "Dark and dirty: faded blacks, drained green-teal colour, moving film grain, a heavy vignette. Shown roughly here (without the grain); the render is exact.",
+};
+function drawAesVig(r) {
+  const v = $("#aesVig"), a = AES_CSS[opts.aesthetic];
+  v.hidden = !a;
+  if (!a) return;
+  Object.assign(v.style, { left: r.left + "px", top: r.top + "px", width: r.W + "px", height: r.H + "px",
+    background: `radial-gradient(ellipse at center, rgba(0,0,0,0) 55%, rgba(0,0,0,${a.vig}) 100%)` });
+}
 /* sound effects: a hit after each line, after the last, with the lasers or at a mark; presets and uploads */
 const SFX = { list: [], volumes: { low: 0.35, medium: 0.6, high: 0.9 }, gap: 400, buf: {}, ctx: null };
 async function loadSfx() {
@@ -2610,7 +2636,7 @@ function drawOverlay() {
   if ($("#sheet").hidden || !ed.hit) return;
   const r = cropRect(), fr = $("#frame"), cap = $("#cap");
   fr.hidden = !cropOn();
-  drawPickDot();
+  drawPickDot(); drawAesVig(r);
   Object.assign(fr.style, { left: r.left + "px", top: r.top + "px", width: r.W + "px", height: r.H + "px" });
   cap.removeAttribute("style");            // every look sets its own style from scratch
   cap.className = "cap";
@@ -2908,6 +2934,7 @@ function renderBody() {
     smooth: smoothOn() ? opts.smooth : undefined,
     slow: slowOn() ? { factor: opts.slow, a_ms: Math.round(ed.slowA), b_ms: Math.round(ed.slowB), sound: opts.slowSound } : undefined,
     laser: laserOn() ? { style: opts.laser, a_ms: Math.round(ed.laserA), b_ms: Math.round(ed.laserB), pick: ed.laserPick || undefined } : undefined,
+    aesthetic: opts.aesthetic !== "none" ? opts.aesthetic : undefined,
     sfx: sfxOn() ? { id: opts.sfx, when: opts.sfxWhen, delay_ms: opts.sfxDelay, volume: opts.sfxVol, times_ms: sfxTimes(),
                      mark_ms: opts.sfxWhen === "mark" ? Math.round(ed.sfxMark) : undefined } : undefined,
     caption_cues: needWords() && sttCovers() ? ed.stt.cues.map(c => ({ start_ms: c.start_ms, end_ms: c.end_ms, text: c.text, words: c.words || [] })) : undefined,

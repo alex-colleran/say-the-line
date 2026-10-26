@@ -1047,3 +1047,16 @@ class SoundEffects(unittest.TestCase):
         self.assertEqual(sfx.times(spec("laser"), cues, 2000, 8000), [])
         self.assertEqual(sfx.times(spec("mark", mark=6100), cues, 2000, 8000), [6100])
         self.assertEqual(sfx.times(spec("lines", given=[9000, 2100, 2300, 7999]), cues, 2000, 8000), [2100, 7999])
+
+
+class Aesthetics(unittest.TestCase):
+    def test_grades_scale_with_the_output(self):
+        from saytheline import aesthetic
+        self.assertEqual(aesthetic.filters("none", 1280, 720), [])
+        self.assertEqual(aesthetic.of({}), "none")
+        with self.assertRaises(ValueError):
+            aesthetic.of({"aesthetic": "sepia"})
+        small, big = aesthetic.filters("punchy", 854, 480), aesthetic.filters("punchy", 1920, 1080)
+        self.assertNotEqual(small, big)                     # the clarity radius follows the size
+        self.assertTrue(all("unsharp=lx=" not in f or int(f.split("lx=")[1].split(":")[0]) % 2 for f in small + big))
+        self.assertIn("rgbashift=rh=-3:bh=3", aesthetic.filters("grunge", 1920, 1080))
