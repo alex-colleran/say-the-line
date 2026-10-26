@@ -6,6 +6,7 @@
   python -m saytheline serve                              # the web UI (same as python -m saytheline.web)
   python -m saytheline doctor                             # check the setup
   python -m saytheline login [--url URL]                  # Jellyfin token by Quick Connect, saved as api_key
+  python -m saytheline import OTHER/cues.db --map OLD=NEW # use another machine's index here
   python -m saytheline mcp                               # MCP server for AI agents (stdio; needs the web server running)
 """
 import argparse
@@ -44,12 +45,19 @@ def main():
     sub.add_parser("doctor")
     pl = sub.add_parser("login", help="get a Jellyfin token by Quick Connect and save it as [jellyfin] api_key")
     pl.add_argument("--url", help="Jellyfin's address, if saytheline.toml has none yet")
+    pm = sub.add_parser("import", help="replace this index with another machine's (its cues.db, or a folder "
+                                       "holding cues.db and optionally ocr/ and offsets.json)")
+    pm.add_argument("src")
+    pm.add_argument("--map", help="the other machine's path prefixes -> this one's: OLD=NEW[,OLD=NEW]")
     sub.add_parser("mcp")
     a = ap.parse_args()
 
     if a.cmd == "login":
         from . import login
         return login.main(a.url)
+    if a.cmd == "import":
+        from . import importer
+        return importer.main(a.src, a.map, INDEX)
 
     if a.cmd == "mcp":
         try:

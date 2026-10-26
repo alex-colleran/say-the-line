@@ -4,6 +4,7 @@
 """
 import os
 import shutil
+import sqlite3
 import subprocess
 import sys
 import tempfile
@@ -894,6 +895,12 @@ class IndexOrder(unittest.TestCase):
                 again = index.index(os.path.join(d, "cues.db"), movies=True, log=lambda *_: None)
         self.assertEqual((first["indexed"], again["indexed"], again["unchanged"]), (2, 0, 2))
 
+    def test_imported_paths_match_with_either_slash(self):
+        from saytheline import index
+        self.assertEqual(index._kind("embedded:3"), "embedded")
+        # an imported index holds M:/a/b/c.srt; Windows joins it as M:/a/b\c.srt (on Linux \ is a name character)
+        self.assertEqual(index._kind("M:/a/b\\c.srt") == index._kind("M:/a/b/c.srt"), os.name == "nt")
+
 
 class JellyfinSubtitleCache(unittest.TestCase):
     def test_uses_a_cached_track_only_when_newer_than_the_video(self):
@@ -1128,3 +1135,44 @@ class WastedColour(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             hue = wasted.filters((8.0, 1.5, "x", True), 854, 480, tmp, 10.0)[0]
         self.assertTrue(hue.startswith("hue=s='min(1\\,max(0\\,"), hue)
+
+
+class ImportIndex(unittest.TestCase):
+    def test_paths_move_and_the_library_follows_by_jellyfin_id(self):
+        from saytheline import importer
+        with tempfile.TemporaryDirectory() as d:
+            def make(path, rows):
+                c = db.open_index(path)
+                for jf, p, src in rows:
+                    i = c.execute("INSERT INTO items (jf_id, kind, path, sub_source, sub_mtime) VALUES (?, 'movie', ?, ?, 1)",
+                                  (jf, p, src)).lastrowid
+                    cid = c.execute("INSERT INTO cues (item_id, idx, start_ms, end_ms, text) VALUES (?, 0, 0, 1000, 'Hi')",
+                                    (i,)).lastrowid
+                    c.execute("INSERT INTO cues_fts(rowid, text) VALUES (?, 'Hi')", (cid,))
+                c.commit()
+                c.close()
+            media_dir = os.path.join(d, "media")
+            os.makedirs(media_dir)
+            for n in ("x", "y"):
+                open(os.path.join(media_dir, n + ".mkv"), "w").close()
+            here = os.path.join(d, "data", "cues.db")
+            make(here, [("jfy", "/old/y.mkv", "embedded:2")])                 # here: y is item 1
+            other = os.path.join(d, "other.db")
+            make(other, [("jfx", "/srv/m/x.mkv", "/srv/m/x.en.srt"), ("jfy", "/srv/m/y.mkv", "embedded:2")])
+            from unittest import mock
+            lib_path = os.path.join(d, "data", "library.db")
+            lib = library.Library(lib_path)
+            lib.save(dict(kind="moment", item_id=1, start_ms=5, end_ms=9, text="Hi"))
+            with mock.patch.object(config, "data_dir", return_value=os.path.join(d, "data")):
+                got = importer.main(other, f"/srv/m={media_dir}", here, log=lambda *_: None)
+            self.assertEqual((got["items"], got["moved"], got["found"], got["relinked"], got["lost"]), (2, 2, 2, 1, 0))
+            c = sqlite3.connect(here)
+            rows = dict(c.execute("SELECT jf_id, sub_source FROM items"))
+            self.assertEqual(rows["jfx"], media_dir + "/x.en.srt")
+            self.assertEqual(rows["jfy"], "embedded:2", "a file's own track keeps its name")
+            new_y = c.execute("SELECT id FROM items WHERE jf_id = 'jfy'").fetchone()[0]
+            c.close()
+            lc = sqlite3.connect(lib_path)
+            self.assertEqual(lc.execute("SELECT item_id FROM saved").fetchone()[0], new_y)
+            lc.close()
+            self.assertTrue(os.path.exists(here + ".before-import"))

@@ -219,6 +219,13 @@ tracks mean reading through each video file, so a big library takes hours the fi
 incremental, so later runs only pick up new or changed subtitles, and it works newest first. Run it nightly (cron, a
 systemd timer: see `deploy/`).
 
+**Media on another machine?** Best is to run Say the Line on the box that has the disks. Next best:
+index there and use that index elsewhere. Copy its `data/cues.db` (plus `data/ocr/` and `offsets.json`,
+if you like) and `python -m saytheline import <folder> --map /its/media=/here/media`. The paths in an
+index are that machine's own (after its `path_map`), so `--map` translates those, not Jellyfin's.
+Indexing over the network works too, but it reads every video with embedded subtitles across it
+(hours for a big library).
+
 ## Docker
 
 ```bash

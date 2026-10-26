@@ -34,6 +34,8 @@ saytheline/
   web.py         HTTP server (stdlib ThreadingHTTPServer) + JSON API + job queue
   doctor.py      `python -m saytheline doctor`
   login.py       `python -m saytheline login`: Jellyfin token by Quick Connect, saved as [jellyfin] api_key
+  importer.py    `python -m saytheline import`: another machine's index here (replaced whole, paths
+                 remapped, Library carried over by jf_id; caches keyed by local item id dropped)
   mcp_server.py  MCP server for agents (`python -m saytheline mcp`): a thin client of web.py's HTTP API;
                  the only module that needs a non-stdlib package (mcp, see requirements-mcp.txt)
   static/index.html   the whole UI: one file, vanilla JS, no build step

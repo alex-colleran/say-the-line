@@ -74,9 +74,22 @@ python -m saytheline serve                           # http://127.0.0.1:8765/
 ```
 
 Over a network share, external subtitle files index in a second or two a show, but **embedded
-tracks** mean reading each whole video across the network, which takes hours for a big library: index
-a show or two first, or run the indexer on the machine that has the disks and copy `data\cues.db`.
+tracks** mean reading each whole video across the network, which takes hours for a big library.
 Picture subtitles (OCR) took 1.5–3 minutes a film here.
+
+**Use the server's index instead** if Say the Line already runs on the machine with the disks. Copy
+its `data/cues.db` (a consistent copy: `sqlite3 data/cues.db ".backup cues-copy.db"` there), plus
+`data/ocr/` and `data/offsets.json` if you want them, into one folder here, stop `serve`, and import:
+
+```powershell
+python -m saytheline import D:\from-server --map "/srv/media=M:,/data/media=S:"
+```
+
+`--map` takes the **server's own paths** (what its index holds, after its `path_map`), which may
+differ from Jellyfin's. The import replaces this machine's index (the old one is kept as
+`cues.db.before-import`), carries saved Library entries over by Jellyfin id, and clears caches that
+rebuild themselves. A 15,000-title index (2 GB) imported in 49 s. Later `index` runs only
+read what is new, because SMB reports the same file times as the server.
 
 Heavy work (renders, OCR, speech) runs at below-normal priority, so the desktop stays responsive.
 To index nightly, a Task Scheduler task running `.venv\Scripts\python.exe -m saytheline index -q`
