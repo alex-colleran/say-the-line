@@ -160,6 +160,12 @@
   .interp-vid { width: 100%; max-height: 50vh; background: #000; border-radius: 6px; }
   .timeline .slow { position: absolute; top: 0; height: 29px; pointer-events: none;
     background: repeating-linear-gradient(135deg, rgba(90, 170, 255, .5) 0 6px, rgba(90, 170, 255, .22) 6px 12px); }
+  .timeline .laser { position: absolute; top: 0; height: 5px; pointer-events: none; background: #ff3b2a; box-shadow: 0 0 6px #ff3b2a; }
+  .pick-layer { position: absolute; inset: 0; z-index: 4; cursor: crosshair; background: rgba(0,0,0,.25);
+    display: flex; justify-content: center; align-items: flex-start; }
+  .pick-layer span { margin-top: 10px; padding: 6px 10px; border-radius: 6px; background: rgba(0,0,0,.75); color: #fff; font-size: 13px; pointer-events: none; }
+  .pick-dot { position: absolute; z-index: 3; width: 26px; height: 26px; margin: -13px 0 0 -13px; border: 2px solid #ff3b2a;
+    border-radius: 50%; box-shadow: 0 0 6px #ff3b2a, inset 0 0 4px #ff3b2a; pointer-events: none; }
   .timeline .ph { position: absolute; top: 0; bottom: 0; width: 2px; background: #fff; }
   .timeline .shot { position: absolute; top: 0; height: 29px; width: 2px; margin-left: -1px;
     background: rgba(242, 243, 245, .5); pointer-events: none; }
@@ -588,6 +594,8 @@
       <video id="vid" playsinline preload="auto"></video>
       <div class="frame" id="frame" hidden title="Drag to choose what stays in · drag a corner or pinch to zoom · double-tap to centre"><i data-c="nw"></i><i data-c="ne"></i><i data-c="sw"></i><i data-c="se"></i></div>
       <div class="cap" id="cap" hidden></div>
+      <div class="pick-dot" id="pickDot" hidden></div>
+      <div class="pick-layer" id="pickLayer" hidden><span>Tap the face that gets the lasers</span></div>
       <div class="loadbar" id="vload" hidden><i></i></div>
     </div>
     <div class="timeline" id="tl" title="Tap to seek · drag the amber edges to trim"></div>
@@ -654,6 +662,28 @@
           <span class="hint">A quick, small render of just this part, to see the motion before the real one.</span></div>
         <video id="interpVid" class="interp-vid" playsinline controls loop hidden></video>
         <div class="err" id="interpErr" hidden></div>
+      </div>
+      <div class="grp" id="laserGrp">
+        <h3>Laser eyes</h3>
+        <div class="opt"><span>Lasers</span><div class="chips" data-opt="laser"></div></div>
+        <div id="laserPart" hidden style="display:flex;flex-direction:column;gap:10px">
+          <div class="nudge"><span>From</span>
+            <button class="b" data-lasernudge="a,-100" aria-label="Lasers start a tenth of a second earlier">−0.1</button>
+            <button class="b" id="laserSetA" aria-label="Lasers start here">Set</button>
+            <button class="b" data-lasernudge="a,100" aria-label="Lasers start a tenth of a second later">+0.1</button></div>
+          <div class="nudge"><span>To</span>
+            <button class="b" data-lasernudge="b,-100" aria-label="Lasers end a tenth of a second earlier">−0.1</button>
+            <button class="b" id="laserSetB" aria-label="Lasers end here">Set</button>
+            <button class="b" data-lasernudge="b,100" aria-label="Lasers end a tenth of a second later">+0.1</button></div>
+          <div class="opt"><button class="b" id="laserWhole">Whole clip</button><span class="hint" id="laserRead"></span></div>
+          <div class="opt"><button class="b" id="laserPickBtn"><svg class="i" aria-hidden="true"><use href="#i-target"/></svg>Tap a face</button>
+            <button class="b" id="laserAnyFace" hidden>Biggest face</button><span class="hint" id="laserPickHint"></span></div>
+          <div class="opt"><button class="b" id="laserPrev"><svg class="i" aria-hidden="true"><use href="#i-play"/></svg>Preview</button>
+            <span class="hint">A quick, small render of 3 s from where the clip is paused.</span></div>
+          <video id="laserVid" class="interp-vid" playsinline controls loop hidden></video>
+          <div class="err" id="laserErr" hidden></div>
+          <div class="hint" id="laserHint"></div>
+        </div>
       </div>
       <div class="hint">Lines: tap text to play from it · <b>Only</b> = clip just that line · <b>+</b> grow the clip to include it · <b>−</b> trim it off</div>
       <div class="lines" id="lines"></div>
@@ -1336,7 +1366,7 @@ async function showEmpty() {
 
 /* ================= options + their rules ================= */
 const opts = { format: "mp4", aspect: "original", fit: "crop", res: 720, audio: "original",
-  slow: 1, slowSound: "deep", smooth: 0,
+  slow: 1, slowSound: "deep", smooth: 0, laser: "off",
   subsOn: true, captionSrc: "subs", look: "classic", fontClassic: "Inter", fontWord: "Inter Black",
   size: "m", colour: "white", hl: "yellow", caps: false, box: false, position: "bottom", tab: "cut", loop: false };
 const CHOICES = {
@@ -1348,6 +1378,7 @@ const CHOICES = {
   slow: [[1, "Off"], [2, "½×"], [4, "¼×"]],
   smooth: [[0, "Source"], [60, "60 fps"]],
   slowSound: [["deep", "Deep"], ["pitch", "Same pitch"], ["mute", "Silent"]],
+  laser: [["off", "Off"], ["flare", "Flare"], ["beams", "Beams"]],
   subsOn: [[true, "On"], [false, "Off"]],
   captionSrc: [["subs", "Subtitles"], ["speech", "Speech"]],
   look: [["classic", "Classic"], ["tiktok", "TikTok"], ["popin", "Pop-in"], ["bigword", "Big word"], ["poster", "Poster"], ["kinetic", "Kinetic"], ["intense", "Intense"]],
@@ -1379,6 +1410,7 @@ function disabledReason(key, v) {
   if (key === "slowSound" && opts.format === "gif") return "GIFs have no sound";
   if (key === "smooth" && v && !SERVER.slowmo) return "Needs rife-ncnn-vulkan installed on the server (see README)";
   if (key === "smooth" && v && opts.format === "gif") return "GIFs play at 12 fps";
+  if (key === "laser" && v !== "off" && !SERVER.laser) return "Needs MediaPipe and its face model on the server (see README)";
   return null;
 }
 function setOpt(key, v) {
@@ -1388,6 +1420,7 @@ function setOpt(key, v) {
   // follow-on rules
   if (key === "format" && v === "gif") opts.audio = "original";
   if (key === "slow") { if (v === 1) applySlowRate(); else fitSlow(true); drawTimeline(); }
+  if (key === "laser") { if (v !== "off" && ed.laserA === null) { ed.laserWhole = true; ed.laserA = ed.inMs; ed.laserB = ed.outMs; } drawTimeline(); }
   saveOpts(); refreshAll();
 }
 let flashTimer;
@@ -1437,7 +1470,7 @@ function applyRules() {
   $("#gifHint").hidden = opts.format !== "gif";
   $("#audioGrp").classList.toggle("off", opts.format === "gif");
   $("#audioHint").hidden = opts.audio === "original" || opts.format === "gif";
-  drawSlow(); drawSmooth();
+  drawSlow(); drawSmooth(); drawLaser();
 }
 function refreshAll() { buildOptions(); applyRules(); drawCapShift(); drawStt(); drawSubText(); drawOverlay(); drawSummary(); schedulePoster(); autosave(); }
 function drawSummary() {
@@ -1445,7 +1478,7 @@ function drawSummary() {
   const cap = !capsOn() ? "no captions" : `${CHOICES.look.find(l => l[0] === opts.look)[1]} captions from ${speechMode() ? "speech" : "subtitles"}`;
   const shape = opts.aspect === "original" ? "original shape" : opts.aspect + (opts.fit === "pad" ? " bars" : "");
   const audio = opts.format === "gif" ? " · silent" : opts.audio === "original" ? "" : opts.audio === "dialogue" ? " · dialogue only" : " · no dialogue";
-  const slow = (slowOn() ? ` · ${opts.slow === 2 ? "½" : "¼"}× slow` : "") + (smoothOn() ? ` · ${opts.smooth} fps` : "");
+  const slow = (slowOn() ? ` · ${opts.slow === 2 ? "½" : "¼"}× slow` : "") + (smoothOn() ? ` · ${opts.smooth} fps` : "") + (laserOn() ? " · laser eyes" : "");
   $("#summary").textContent = `${(outLength() / 1000).toFixed(1)} s · ${opts.format.toUpperCase()} · ${shape} · ${cap}${slow}${audio}`;
   $("#capDot").hidden = !(needWords() && !sttCovers());
 }
@@ -1470,6 +1503,8 @@ function resetEd(h) {
     speech: null,        // the heard words' span after a snap: {a, b, offset}
     seekOnLoad: false, session: (ed.session || 0) + 1,
     slowA: null, slowB: null,   // the slowed part (media ms) while opts.slow is 2 or 4
+    laserA: null, laserB: null, laserWhole: false,   // the part with laser eyes (media ms); Whole follows the cut
+    laserPick: null,      // the face tapped for them: {x, y}, fraction of the picture; null = the biggest face
     crop: null,           // the crop window placed by hand: {x, y (its centre, fraction of the picture), s (size,
                           // fraction of the largest that fits)} = media.crop_box; null = centred, full size
     studioClip: null,     // the Studio clip being edited (stEdit), which the edits go back into
@@ -1482,13 +1517,15 @@ function captionDefaults() { opts.subsOn = true; opts.captionSrc = "subs"; opts.
 
 /* drafts: every edited clip is kept (Library > Recent edits); a hearted moment keeps the same state */
 const DRAFT_OPTS = ["subsOn", "captionSrc", "look", "fontClassic", "fontWord", "size", "colour", "hl", "caps", "box", "position",
-  "format", "aspect", "fit", "res", "audio", "slow", "slowSound", "smooth"];
+  "format", "aspect", "fit", "res", "audio", "slow", "slowSound", "smooth", "laser"];
 function edState() {
   const o = {}; DRAFT_OPTS.forEach(k => o[k] = opts[k]);
   return { v: 2, in_ms: Math.round(ed.inMs), out_ms: Math.round(ed.outMs), offset_ms: ed.offset, opts: o,
     stt: ed.stt && ed.stt.item === ed.hit.item_id ? ed.stt : null, sub_text: ed.subText, cap_shift: ed.capShift, file: ed.lastFile,
     crop: ed.crop || undefined,
-    slow_a: slowOn() ? Math.round(ed.slowA) : undefined, slow_b: slowOn() ? Math.round(ed.slowB) : undefined };
+    slow_a: slowOn() ? Math.round(ed.slowA) : undefined, slow_b: slowOn() ? Math.round(ed.slowB) : undefined,
+    laser_a: laserOn() ? Math.round(ed.laserA) : undefined, laser_b: laserOn() ? Math.round(ed.laserB) : undefined,
+    laser_whole: laserOn() && ed.laserWhole || undefined, laser_pick: laserOn() && ed.laserPick || undefined };
 }
 function applyState(st) {
   ed.inMs = st.in_ms; ed.outMs = st.out_ms; ed.offset = st.offset_ms || 0;
@@ -1501,6 +1538,8 @@ function applyState(st) {
   ed.crop = st.crop || null;
   ed.slowA = st.slow_a ?? null; ed.slowB = st.slow_b ?? null;
   if (opts.slow !== 1 && ed.slowA === null) opts.slow = 1;
+  ed.laserA = st.laser_a ?? null; ed.laserB = st.laser_b ?? null; ed.laserWhole = !!st.laser_whole; ed.laserPick = st.laser_pick || null;
+  if (opts.laser !== "off" && ed.laserA === null) opts.laser = "off";
   if (needWords() && !sttCovers()) captionDefaults();       // never reopen to a look with no text
   saveOpts();
 }
@@ -1542,7 +1581,7 @@ function offsetNote() {
 async function openEditor(h, cut, entryId, preset) {
   flushDraft();
   resetEd(h);
-  captionDefaults(); opts.slow = 1;
+  captionDefaults(); opts.slow = 1; opts.laser = "off";
   const seq = ed.loadSeq;
   const [known, draft] = await Promise.all([
     fetch(`/api/offset?item=${h.item_id}`).then(r => r.json()).then(j => j.offset_ms || 0).catch(() => 0),
@@ -1581,7 +1620,8 @@ function drawDraftNote(d) {
     <button class="b" id="startFresh">Start fresh</button>`;
   $("#startFresh").onclick = () => {
     $("#vid").pause();
-    captionDefaults(); opts.slow = 1; saveOpts();
+    captionDefaults(); opts.slow = 1; opts.laser = "off"; saveOpts();
+    ed.laserA = ed.laserB = ed.laserPick = null;
     ed.stt = null; ed.poster = null; ed.lastFile = null; ed.subText = {}; ed.speech = null; ed.capShift = 0; ed.crop = null;
     defaultCut();
     ed.winA = Math.max(0, ed.inMs - WIN); ed.winB = ed.outMs + WIN;
@@ -1736,7 +1776,7 @@ function setSel(inMs, outMs, { seek, auto } = {}) {
   drawAll();
   if (seek === "in") showIn(); else if (seek === "out") showOut();
 }
-function drawAll() { fitSlow(); drawSlow(); drawSmooth(); drawTimeline(); drawShotRow(); drawLines(); drawSubText(); drawReadout(); drawOverlay(); drawSttHint(); drawSummary(); schedulePoster(); autosave(); }
+function drawAll() { fitSlow(); fitLaser(); drawSlow(); drawSmooth(); drawLaser(); drawTimeline(); drawShotRow(); drawLines(); drawSubText(); drawReadout(); drawOverlay(); drawSttHint(); drawSummary(); schedulePoster(); autosave(); }
 /* slow motion: one part of the cut, 2× or 4× slower (frames made up by RIFE on the server) */
 const slowOn = () => opts.slow > 1 && ed.slowA !== null && ed.slowB !== null;
 const SLOW_MAX = () => SERVER.slow_max_ms || 5000;
@@ -1833,12 +1873,90 @@ $$("[data-slownudge]").forEach(b => b.onclick = () => {
   if (which === "a") setSlow(ed.slowA + +d, ed.slowB); else setSlow(ed.slowA, ed.slowB + +d);
   seekTo(which === "a" ? ed.slowA : Math.max(ed.slowA, ed.slowB - 1000));
 });
+/* laser eyes: the meme's red-hot glare on someone's eyes for a part of the cut (MediaPipe on the server) */
+const laserOn = () => opts.laser !== "off" && ed.laserA !== null && ed.laserB !== null;
+// keep the part inside the cut; Whole clip follows the cut as it changes
+function fitLaser() {
+  if (opts.laser === "off" || ed.laserA === null || ed.laserB === null) return;
+  if (ed.laserWhole) { ed.laserA = ed.inMs; ed.laserB = ed.outMs; return; }
+  ed.laserA = Math.max(ed.inMs, Math.min(ed.laserA, ed.outMs - 200));
+  ed.laserB = Math.max(ed.laserA + 200, Math.min(ed.laserB, ed.outMs));
+}
+function setLaser(a, b) { ed.laserA = a; ed.laserB = b; ed.laserWhole = false; fitLaser(); drawAll(); }
+let laserShown = null;
+function laserKey() { const b = renderBody(); return JSON.stringify([b.laser, b.aspect, b.fit, b.crop]); }
+function drawLaser() {
+  $("#laserGrp").hidden = !!(ed.studioClip);             // a Studio cut has no lasers (yet)
+  $("#laserGrp").classList.toggle("off", !SERVER.laser);
+  $("#laserPart").hidden = opts.laser === "off";
+  if (laserShown && (!laserOn() || laserShown !== laserKey())) { $("#laserVid").hidden = true; $("#laserVid").removeAttribute("src"); laserShown = null; }
+  if (!laserOn()) return;
+  const part = ed.laserB - ed.laserA, whole = ed.laserA <= ed.inMs + 1 && ed.laserB >= ed.outMs - 1;
+  $("#laserRead").textContent = whole ? `the whole clip · ${(part / 1000).toFixed(1)} s` : `${fmtp(ed.laserA)} → ${fmtp(ed.laserB)} · ${(part / 1000).toFixed(1)} s`;
+  $("#laserAnyFace").hidden = !ed.laserPick;
+  $("#laserPickHint").textContent = ed.laserPick ? "Lasers go on the face nearest the red ring, and nowhere when it isn't in the shot."
+    : "Lasers go on the biggest face in each shot. Tap a face to choose someone else.";
+  // about 1.1 s per second of clip at 720p (MediaPipe, the glow, the extra pass), more for a bigger picture
+  const short = opts.res || 1080, est = part / 1000 * 25 * 0.045 * Math.max(1, short * short / (720 * 720)) + 3;
+  $("#laserHint").textContent = (opts.laser === "beams" ? "Beams shoot out where the head points; facing the camera, it's the flare. "
+    : "A red-hot glare with a long streak, the meme look. ") + `Adds about ${est < 60 ? Math.max(5, Math.round(est / 5) * 5) + " s" : Math.round(est / 60) + " min"} to the render.`;
+}
+function drawPickDot() {
+  const d = $("#pickDot"), on = opts.laser !== "off" && !!ed.laserPick;
+  d.hidden = !on;
+  if (!on) return;
+  const p = picRect();
+  Object.assign(d.style, { left: p.left + ed.laserPick.x * p.W + "px", top: p.top + ed.laserPick.y * p.H + "px" });
+}
+$("#laserSetA").onclick = () => { const p = frameOnScreen(); setLaser(p ? p - frameF() / 2 : absNow(), ed.laserB); };
+$("#laserSetB").onclick = () => { const p = frameOnScreen(); setLaser(ed.laserA, p ? p + frameF() / 2 : absNow()); };
+$("#laserWhole").onclick = () => { ed.laserWhole = true; fitLaser(); drawAll(); };
+$$("[data-lasernudge]").forEach(b => b.onclick = () => {
+  const [which, d] = b.dataset.lasernudge.split(",");
+  if (which === "a") setLaser(ed.laserA + +d, ed.laserB); else setLaser(ed.laserA, ed.laserB + +d);
+  seekTo(which === "a" ? ed.laserA : Math.max(ed.laserA, ed.laserB - 1000));
+});
+// Tap a face: the next tap on the picture marks it (as a fraction of the picture, like the crop window)
+$("#laserPickBtn").onclick = () => { $("#vid").pause(); $("#pickLayer").hidden = false; };
+$("#pickLayer").addEventListener("pointerup", e => {
+  e.preventDefault();
+  $("#pickLayer").hidden = true;
+  const st = $("#stage").getBoundingClientRect(), p = picRect();
+  const x = (e.clientX - st.left - p.left) / p.W, y = (e.clientY - st.top - p.top) / p.H;
+  if (!(x >= 0 && x <= 1 && y >= 0 && y <= 1)) return flash("That's outside the picture");
+  ed.laserPick = { x: +x.toFixed(4), y: +y.toFixed(4) };
+  drawAll();
+});
+$("#laserAnyFace").onclick = () => { ed.laserPick = null; drawAll(); };
+// Preview: 3 s of the real thing from where the clip is paused (or the part's start), small
+function laserPrevBody() {
+  if (!ed.hit || !laserOn()) return null;
+  const b = renderBody(), now = absNow();
+  const a = now >= ed.laserA && now < ed.laserB - 1000 ? now : ed.laserA, z = Math.min(ed.laserB, a + 3000);
+  return { ...b, in_ms: Math.round(a), out_ms: Math.round(z), format: "mp4", audio: "original", res: 360, preview: true,
+    slow: undefined, smooth: undefined, laser: { ...b.laser, a_ms: Math.round(a), b_ms: Math.round(z) } };
+}
+$("#laserPrev").onclick = async () => {
+  const btn = $("#laserPrev"), body = laserPrevBody(); if (!body) return;
+  if (!await ensureWords(btn)) return;
+  btn.disabled = true; $("#laserErr").hidden = true; $("#vid").pause();
+  try {
+    const job = await postJob("/api/render", body, j => btn.textContent = btnLeft(j.state === "queued" ? "Waiting" : "Making", j));
+    const v = $("#laserVid");
+    v.src = job.url; v.hidden = false; laserShown = laserKey();
+    v.play().catch(() => {});
+    v.scrollIntoView({ block: "nearest", behavior: "smooth" });
+  } catch (e) {
+    $("#laserErr").textContent = e.message; $("#laserErr").hidden = false;
+  } finally { btn.disabled = false; btn.innerHTML = ic("play") + "Preview"; }
+};
 function pct(ms) { return ((ms - ed.winA) / Math.max(1, ed.winB - ed.winA)) * 100; }
 function clampPct(x) { return Math.max(0, Math.min(100, x)); }
 function drawTimeline() {
   $("#tl").innerHTML = ed.cues.map(c => `<div class="cue" style="left:${clampPct(pct(c.start_ms))}%;width:${clampPct(pct(c.end_ms)) - clampPct(pct(c.start_ms))}%"></div>`).join("")
     + `<div class="selbox" style="left:${clampPct(pct(ed.inMs))}%;width:${clampPct(pct(ed.outMs)) - clampPct(pct(ed.inMs))}%"></div>`
     + (slowOn() ? `<div class="slow" style="left:${clampPct(pct(ed.slowA))}%;width:${clampPct(pct(ed.slowB)) - clampPct(pct(ed.slowA))}%"></div>` : "")
+    + (laserOn() ? `<div class="laser" style="left:${clampPct(pct(ed.laserA))}%;width:${clampPct(pct(ed.laserB)) - clampPct(pct(ed.laserA))}%"></div>` : "")
     + shotCuts().map(c => `<div class="shot" style="left:${pct(c)}%"></div>`).join("")
     + `<div class="ph" id="ph" style="left:${clampPct(pct(absNow()))}%"></div>`
     + `<div class="h" data-h="in" style="left:${clampPct(pct(ed.inMs))}%"></div><div class="h" data-h="out" style="left:${clampPct(pct(ed.outMs))}%"></div>`;
@@ -2355,6 +2473,7 @@ function drawOverlay() {
   if ($("#sheet").hidden || !ed.hit) return;
   const r = cropRect(), fr = $("#frame"), cap = $("#cap");
   fr.hidden = !cropOn();
+  drawPickDot();
   Object.assign(fr.style, { left: r.left + "px", top: r.top + "px", width: r.W + "px", height: r.H + "px" });
   cap.removeAttribute("style");            // every look sets its own style from scratch
   cap.className = "cap";
@@ -2651,6 +2770,7 @@ function renderBody() {
     sub_text: needWords() ? undefined : ed.subText,
     smooth: smoothOn() ? opts.smooth : undefined,
     slow: slowOn() ? { factor: opts.slow, a_ms: Math.round(ed.slowA), b_ms: Math.round(ed.slowB), sound: opts.slowSound } : undefined,
+    laser: laserOn() ? { style: opts.laser, a_ms: Math.round(ed.laserA), b_ms: Math.round(ed.laserB), pick: ed.laserPick || undefined } : undefined,
     caption_cues: needWords() && sttCovers() ? ed.stt.cues.map(c => ({ start_ms: c.start_ms, end_ms: c.end_ms, text: c.text, words: c.words || [] })) : undefined,
     subs: { on: capsOn(), font: curFont(), size: opts.size, colour: opts.colour, box: opts.box, position: opts.position,
             style: isWordLook() ? opts.look : "classic", hl: opts.hl, caps: opts.caps } };
@@ -2671,8 +2791,8 @@ $("#render").onclick = async () => {
   $("#result").innerHTML = "";
   try {
     const job = await postJob("/api/render", renderBody(), j => {
-      btn.textContent = btnLeft(j.state === "queued" ? "Waiting" : j.state === "slowing" ? "Slowing" : "Rendering", j);
-      setSum($("#summary"), j.state === "queued" ? "Waiting for the renderer" : j.state === "slowing" ? "Making the slow motion" : "Rendering", j);
+      btn.textContent = btnLeft(j.state === "queued" ? "Waiting" : j.state === "slowing" ? "Slowing" : j.state === "lasering" ? "Lasers" : "Rendering", j);
+      setSum($("#summary"), j.state === "queued" ? "Waiting for the renderer" : j.state === "slowing" ? "Making the slow motion" : j.state === "lasering" ? "Adding the laser eyes" : "Rendering", j);
     });
     ed.lastFile = job.file; autosave();
     showResult(job, `${job.width}×${job.height} · ${job.seconds} s · ${bytes(job.bytes)} · rendered in ${job.secs} s`);
@@ -4398,7 +4518,7 @@ $$("header [data-kind]").forEach(c => c.onclick = () => { state.kind = c.dataset
 $("#load").onclick = () => { state.offset += PAGE; run(true); };
 
 let FONT_LIST = ["Inter", "Inter Black", "League Spartan Black"];
-const SERVER = { stems: true, slowmo: false };          // what this install can do (from /api/options)
+const SERVER = { stems: true, slowmo: false, laser: false };          // what this install can do (from /api/options)
 (async () => {
   const p = new URLSearchParams(location.search);
   state.q = p.get("q") || ""; state.mode = p.get("mode") || "phrase"; state.kind = p.get("kind") || "";
@@ -4410,7 +4530,7 @@ const SERVER = { stems: true, slowmo: false };          // what this install can
   run();
   if (p.get("edit")) openClipLink(p.get("edit"));
   try { const o = await (await fetch("/api/options")).json(); FONT_LIST = o.fonts; SERVER.stems = !!o.stems;
-    Object.assign(SERVER, { slowmo: !!o.slowmo, slow_max_ms: o.slow_max_ms, slow_secs_per_mpix_frame: o.slow_secs_per_mpix_frame }); } catch (e) {}
+    Object.assign(SERVER, { slowmo: !!o.slowmo, laser: !!o.laser, slow_max_ms: o.slow_max_ms, slow_secs_per_mpix_frame: o.slow_secs_per_mpix_frame }); } catch (e) {}
   buildOptions(); applyRules();
 })();
 </script>

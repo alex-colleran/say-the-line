@@ -30,7 +30,7 @@ from . import ramp
 from . import sayany
 from . import search as srch
 from . import shots as shotcuts
-from . import slowmo
+from . import laser, slowmo
 from . import snap as snapper
 
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -322,7 +322,7 @@ def preview_file(item_id, start_ms, end_ms):
     return out
 
 
-def clip_name(row, in_ms, text, fmt, aspect="original", audio="original", slow=None, smooth=0):
+def clip_name(row, in_ms, text, fmt, aspect="original", audio="original", slow=None, smooth=0, lasers=False):
     if row["kind"] == "episode":
         who = f"{row['series']} - S{row['season'] or 0:02d}E{row['episode'] or 0:02d}"
     else:
@@ -337,6 +337,8 @@ def clip_name(row, in_ms, text, fmt, aspect="original", audio="original", slow=N
         shape += f" [slow {slow[2]}x]"
     if smooth:
         shape += f" [{smooth}fps]"
+    if lasers:
+        shape += " [laser eyes]"
     return f"{base}{shape}.{fmt}"
 
 
@@ -365,26 +367,29 @@ def run_render(job_id, req):
         smooth = slowmo.smooth_of(req, slowmo.frame_rate(row["path"])) if req.get("smooth") and fmt != "gif" else 0
         if (slow or smooth) and not slowmo.rife():
             raise ValueError("slow motion and smooth playback need rife-ncnn-vulkan installed on the server (see README)")
+        lasers = laser.part_of(req, in_ms, out_ms)
+        if lasers:
+            laser.need()
         cues = clip_captions(row, in_ms, out_ms, req)
         if req.get("preview"):
-            # a quick look at the interpolation before the real render: small, with the previews
-            # (pruned like them), never in All rendered
-            if not (slow or smooth):
-                raise ValueError("a preview is for slow motion or 60 fps")
+            # a quick look at the interpolation or the lasers before the real render: small, with
+            # the previews (pruned like them), never in All rendered
+            if not (slow or smooth or lasers):
+                raise ValueError("a preview is for slow motion, 60 fps or laser eyes")
             fmt, req = "mp4", {**req, "res": min(int(req.get("res") or 360), 360), "audio": "original"}
             os.makedirs(INTERP, exist_ok=True)
             name, out = f"{job_id}.mp4", os.path.join(INTERP, f"{job_id}.mp4")
         else:
             os.makedirs(CLIPS, exist_ok=True)
             name = version_name(clip_name(row, in_ms, " ".join(c["text"] for c in cues) or "clip", fmt, req.get("aspect"),
-                                          req.get("audio"), slow, smooth), req)
+                                          req.get("audio"), slow, smooth, bool(lasers)), req)
             out = os.path.join(CLIPS, name)
         job["state"] = "queued"
 
-        def progress(done, total):           # RIFE making the slow part's frames
-            job.update(state="slowing" if done < total else "rendering", done=done, total=total)
+        def progress(done, total, stage="slowing"):     # RIFE making the slow part's frames, or the lasers
+            job.update(state=stage if done < total else "rendering", done=done, total=total)
         with RENDER_SLOT:
-            job["state"] = "slowing" if slow or smooth else "rendering"
+            job["state"] = "slowing" if slow or smooth else "lasering" if lasers else "rendering"
             t = time.time()
             info = media.render(row["path"], in_ms, out_ms, {**req, "format": fmt}, cues, out + ".tmp." + fmt,
                                 slow=slow, progress=progress, smooth=smooth)
@@ -478,6 +483,8 @@ except (OSError, ValueError):
 # share of the work each state stands for, in order (a state not listed has no counters)
 PHASES = {
     "render": [("rendering", 1)], "render:interp": [("slowing", 0.92), ("rendering", 0.08)],
+    "render:laser": [("lasering", 0.9), ("rendering", 0.1)],
+    "render:interp:laser": [("slowing", 0.7), ("lasering", 0.25), ("rendering", 0.05)],
     "studio": [("timing", 0.1), ("rendering", 0.85), ("mixing", 0.05)],
     "studio:ramp": [("timing", 0.05), ("rendering", 0.93), ("mixing", 0.02)],
     "supercut": [("checking", 0.4), ("shots", 0.1), ("rendering", 0.5)],
@@ -494,9 +501,10 @@ def job_size(kind, req):
             return 1.0
     if kind == "render":
         interp = (req.get("slow") or {}).get("factor", 1) > 1 if isinstance(req.get("slow"), dict) else bool(req.get("smooth"))
-        key = "render" + (":interp" if interp else "") + (":stems" if req.get("audio") in ("dialogue", "nodialogue") else "") \
-            + (":preview" if req.get("preview") else "")
-        return key, secs("in_ms", "out_ms"), PHASES["render:interp" if interp else "render"]
+        lasers = isinstance(req.get("laser"), dict) and bool(req["laser"].get("style"))
+        key = "render" + (":interp" if interp else "") + (":laser" if lasers else "") \
+            + (":stems" if req.get("audio") in ("dialogue", "nodialogue") else "") + (":preview" if req.get("preview") else "")
+        return key, secs("in_ms", "out_ms"), PHASES["render" + (":interp" if interp else "") + (":laser" if lasers else "")]
     if kind == "studio":
         ramped = bool(((req.get("music") or {}).get("ramp") or {}).get("strength"))
         units = sum(max(0, int(c.get("out_ms", 0)) - int(c.get("in_ms", 0))) for c in req.get("clips") or []) / 1000
@@ -1689,7 +1697,7 @@ class Handler(BaseHTTPRequestHandler):
                                                 int(q.get("offset_ms") or 0)))
             if u.path == "/api/options":
                 return self.send(200, dict(fonts=media.FONTS, sizes=list(media.SIZES), stems=bool(config.demucs()),
-                                           slowmo=bool(slowmo.rife()), slow_max_ms=slowmo.MAX_PART_MS,
+                                           slowmo=bool(slowmo.rife()), slow_max_ms=slowmo.MAX_PART_MS, laser=laser.available(),
                                            slow_secs_per_mpix_frame=slowmo.SECS_PER_MPIX_FRAME, rates=dict(RATES),
                                            colours=list(media.COLOURS), aspects=["original", *media.ASPECTS]),
                                  cache="max-age=300")

@@ -61,7 +61,8 @@ sed -n '/<script>/,/<\/script>/p' saytheline/static/index.html | sed '1d;$d' > /
   machine-specific tools get a `[tools]` setting with a fallback, and GPU options stay opt-in.
 - **Never run two indexers at once** (they collide on `items.jf_id`).
 - **The web server stays standard-library only.** Heavy dependencies (faster-whisper, spaCy,
-  demucs) run in child processes using `config.stt_python()` / `config.demucs()`, and every one of
+  demucs, MediaPipe) run in child processes using `config.stt_python()` / `config.demucs()` /
+  `config.laser_python()`, and every one of
   them is optional: features degrade with a clear message, never a crash.
 - **Preview = render.** Shot trimming exists twice too: `shots.fit` / `whole_shot` and JS
   `fitShots` / `shotTargets`. Caption logic exists twice: Python (`media.word_ass`, `chunk_words`,

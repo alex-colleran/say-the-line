@@ -529,6 +529,17 @@ def _render(src, in_ms, out_ms, opts, cues, out, label, uniform, slow, progress,
                            "pad" if uniform and aspect == "16:9" and not moved_crop(opts.get("crop")) else opts.get("fit", "crop"),
                            int(opts.get("res") or (720 if uniform else 0)), upscale=uniform, crop=opts.get("crop"))
     fmt = "mp4" if uniform else opts.get("format", "mp4")
+    las = None
+    if opts.get("laser") and not uniform:
+        # where the lasers go, worked out on the source: the shots the part spans (each picks its
+        # face again) and the tapped face in output pixels
+        from . import laser, slowmo
+        las = laser.part_of(opts, in_ms, out_ms)
+        if las:
+            laser.need()
+            cuts = [c - in_ms for c in slowmo.camera_cuts(src, in_ms + las[0], in_ms + las[1], slowmo.frame_rate(src))]
+            las = (*las[:3], laser.to_output(info["width"], info["height"], opts, w, h, las[3]), cuts)
+    part = None
     if ramp:
         # the speed-ramped segment becomes the source: silent (the song carries it), or with the
         # sound of the lines it kept at normal speed
@@ -548,6 +559,17 @@ def _render(src, in_ms, out_ms, opts, cues, out, label, uniform, slow, progress,
         part = slow[:3] if slow else (0, 0, 1)
         cues = slowmo.remap_cues(cues, in_ms, *part)
         in_ms, out_ms = 0, round(slowmo.timemap(out_ms - in_ms, *part))
+        chain, info = [], probe(src)
+    if las:
+        # the cut with lasers becomes the source (after any slow motion, so the glow isn't
+        # interpolated): captions still go on top
+        from . import laser, slowmo
+        a, b, style, pick, cuts = las
+        m = (lambda t: round(slowmo.timemap(t, *part))) if part else (lambda t: t)
+        src = laser.master(src, in_ms, out_ms - in_ms, chain, (w, h), audio_track(src) if info["has_audio"] else None,
+                           (m(a), m(b), style, pick), [m(c) for c in cuts], tmp,
+                           progress and (lambda done, total: progress(done, total, "lasering")))
+        in_ms, out_ms = 0, out_ms - in_ms
         chain, info = [], probe(src)
     dur = (out_ms - in_ms) / 1000
     # The input -t below is not exact: depending on where the start falls between frames it lets one
@@ -644,16 +666,34 @@ def still(src, at_ms, in_ms, out_ms, opts, cues, out):
         raise RuntimeError("no video stream")
     w, h, chain = geometry(info["width"], info["height"], opts.get("aspect", "original"), opts.get("fit", "crop"),
                            int(opts.get("res") or 0), crop=opts.get("crop"))
+    las = None
+    if opts.get("laser"):
+        from . import laser
+        las = laser.part_of(opts, in_ms, out_ms)
+        if las and las[0] <= at_ms - in_ms < las[1]:
+            laser.need()
+        else:
+            las = None
     with tempfile.TemporaryDirectory(prefix="saytheline-still-") as tmp:
         st = dict(opts.get("subs") or {}, still=True)
         sub = caption_filter(st, cues, in_ms, out_ms, w, h, tmp) if in_ms <= at_ms < out_ms else None
-        vf = [f"setpts=PTS-STARTPTS+{(at_ms - in_ms) / 1000:.3f}/TB"] + chain + ([sub] if sub else [])
-        r = subprocess.run(["ffmpeg", "-v", "error", "-nostdin", "-y", "-ss", f"{at_ms / 1000:.3f}", "-i", src,
-                            "-map", "0:v:0", "-vf", ",".join(vf), "-frames:v", "1", "-q:v", "2", out],
-                           capture_output=True, timeout=60)
-        if r.returncode != 0 or not os.path.exists(out):
-            raise RuntimeError(r.stderr.decode(errors="replace").strip()[-500:] or "no frame")
+        shift = f"setpts=PTS-STARTPTS+{(at_ms - in_ms) / 1000:.3f}/TB"
+        if las:          # the frame alone first, then its lasers, then the caption over them
+            frame = os.path.join(tmp, "frame.png")
+            _frame(src, at_ms, [shift] + chain, frame)
+            laser.still(frame, las[2], laser.to_output(info["width"], info["height"], opts, w, h, las[3]), frame)
+            _frame(frame, None, [shift] + ([sub] if sub else []), out)
+        else:
+            _frame(src, at_ms, [shift] + chain + ([sub] if sub else []), out)
     return dict(width=w, height=h, bytes=os.path.getsize(out))
+
+
+def _frame(src, at_ms, vf, out):
+    r = subprocess.run(["ffmpeg", "-v", "error", "-nostdin", "-y", *(["-ss", f"{at_ms / 1000:.3f}"] if at_ms is not None else []),
+                        "-i", src, "-map", "0:v:0", "-vf", ",".join(vf), "-frames:v", "1", "-q:v", "2", out],
+                       capture_output=True, timeout=60)
+    if r.returncode != 0 or not os.path.exists(out):
+        raise RuntimeError(r.stderr.decode(errors="replace").strip()[-500:] or "no frame")
 
 
 def separate(path, mode, fmt):

@@ -42,6 +42,8 @@ KEYS = {
     ("tools", "rife_model"): "SAYTHELINE_RIFE_MODEL",
     ("tools", "rife_threads"): "SAYTHELINE_RIFE_THREADS",
     ("tools", "tesseract"): "SAYTHELINE_TESSERACT",
+    ("tools", "laser_python"): "SAYTHELINE_LASER_PYTHON",
+    ("tools", "laser_model"): "SAYTHELINE_LASER_MODEL",
 }
 _loaded_from = None
 
@@ -73,7 +75,8 @@ def load():
                     if v in (None, ""):
                         continue
                     v = _flat(v)
-                    if key in ("data", "tmp", "db", "stt_python", "demucs", "rife", "rife_model", "tesseract"):    # relative to the file
+                    if key in ("data", "tmp", "db", "stt_python", "demucs", "rife", "rife_model", "tesseract",
+                               "laser_python", "laser_model"):    # relative to the file
                         v = os.path.normpath(os.path.join(base, os.path.expanduser(v)))
                     os.environ.setdefault(env, v)
                 _loaded_from = p
@@ -131,6 +134,16 @@ def demucs():
 def demucs_device():
     """cpu (the default), or cuda for an Nvidia GPU with a CUDA build of PyTorch (several times faster)."""
     return os.environ.get("SAYTHELINE_DEMUCS_DEVICE") or "cpu"
+
+
+def laser_python():
+    """The Python that has MediaPipe, for laser eyes: configured, or the one running Say the Line."""
+    return os.environ.get("SAYTHELINE_LASER_PYTHON") or sys.executable
+
+
+def laser_model():
+    """MediaPipe's face_landmarker.task: configured, else data/models/face_landmarker.task."""
+    return os.environ.get("SAYTHELINE_LASER_MODEL") or os.path.join(data_dir(), "models", "face_landmarker.task")
 
 
 def tesseract():

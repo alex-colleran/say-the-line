@@ -70,6 +70,9 @@ def checks():
     from . import slowmo
     yield (OK, f"slow motion: {slowmo.rife()[0]}") if slowmo.rife() else \
         (WARN, "Slow motion off (optional: rife-ncnn-vulkan with its rife-v4.6 model, see README)")
+    from . import laser
+    yield (OK, f"laser eyes: MediaPipe in {config.laser_python()}") if laser.available() else \
+        (WARN, "Laser eyes off (optional: pip install -r requirements-laser.txt, and the face model, see README)")
     missing = [f for f in media.FONTS if not os.path.isfile(os.path.join(media.FONT_DIR, media.FONT_FILES[f]))]
     yield (BAD, f"bundled fonts missing: {', '.join(missing)}") if missing else (OK, "caption fonts")
 

@@ -998,3 +998,34 @@ class Login(unittest.TestCase):
             os.remove(p)
             login.save_key(p, "http://jf:8096", "abc123")       # no file yet: a minimal one
             self.assertEqual(_read(p), '[jellyfin]\nurl = "http://jf:8096"\napi_key = "abc123"\n\n')
+
+
+class LaserEyes(unittest.TestCase):
+    def test_part_is_kept_inside_the_cut(self):
+        from saytheline import laser
+        self.assertIsNone(laser.part_of({}, 1000, 5000))
+        self.assertIsNone(laser.part_of({"laser": {"style": ""}}, 1000, 5000))
+        self.assertEqual(laser.part_of({"laser": {"style": "flare", "a_ms": 0, "b_ms": 9000}}, 1000, 5000), (0, 4000, "flare", None))
+        a, b, style, pick = laser.part_of({"laser": {"style": "beams", "a_ms": 2000, "b_ms": 3000, "pick": {"x": 1.4, "y": 0.25}}}, 1000, 5000)
+        self.assertEqual((a, b, style, pick), (1000, 2000, "beams", (1.0, 0.25)))
+        with self.assertRaises(ValueError):
+            laser.part_of({"laser": {"style": "flare", "a_ms": 4900, "b_ms": 5000}}, 1000, 5000)
+        with self.assertRaises(ValueError):
+            laser.part_of({"laser": {"style": "rainbow"}}, 1000, 5000)
+
+    def test_tapped_face_lands_on_the_same_spot_in_the_output(self):
+        from saytheline import laser
+        pt = lambda opts, w, h, p: [round(v, 1) for v in laser.to_output(1920, 1080, opts, w, h, p)]
+        self.assertIsNone(laser.to_output(1920, 1080, {}, 1280, 720, None))
+        self.assertEqual(pt({}, 1280, 720, (0.25, 0.5)), [320, 360])
+        # 9:16, centred crop: the middle of the picture is the middle of the output
+        w, h, _ = media.geometry(1920, 1080, "9:16", "crop", 720)
+        self.assertEqual(pt({"aspect": "9:16"}, w, h, (0.5, 0.5)), [w / 2, h / 2])
+        self.assertEqual(pt({"aspect": "9:16"}, w, h, (0.5 - 303.75 / 1920, 0.0)), [0, 0])     # the crop's left edge
+        # bars: 4:3 picture in a 16:9 frame keeps its middle, and its left edge sits right of the bar
+        self.assertEqual(laser.to_output(1440, 1080, {"aspect": "16:9", "fit": "pad"}, 1280, 720, (0, 0.5)), [160, 360])
+        # a crop window moved by hand
+        crop = {"x": 0.25, "y": 0.5, "s": 0.5}
+        w, h, _ = media.geometry(1920, 1080, "1:1", "crop", 720, crop=crop)
+        cw, ch, cx, cy = media.crop_box(1920, 1080, 1.0, crop)
+        self.assertEqual(pt({"aspect": "1:1", "crop": crop}, w, h, ((cx + cw / 2) / 1920, (cy + ch / 2) / 1080)), [w / 2, h / 2])

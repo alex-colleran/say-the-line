@@ -63,6 +63,12 @@ It runs on the machine that has your media, next to Jellyfin, and is used from a
   **60 fps** (same Interpolation section) does the same for the whole clip at normal speed: smooth
   motion from a 24 or 30 fps source. **Preview** renders just that part small, in a few seconds, to
   check the motion before the real render.
+- **Laser eyes** (optional, Cut > Laser eyes): the meme's red-hot glare on someone's eyes, following
+  them through the clip. *Flare* is the glow with a long lens streak; *Beams* shoot out where the
+  head points when it's turned. Mark the part that gets them (or the whole clip), and tap a face to
+  choose whose eyes: otherwise it's the biggest face in each shot. Each camera shot picks again, so
+  the lasers never jump to someone else mid-shot. Captions stay on top, and it works with slow
+  motion, GIFs and stills. **Preview** renders 3 s of it small. About 8 s for a 4 s clip at 720p.
 - **Studio**: put any saved clips together, from any mix of shows and movies, in your own order.
   Add them from the Library (by tag), reorder, nudge each start and end, preview each clip in place,
   then render one video with one caption look and shape. Each clip keeps its own cut, caption edits
@@ -126,6 +132,11 @@ It runs on the machine that has your media, next to Jellyfin, and is used from a
   Unzip it, keep its `rife-v4.6` model folder beside the binary, and set `[tools] rife` to the binary
   (or put it on PATH). `[tools] rife_threads = "8:8:8"` keeps the GPU fed: RIFE ran 1.3-1.6x faster
   on the Radeon 680M and 3.3x on a GTX 1660 Ti, with no hotter CPU.
+- Optional, for laser eyes: [MediaPipe](https://ai.google.dev/edge/mediapipe/solutions/vision/face_landmarker)
+  in any Python it installs in (tested on 3.13; `pip install -r requirements-laser.txt`, about 500 MB; a venv of its own
+  is fine: set `[tools] laser_python` to its python) and its face model,
+  [face_landmarker.task](https://storage.googleapis.com/mediapipe-models/face_landmarker/face_landmarker/float16/1/face_landmarker.task)
+  (3.6 MB), saved as `data/models/face_landmarker.task` (or set `[tools] laser_model`). CPU only.
 - Optional, an **Nvidia GPU** can also take speech, *Dialogue only* and video encoding off the CPU
   (`stt_device`, `demucs_device`, `encoder` in [`saytheline.example.toml`](saytheline.example.toml));
   [docs/windows.md](docs/windows.md#nvidia-gpu) has the setup and measured gains.
