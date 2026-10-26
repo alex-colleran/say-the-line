@@ -96,7 +96,13 @@ def checks():
         yield BAD, (f"none of {len(items)} sample files exist here, e.g. {items[0]['path']} -> "
                     f"{db.to_host(items[0]['path'], pmap)}: set [jellyfin] path_map")
     elif found < len(items):
-        yield WARN, f"{len(items) - found} of {len(items)} sample files not found (check path_map)"
+        missing = [db.to_host(i["path"], pmap) for i in items if not os.path.exists(db.to_host(i["path"], pmap))]
+        # path_map works for the rest, so a folder that is there but shows no files is usually a
+        # folder of symlinks the share won't follow (or that point inside a container)
+        hidden = sum(os.path.isdir(os.path.dirname(p)) for p in missing)
+        yield WARN, (f"{len(missing)} of {len(items)} sample files not found, e.g. {missing[0]}"
+                     + (f" ({hidden} in folders that exist here: symlinks on the server that this share can't follow?)"
+                        if hidden else " (check path_map)"))
     else:
         yield OK, f"media files readable ({found} sampled)"
 
