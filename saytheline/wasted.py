@@ -30,7 +30,7 @@ import subprocess
 from . import config, media
 
 CACHE = os.path.join(config.data_dir(), "cache", "wasted")
-VERSION = 5                    # bump when the drawing changes, so cached images are redrawn
+VERSION = 7                    # bump when the drawing changes, so cached images are redrawn
 
 FACTOR = 5                     # GTA V: SET_TIME_SCALE(0.2f)
 SAT_S = 0.15                   # the colour is gone this long after it starts (it hits monochrome)
@@ -47,8 +47,9 @@ PUSH = 0.07                    # the push-in: 7% closer by the end
 MIN_LENGTH_MS = 1000
 DEFAULT_LENGTH_MS = 9400       # without the fall sound to measure
 MIN_PART_MS = 200
-RED = "0xC53A3A"               # the word's red, and how see-through it is: from game frames, where it
-WORD_ALPHA = 0.85              # comes out about rgb(170, 52, 52) over the band
+RED = "0xC62539"               # the word's crimson, and how much of it covers the picture: worked back
+WORD_ALPHA = 0.68              # from game frames (the picture's texture shows through the letters)
+BAND_ALPHA = 0.51              # the band is black at this (inside = 0.46 x outside + 6 in the game)
 # where things sit, as shares of the height, measured off game frames: the band's middle and its
 # height there, and how far each edge slopes across the width (wider on the right); the word's size
 # (its letters come out about 0.08 tall with a line, 0.1 without) and the line's; how far above the
@@ -169,17 +170,16 @@ def dodge_burn(w, h):
 
 
 def band(w, h):
-    """The word's band: a dark grey, 62% in the middle fading to 35% toward the sides (so it
-    lightens the dark parts of the picture and darkens the light ones, as in the game), faded out
-    toward both ends, the top edge rising and the bottom edge falling a
+    """The word's band: black at BAND_ALPHA, as in the game (it only darkens, adding no grey), faded
+    out toward both ends, the top edge rising and the bottom edge falling a
     little to the right, its edges anti-aliased."""
     cy, bh, tilt = h * BAND_Y, h * BAND_H, h * BAND_TILT
     top = f"({cy - bh / 2:.2f}+{tilt:.2f}*(0.5-X/W))"
     bot = f"({cy + bh / 2:.2f}-{tilt:.2f}*(0.5-X/W))"
     inside = f"min(1\\,max(0\\,Y-{top}+0.5))*min(1\\,max(0\\,{bot}-Y+0.5))"
     ends = "min(1\\,max(0\\,(X/W-0.04)/0.16))*min(1\\,max(0\\,(0.985-X/W)/0.15))"     # faded at both ends
-    alpha = f"255*{inside}*{ends}*(0.62-0.27*pow(2*X/W-1\\,2))"
-    return _draw("band", w, h, "rgba", f"r=58:g=58:b=58:a='{alpha}'")
+    alpha = f"255*{inside}*{ends}*{BAND_ALPHA}"
+    return _draw("band", w, h, "rgba", f"r=8:g=8:b=8:a='{alpha}'")
 
 
 def filters(spec, w, h, tmp, dur_s):

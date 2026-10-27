@@ -167,13 +167,13 @@
   .wasted i { position: absolute; inset: 0; mix-blend-mode: overlay;      /* = wasted.dodge_burn */
     background: radial-gradient(ellipse at center, #cdcdcd 0%, #c4c4c4 25%, #6c6c6c 70%, #282828 100%); }
   .wasted b { position: absolute; left: 0; top: 36.35%; width: 100%; height: 24.3%; display: flex; flex-direction: column; align-items: center; justify-content: center;
-    /* = wasted.band (BAND_Y, BAND_H, BAND_TILT): grey, stronger in the middle, the top edge rising and the bottom falling to the right */
-    background: linear-gradient(90deg, rgba(58,58,58,.35), rgba(58,58,58,.62) 50%, rgba(58,58,58,.35));
-    clip-path: polygon(0 15.6%, 100% 0, 100% 100%, 0 84.4%); color: #c53a3a;
+    /* = wasted.band (BAND_Y, BAND_H, BAND_TILT, BAND_ALPHA): black, the top edge rising and the bottom falling to the right */
+    background: rgba(8,8,8,.51);
+    clip-path: polygon(0 15.6%, 100% 0, 100% 100%, 0 84.4%); color: #c62539;
     -webkit-mask-image: linear-gradient(90deg, transparent 4%, #000 20%, #000 83.5%, transparent 98.5%);
             mask-image: linear-gradient(90deg, transparent 4%, #000 20%, #000 83.5%, transparent 98.5%);
     font-family: 'Wasted', 'League Spartan Black', system-ui, sans-serif; line-height: 1; }
-  .wasted b span { opacity: .85; }   /* = wasted.RED, WORD_ALPHA: flat, no outline, as in the game */
+  .wasted b span { opacity: .68; }   /* = wasted.RED, WORD_ALPHA: flat, no outline, as in the game */
   .wasted b small { color: #fff; font: 500 1em 'Wasted Line', 'Inter', system-ui, sans-serif; text-shadow: 0 .06em .1em rgba(0,0,0,.6); }   /* = wasted SUB_* */
   .pick-layer { position: absolute; inset: 0; z-index: 4; cursor: crosshair; background: rgba(0,0,0,.25);
     display: flex; justify-content: center; align-items: flex-start; }
