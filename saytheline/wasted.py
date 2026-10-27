@@ -47,7 +47,8 @@ PUSH = 0.07                    # the push-in: 7% closer by the end
 MIN_LENGTH_MS = 1000
 DEFAULT_LENGTH_MS = 9400       # without the fall sound to measure
 MIN_PART_MS = 200
-RED = "0xD8262E"
+RED = "0xC53A3A"               # the word's red, and how see-through it is: from game frames, where it
+WORD_ALPHA = 0.85              # comes out about rgb(170, 52, 52) over the band
 WORD_SIZE, WORD_SIZE_SUB = 0.15, 0.13    # the word's size, as a share of the height (the band is 0.2)
 SUB_SIZE = 0.034               # the line under the word
 SUB_LIFT, SUB_DROP = 0.025, 0.058    # with a line: the word's middle above the band's, the line's below
@@ -214,7 +215,7 @@ def filters(spec, w, h, tmp, dur_s):
         # the word slams in: from a third bigger, landing in 0.16 s
         f"drawtext=fontfile={media._fpath(font())}:textfile={media._fpath(tf)}:fontcolor={RED}"
         f":fontsize='{size}*(1+0.33*max(0\\,1-(t-{t0:.3f})/0.16))'"
-        f":alpha='min(1\\,max(0\\,(t-{t0:.3f})/0.08))':borderw={max(2, round(h * 0.006))}:bordercolor=black@0.85"
+        f":alpha='{WORD_ALPHA}*min(1\\,max(0\\,(t-{t0:.3f})/0.08))':borderw={max(2, round(h * 0.006))}:bordercolor=black@0.85"
         f":shadowx=0:shadowy={max(1, round(h * 0.006))}:shadowcolor=black@0.5:x=(w-text_w)/2"
         f":y={'(h-text_h)/2' if not sub else f'h*{0.5 - SUB_LIFT}-text_h/2'}",
     ] + ([
