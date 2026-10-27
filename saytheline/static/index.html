@@ -164,8 +164,8 @@
   .timeline .hit { position: absolute; top: 29px; height: 19px; width: 3px; margin-left: -1px; pointer-events: none; background: #b98cff; }
   .aes-vig { position: absolute; pointer-events: none; z-index: 1; }
   .wasted { position: absolute; z-index: 2; pointer-events: none; display: flex; align-items: center; justify-content: center; overflow: hidden; }
-  .wasted i { position: absolute; inset: 0; mix-blend-mode: overlay;      /* = wasted.dodge_burn */
-    background: radial-gradient(ellipse at center, #cdcdcd 0%, #c4c4c4 25%, #6c6c6c 70%, #282828 100%); }
+  .wasted i { position: absolute; inset: 0;      /* = wasted.dodge_burn: the middle lifted, the edges and corners burned dark */
+    background: radial-gradient(ellipse at center, rgba(255,255,255,.15) 0%, rgba(255,255,255,0) 35%, rgba(0,0,0,.25) 60%, rgba(0,0,0,.55) 85%, rgba(0,0,0,.85) 100%); }
   .wasted b { position: absolute; left: 0; top: 36.35%; width: 100%; height: 24.3%; display: flex; flex-direction: column; align-items: center; justify-content: center;
     /* = wasted.band (BAND_Y, BAND_H, BAND_TILT, BAND_ALPHA): black, the top edge rising and the bottom falling to the right */
     background: rgba(8,8,8,.51);

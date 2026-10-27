@@ -30,7 +30,7 @@ import subprocess
 from . import config, media
 
 CACHE = os.path.join(config.data_dir(), "cache", "wasted")
-VERSION = 7                    # bump when the drawing changes, so cached images are redrawn
+VERSION = 9                    # bump when the drawing changes, so cached images are redrawn
 
 FACTOR = 5                     # GTA V: SET_TIME_SCALE(0.2f)
 SAT_S = 0.15                   # the colour is gone this long after it starts (it hits monochrome)
@@ -49,6 +49,9 @@ DEFAULT_LENGTH_MS = 9400       # without the fall sound to measure
 MIN_PART_MS = 200
 RED = "0xC62539"               # the word's crimson, and how much of it covers the picture: worked back
 WORD_ALPHA = 0.68              # from game frames (the picture's texture shows through the letters)
+# the dodge/burn grey in the middle and at the far corners: under 128 the picture is multiplied by
+# it (x0.5 at 64), over 128 lifted toward white (a sixth of the way at 148); 128 leaves it alone
+DODGE, BURN = 148, 18
 BAND_ALPHA = 0.51              # the band is black at this (inside = 0.46 x outside + 6 in the game)
 # where things sit, as shares of the height, measured off game frames: the band's middle and its
 # height there, and how far each edge slopes across the width (wider on the right); the word's size
@@ -163,10 +166,10 @@ def _draw(name, w, h, fmt, expr):
 
 
 def dodge_burn(w, h):
-    """Grey for an overlay blend: lighter than mid-grey in the middle (dodged), dark at the edges
-    and darkest in the corners (burned)."""
+    """The dodge/burn grey (see DODGE): lighter than mid-grey in the middle, dark at the edges and
+    darkest in the corners."""
     d = "hypot((X-W/2)/(W/2)\\,(Y-H/2)/(H/2))"
-    return _draw("dodge", w, h, "gray", f"lum='205-165*pow(min(1\\,max(0\\,({d}-0.35)/0.95))\\,1.4)'")
+    return _draw("dodge", w, h, "gray", f"lum='{DODGE}-{DODGE - BURN}*min(1\\,max(0\\,({d}-0.2)/1.15))'")
 
 
 def band(w, h):
@@ -218,8 +221,9 @@ def filters(spec, w, h, tmp, dur_s):
         raise RuntimeError("could not set the Wasted word: " + r.stderr.decode(errors="replace").strip()[-300:])
     slam = f"(1+0.33*max(0\\,1-(t-{t0:.3f})/0.16))"
     mid = BAND_Y - (WORD_LIFT if not sub else SUB_LIFT)        # where the word's letters sit
-    # the dodge/burn blends in with the drain (an overlay blend; grey's chroma stays as it is)
-    ov = "if(lt(A\\,128)\\,2*A*B/255\\,255-2*(255-A)*(255-B)/255)"
+    # the dodge/burn blends in with the drain: a multiply where it burns, a lift toward white where it
+    # dodges, so even bright edges go dark, as in the game (grey's chroma stays as it is)
+    ov = "if(lt(B\\,128)\\,A*B/128\\,A+(255-A)*(B-128)/127)"
     kb = f"min(1\\,max(0\\,(T-{a:.3f})/{DRAIN_S}))"
     return [
         # the flash, and the colour gone at once
