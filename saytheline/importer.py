@@ -25,7 +25,7 @@ ITEM_KEYS = ("item", "item_id")          # where Library state JSON names an ind
 
 
 def parse_map(spec):
-    """'/mnt/media=M:,/srv/x=S:' -> [(old, new)], longest first (as SAYTHELINE_PATH_MAP)."""
+    """'/srv/media=M:,/srv/x=S:' -> [(old, new)], longest first (as SAYTHELINE_PATH_MAP)."""
     pairs = [tuple(p.split("=", 1)) for p in (spec or "").split(",") if "=" in p]
     return sorted(pairs, key=lambda p: -len(p[0]))
 
