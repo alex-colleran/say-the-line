@@ -30,7 +30,7 @@ from . import ramp
 from . import sayany
 from . import search as srch
 from . import shots as shotcuts
-from . import aesthetic, laser, sfx, slowmo
+from . import aesthetic, laser, sfx, slowmo, wasted
 from . import snap as snapper
 
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -251,8 +251,9 @@ def cover_image(item_id):
 
 
 def font_file(family):
-    """The font file the render uses for this family, so the browser preview shows the same face."""
-    return media.font_path(family) or None
+    """The font file the render uses for this family, so the browser preview shows the same face
+    ("Wasted": the ending's word, [tools] wasted_font or the bundled default)."""
+    return wasted.font() if family == "Wasted" else media.font_path(family) or None
 
 
 @functools.lru_cache(maxsize=128)
@@ -1703,10 +1704,14 @@ class Handler(BaseHTTPRequestHandler):
             if u.path == "/fonts.css":
                 css = "".join(f"@font-face{{font-family:'{f}';font-weight:700;src:url('/font/{quote(f)}')}}\n"
                               for f in media.FONTS if font_file(f))
-                return self.send(200, css, "text/css", "max-age=86400")
+                wf = font_file("Wasted")          # its file in the URL, so a new wasted_font isn't cached as the old
+                if wf:
+                    css += (f"@font-face{{font-family:'Wasted';src:url('/font/Wasted?v="
+                            f"{hashlib.sha1(f'{wf}{os.path.getmtime(wf)}'.encode()).hexdigest()[:8]}')}}\n")
+                return self.send(200, css, "text/css", "no-cache")
             if u.path.startswith("/font/"):
                 p = font_file(unquote(u.path[6:]))
-                if unquote(u.path[6:]) not in media.FONTS or not p:
+                if unquote(u.path[6:]) not in (*media.FONTS, "Wasted") or not p:
                     return self.send(404, {"error": "no font"})
                 ext = p.rsplit(".", 1)[-1].lower()
                 return self.send_file(p, {"otf": "font/otf", "woff2": "font/woff2"}.get(ext, "font/ttf"))

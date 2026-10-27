@@ -191,9 +191,10 @@ def times(spec, cues, in_ms, out_ms, laser_a=None):
     return out[:MAX_HITS]
 
 
-def mix(clip, fmt, sound, hits_ms, gain, has_audio, dur_s):
+def mix(clip, fmt, sound, hits_ms, gain, has_audio, dur_s, fade_s=0):
     """Lay the sound over the clip at each hit (ms from its start), in place: video copied, the
-    audio re-encoded through a limiter so a hit over loud dialogue doesn't clip."""
+    audio re-encoded through a limiter so a hit over loud dialogue doesn't clip. `fade_s`: fade the
+    end out over this long, for a sound still ringing when the clip ends."""
     if not hits_ms:
         return
     n = len(hits_ms)
@@ -202,7 +203,8 @@ def mix(clip, fmt, sound, hits_ms, gain, has_audio, dur_s):
              else f"[1:a]{_FMT},volume={gain:.2f}[s0]"]
     graph += [f"[s{i}]adelay=delays={max(0, int(t))}:all=1[d{i}]" for i, t in enumerate(hits_ms)]
     graph.append(f"{base}{_FMT}" + "[b];[b]" + "".join(f"[d{i}]" for i in range(n))
-                 + f"amix=inputs={n + 1}:duration=first:normalize=0,alimiter=limit=0.95:level=false[a]")
+                 + f"amix=inputs={n + 1}:duration=first:normalize=0,alimiter=limit=0.95:level=false"
+                 + (f",afade=t=out:st={max(0, dur_s - fade_s):.3f}:d={fade_s:.3f}" if fade_s else "") + "[a]")
     tmp = clip + ".sfx." + fmt
     cmd = ["ffmpeg", "-v", "error", "-nostdin", "-y", "-i", clip, "-i", sound]
     if not has_audio:

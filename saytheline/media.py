@@ -658,7 +658,7 @@ def _render(src, in_ms, out_ms, opts, cues, out, label, uniform, slow, progress,
                 dur + (wz[1] if wz else 0))
     if wz and wz[3] and fmt != "gif":         # the fall, landing with the banner
         from . import sfx
-        sfx.mix(out, fmt, sfx.path("fall"), [round(wz[0] * 1000)], 0.8, info["has_audio"], dur + wz[1])
+        sfx.mix(out, fmt, sfx.path("fall"), [round(wz[0] * 1000)], 0.8, info["has_audio"], dur + wz[1], fade_s=0.5)
     if wz:
         dur += wz[1]
     if fmt == "gif" and w > 480:                 # GIFs are scaled down to 480 wide after the chain
