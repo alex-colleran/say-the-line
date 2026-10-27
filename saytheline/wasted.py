@@ -59,7 +59,7 @@ def filters(spec, w, h, tmp, dur_s):
     size = f"min(h*0.21\\,w*1.5/{max(4, len(text))})"     # long words still fit across
     return [
         # drained of colour and a little darker; the push-in (scaled up, cropped back to size)
-        f"hue=s='max(0\\,1-(t-{a:.3f})/{DRAIN_S})':b='-0.6*min(1\\,max(0\\,(t-{a:.3f})/{DRAIN_S}))'",
+        f"hue=s='min(1\\,max(0\\,1-(t-{a:.3f})/{DRAIN_S}))':b='-0.6*min(1\\,max(0\\,(t-{a:.3f})/{DRAIN_S}))'",
         f"scale=w='2*trunc(iw*(1+{PUSH}*{ease})/2)':h=-2:eval=frame", f"crop={w}:{h}",
         # the band: two steps of black, a quick fade
         f"drawbox=x=0:y={band_y}:w=iw:h={band_h}:color=black@0.3:t=fill:enable='gte(t\\,{t0 - 0.05:.3f})'",

@@ -1093,3 +1093,12 @@ class Y2K(unittest.TestCase):
         self.assertIsNone(laser.sparkles_of({"sparkles": "off"}))
         with self.assertRaises(ValueError):
             laser.sparkles_of({"sparkles": "glitter"})
+
+
+class WastedColour(unittest.TestCase):
+    def test_colour_is_untouched_before_the_ending(self):
+        # the drain once read 1 - (t - start) / 0.8, which is far over 1 (11x saturation) early in a clip
+        from saytheline import wasted
+        with tempfile.TemporaryDirectory() as tmp:
+            hue = wasted.filters((8.0, 1.5, "x", True), 854, 480, tmp, 10.0)[0]
+        self.assertTrue(hue.startswith("hue=s='min(1\\,max(0\\,"), hue)

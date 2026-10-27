@@ -1648,7 +1648,7 @@ function offsetNote() {
 async function openEditor(h, cut, entryId, preset) {
   flushDraft();
   resetEd(h);
-  captionDefaults(); opts.slow = 1; opts.laser = "off"; opts.sfx = "off"; opts.wasted = "off";
+  captionDefaults(); opts.slow = 1; opts.laser = "off"; opts.sfx = "off"; opts.wasted = "off"; opts.aesthetic = "none"; opts.sparkles = "off";
   const seq = ed.loadSeq;
   const [known, draft] = await Promise.all([
     fetch(`/api/offset?item=${h.item_id}`).then(r => r.json()).then(j => j.offset_ms || 0).catch(() => 0),
@@ -1687,7 +1687,7 @@ function drawDraftNote(d) {
     <button class="b" id="startFresh">Start fresh</button>`;
   $("#startFresh").onclick = () => {
     $("#vid").pause();
-    captionDefaults(); opts.slow = 1; opts.laser = "off"; opts.sfx = "off"; opts.wasted = "off"; saveOpts();
+    captionDefaults(); opts.slow = 1; opts.laser = "off"; opts.sfx = "off"; opts.wasted = "off"; opts.aesthetic = "none"; opts.sparkles = "off"; saveOpts();
     ed.laserA = ed.laserB = ed.laserPick = ed.sfxMark = ed.wastedAt = null;
     ed.stt = null; ed.poster = null; ed.lastFile = null; ed.subText = {}; ed.speech = null; ed.capShift = 0; ed.crop = null;
     defaultCut();

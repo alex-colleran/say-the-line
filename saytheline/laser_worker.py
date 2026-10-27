@@ -156,7 +156,7 @@ def glow(rgb, face, style, strength=1.0):
 
 # Sparkles: four-point star glints that twinkle on the brightest small spots (chrome, windows,
 # eyes, jewellery), each living well under a second. (max at once, new ones a second, size x h)
-SPARKLES = {"subtle": (3, 2.5, 0.05), "lots": (8, 7.0, 0.075)}
+SPARKLES = {"subtle": (4, 3.0, 0.09), "lots": (12, 9.0, 0.12)}
 
 
 def bright_spots(rgb, k=12):
@@ -195,15 +195,16 @@ def glint(rgb, x, y, size, strength):
 
     def pt(px, py):
         return (int(round((px - x0) * q * 16)), int(round((py - y0) * q * 16)))
-    t = max(1, int(L * 0.035 * q))
+    t = max(2, int(round(L * 0.05 * q)))
     for (dx, dy, k) in ((1, 0, 1), (0, 1, 1), (0.7, 0.7, 0.4), (0.7, -0.7, 0.4)):
         cv2.line(ray, pt(x - dx * L * k, y - dy * L * k), pt(x + dx * L * k, y + dy * L * k), 1.0, t, cv2.LINE_AA, shift=4)
-    cv2.circle(core, pt(x, y), max(1, int(L * 0.09 * q * 16)), 1.0, -1, cv2.LINE_AA, shift=4)
-    r = cv2.GaussianBlur(ray, (0, 0), max(0.6, L * 0.02 * q))
-    rays_far = cv2.GaussianBlur(ray, (0, 0), max(0.8, L * 0.06 * q))
-    c = cv2.GaussianBlur(core, (0, 0), max(0.8, L * 0.08 * q))
-    lt = (r[..., None] * np.array((1.4, 1.35, 1.4), np.float32) + rays_far[..., None] * np.array((0.6, 0.35, 0.55), np.float32)
-          + c[..., None] * np.array((1.6, 1.4, 1.5), np.float32)) * strength
+    cv2.circle(core, pt(x, y), max(1, int(L * 0.12 * q * 16)), 1.0, -1, cv2.LINE_AA, shift=4)
+    r = cv2.GaussianBlur(ray, (0, 0), max(0.6, L * 0.015 * q))
+    rays_far = cv2.GaussianBlur(ray, (0, 0), max(0.8, L * 0.05 * q))
+    c = cv2.GaussianBlur(core, (0, 0), max(0.8, L * 0.07 * q))
+    halo = cv2.GaussianBlur(core, (0, 0), max(1.5, L * 0.22 * q))
+    lt = (r[..., None] * np.array((2.2, 2.1, 2.2), np.float32) + rays_far[..., None] * np.array((1.0, 0.6, 0.9), np.float32)
+          + c[..., None] * np.array((2.4, 2.2, 2.3), np.float32) + halo[..., None] * np.array((1.4, 0.9, 1.3), np.float32)) * strength
     if q < 1:
         lt = cv2.resize(lt, (x1 - x0, y1 - y0), interpolation=cv2.INTER_LINEAR)
     out = rgb if rgb.flags.writeable else rgb.copy()
@@ -239,7 +240,7 @@ class Sparkles:
                 self.live.append(dict(x=x, y=y, st=0.6 + 0.4 * st, age=0, lost=0, size=self.size * self.rng.uniform(0.6, 1.25),
                                       life=int(self.fps * self.rng.uniform(0.45, 0.9))))
         for sp in self.live:
-            env = np.sin(np.pi * min(1, sp["age"] / max(1, sp["life"]))) ** 1.5
+            env = min(1.0, 1.6 * np.sin(np.pi * min(1, sp["age"] / max(1, sp["life"]))))     # quickly up, held, quickly out
             rgb = glint(rgb, sp["x"], sp["y"], sp["size"] * (0.7 + 0.3 * env), sp["st"] * env)
         return rgb
 
