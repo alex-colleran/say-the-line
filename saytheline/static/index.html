@@ -166,11 +166,13 @@
   .wasted { position: absolute; z-index: 2; pointer-events: none; display: flex; align-items: center; justify-content: center; overflow: hidden; }
   .wasted i { position: absolute; inset: 0; mix-blend-mode: overlay;      /* = wasted.dodge_burn */
     background: radial-gradient(ellipse at center, #cdcdcd 0%, #c4c4c4 25%, #6c6c6c 70%, #282828 100%); }
-  .wasted b { position: relative; width: 100%; height: 23%; display: flex; align-items: center; justify-content: center;
+  .wasted b { position: relative; width: 100%; height: 23%; display: flex; flex-direction: column; align-items: center; justify-content: center;
     /* = wasted.band: grey, stronger in the middle, the top edge rising and the bottom falling to the right */
     background: linear-gradient(90deg, rgba(58,58,58,.35), rgba(58,58,58,.62) 50%, rgba(58,58,58,.35));
     clip-path: polygon(0 13%, 100% 0, 100% 100%, 0 87%); color: #d8262e;
-    font-family: 'Wasted', 'League Spartan Black', system-ui, sans-serif; line-height: 1; -webkit-text-stroke: .02em #000; text-shadow: 0 .05em .05em rgba(0,0,0,.5); }
+    font-family: 'Wasted', 'League Spartan Black', system-ui, sans-serif; line-height: 1; }
+  .wasted b span { -webkit-text-stroke: .02em #000; text-shadow: 0 .05em .05em rgba(0,0,0,.5); }
+  .wasted b small { color: #fff; font: 700 1em 'Inter', system-ui, sans-serif; margin-top: .25em; text-shadow: 0 .06em .1em rgba(0,0,0,.6); }   /* = wasted SUB_* */
   .pick-layer { position: absolute; inset: 0; z-index: 4; cursor: crosshair; background: rgba(0,0,0,.25);
     display: flex; justify-content: center; align-items: flex-start; }
   .pick-layer span { margin-top: 10px; padding: 6px 10px; border-radius: 6px; background: rgba(0,0,0,.75); color: #fff; font-size: 13px; pointer-events: none; }
@@ -703,6 +705,7 @@
         <div class="opt"><span>Ending</span><div class="chips" data-opt="wasted"></div></div>
         <div id="wastedPart" hidden style="display:flex;flex-direction:column;gap:10px">
           <div class="opt"><span>Word</span><input id="wastedText" maxlength="24" placeholder="wasted" autocomplete="off" style="flex:1;min-width:0"></div>
+          <div class="opt"><span>Line</span><input id="wastedSub" maxlength="80" placeholder="Under the word (optional)" autocomplete="off" style="flex:1;min-width:0"></div>
           <div class="nudge"><span>Starts</span>
             <button class="b" data-wastednudge="-100" aria-label="The ending starts a tenth of a second earlier">−0.1</button>
             <button class="b" id="wastedSet" aria-label="The ending starts here">Set</button>
@@ -1417,7 +1420,7 @@ async function showEmpty() {
 
 /* ================= options + their rules ================= */
 const opts = { format: "mp4", aspect: "original", fit: "crop", res: 720, audio: "original",
-  slow: 1, slowSound: "deep", smooth: 0, laser: "off", sfx: "off", sfxWhen: "lines", sfxDelay: 200, sfxVol: "medium", aesthetic: "none", sparkles: "off", wasted: "off", wastedText: "wasted", wastedLen: 0, wastedSound: true,
+  slow: 1, slowSound: "deep", smooth: 0, laser: "off", sfx: "off", sfxWhen: "lines", sfxDelay: 200, sfxVol: "medium", aesthetic: "none", sparkles: "off", wasted: "off", wastedText: "wasted", wastedSub: "", wastedLen: 0, wastedSound: true,
   subsOn: true, captionSrc: "subs", look: "classic", fontClassic: "Inter", fontWord: "Inter Black",
   size: "m", colour: "white", hl: "yellow", caps: false, box: false, position: "bottom", tab: "cut", loop: false };
 const CHOICES = {
@@ -1588,7 +1591,7 @@ function captionDefaults() { opts.subsOn = true; opts.captionSrc = "subs"; opts.
 
 /* drafts: every edited clip is kept (Library > Recent edits); a hearted moment keeps the same state */
 const DRAFT_OPTS = ["subsOn", "captionSrc", "look", "fontClassic", "fontWord", "size", "colour", "hl", "caps", "box", "position",
-  "format", "aspect", "fit", "res", "audio", "slow", "slowSound", "smooth", "laser", "sfx", "sfxWhen", "sfxDelay", "sfxVol", "aesthetic", "sparkles", "wasted", "wastedText", "wastedLen", "wastedSound"];
+  "format", "aspect", "fit", "res", "audio", "slow", "slowSound", "smooth", "laser", "sfx", "sfxWhen", "sfxDelay", "sfxVol", "aesthetic", "sparkles", "wasted", "wastedText", "wastedSub", "wastedLen", "wastedSound"];
 function edState() {
   const o = {}; DRAFT_OPTS.forEach(k => o[k] = opts[k]);
   return { v: 2, in_ms: Math.round(ed.inMs), out_ms: Math.round(ed.outMs), offset_ms: ed.offset, opts: o,
@@ -1657,7 +1660,7 @@ function offsetNote() {
 async function openEditor(h, cut, entryId, preset) {
   flushDraft();
   resetEd(h);
-  captionDefaults(); opts.slow = 1; opts.laser = "off"; opts.sfx = "off"; opts.wasted = "off"; opts.aesthetic = "none"; opts.sparkles = "off";
+  captionDefaults(); opts.slow = 1; opts.laser = "off"; opts.sfx = "off"; opts.wasted = "off"; opts.wastedSub = ""; opts.aesthetic = "none"; opts.sparkles = "off";
   const seq = ed.loadSeq;
   const [known, draft] = await Promise.all([
     fetch(`/api/offset?item=${h.item_id}`).then(r => r.json()).then(j => j.offset_ms || 0).catch(() => 0),
@@ -1696,7 +1699,7 @@ function drawDraftNote(d) {
     <button class="b" id="startFresh">Start fresh</button>`;
   $("#startFresh").onclick = () => {
     $("#vid").pause();
-    captionDefaults(); opts.slow = 1; opts.laser = "off"; opts.sfx = "off"; opts.wasted = "off"; opts.aesthetic = "none"; opts.sparkles = "off"; saveOpts();
+    captionDefaults(); opts.slow = 1; opts.laser = "off"; opts.sfx = "off"; opts.wasted = "off"; opts.wastedSub = ""; opts.aesthetic = "none"; opts.sparkles = "off"; saveOpts();
     ed.laserA = ed.laserB = ed.laserPick = ed.sfxMark = ed.wastedAt = null;
     ed.stt = null; ed.poster = null; ed.lastFile = null; ed.subText = {}; ed.speech = null; ed.capShift = 0; ed.crop = null;
     defaultCut();
@@ -2077,6 +2080,7 @@ function drawWasted() {
   g.hidden = !!ed.studioClip;
   $("#wastedPart").hidden = !wastedOn();
   const t = $("#wastedText"); if (document.activeElement !== t) t.value = opts.wastedText || "";
+  const u = $("#wastedSub"); if (document.activeElement !== u) u.value = opts.wastedSub || "";
   const full = CHOICES.wastedLen.find(c => c[0] === 0); if (full) full[1] = `Full ${(WASTED_MAX() / 1000).toFixed(1)} s`;
   if (!wastedOn()) return;
   const a = wastedStart(), cut = ed.outMs - wastedEnd(), hold = wastedHold();
@@ -2099,10 +2103,13 @@ function drawWastedCap(r) {
   if (!on) return;
   Object.assign(c.style, { left: r.left + "px", top: r.top + "px", width: r.W + "px", height: r.H + "px" });
   c.firstElementChild.style.opacity = k.toFixed(2);
-  const b = c.lastElementChild, word = opts.wastedText || "wasted";
+  const b = c.lastElementChild, word = opts.wastedText || "wasted", line = (opts.wastedSub || "").trim();
   b.style.visibility = since >= WASTED_BANNER_AT() ? "visible" : "hidden";
-  b.textContent = word;
-  b.style.fontSize = Math.min(r.H * 0.21, r.W * 1.5 / Math.max(4, word.length)) + "px";
+  if (!b.firstElementChild) b.innerHTML = "<span></span><small></small>";
+  const [w, l] = b.children;                                  // = wasted.WORD_SIZE(_SUB), SUB_SIZE
+  w.textContent = word; l.textContent = line; l.hidden = !line;
+  w.style.fontSize = Math.min(r.H * (line ? 0.13 : 0.15), r.W * 1.5 / Math.max(4, word.length)) + "px";
+  l.style.fontSize = r.H * 0.034 + "px";
 }
 // the sound and the hold while playing: the fall starts with the ending, the clip's own sound fades
 // under it by just after the word, and the last frame holds (paused) for what's left of the length
@@ -2139,6 +2146,7 @@ function wastedHoldThen(done) {
   wastedHoldTimer = setTimeout(() => { wastedHeld = 0; wastedHoldTimer = null; done(); }, hold);
 }
 $("#wastedText").addEventListener("input", e => { opts.wastedText = e.target.value.slice(0, 24); saveOpts(); drawSummary(); drawOverlay(); autosave(); });
+$("#wastedSub").addEventListener("input", e => { opts.wastedSub = e.target.value.slice(0, 80); saveOpts(); drawOverlay(); autosave(); });
 $("#wastedSet").onclick = () => { const p = frameOnScreen(); ed.wastedAt = p || absNow(); drawAll(); };
 $$("[data-wastednudge]").forEach(b => b.onclick = () => { ed.wastedAt = Math.max(ed.inMs, Math.min(ed.outMs - 200, wastedStart() + +b.dataset.wastednudge)); seekTo(Math.max(ed.inMs, ed.wastedAt - 500)); drawAll(); });
 /* sound effects: a hit after each line, after the last, with the lasers or at a mark; presets and uploads */
@@ -3078,7 +3086,7 @@ function renderBody() {
     laser: laserOn() ? { style: opts.laser, a_ms: Math.round(ed.laserA), b_ms: Math.round(ed.laserB), pick: ed.laserPick || undefined } : undefined,
     aesthetic: opts.aesthetic !== "none" ? opts.aesthetic : undefined,
     sparkles: opts.sparkles !== "off" && SERVER.sparkles ? opts.sparkles : undefined,
-    wasted: wastedOn() ? { text: opts.wastedText || "wasted", at_ms: Math.round(wastedStart()), length_ms: wastedLen(), sound: opts.wastedSound } : undefined,
+    wasted: wastedOn() ? { text: opts.wastedText || "wasted", sub: (opts.wastedSub || "").trim() || undefined, at_ms: Math.round(wastedStart()), length_ms: wastedLen(), sound: opts.wastedSound } : undefined,
     sfx: sfxOn() ? { id: opts.sfx, when: opts.sfxWhen, delay_ms: opts.sfxDelay, volume: opts.sfxVol, times_ms: sfxTimes(),
                      mark_ms: opts.sfxWhen === "mark" ? Math.round(ed.sfxMark) : undefined } : undefined,
     caption_cues: needWords() && sttCovers() ? ed.stt.cues.map(c => ({ start_ms: c.start_ms, end_ms: c.end_ms, text: c.text, words: c.words || [] })) : undefined,

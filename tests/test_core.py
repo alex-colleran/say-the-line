@@ -1102,10 +1102,11 @@ class Wasted(unittest.TestCase):
         with mock.patch.object(wasted, "max_length_ms", return_value=9400):
             self.assertIsNone(wasted.spec_of({}, 1000, 9000))
             # by default as long as the sound, starting where 5x slow motion reaches the out point
-            self.assertEqual(wasted.spec_of({"wasted": {}}, 1000, 9000), (6.12, 9.4, "wasted", True))
+            self.assertEqual(wasted.spec_of({"wasted": {}}, 1000, 9000), (6.12, 9.4, "wasted", True, ""))
             self.assertEqual(wasted.spec_of({"wasted": {}}, 1000, 9000, factor=1)[0], 0)     # no RIFE: from the start
-            self.assertEqual(wasted.spec_of({"wasted": {"text": "  so   busted ", "at_ms": 3000, "length_ms": 99999, "sound": False}}, 1000, 9000),
-                             (2.0, 9.4, "so busted", False))
+            self.assertEqual(wasted.spec_of({"wasted": {"text": "  so   busted ", "sub": " The elk  heard you. ", "at_ms": 3000,
+                                                        "length_ms": 99999, "sound": False}}, 1000, 9000),
+                             (2.0, 9.4, "so busted", False, "The elk heard you."))
             self.assertEqual(wasted.spec_of({"wasted": {"length_ms": 10}}, 1000, 9000)[1], 1.0)
             self.assertIsNone(wasted.spec_of({"wasted": {"at_ms": 500}}, 1000, 9000))       # a preview elsewhere
             self.assertEqual(wasted.spec_of({"wasted": {}}, 1000, 1800)[0], 0)              # short clip: from the start
@@ -1114,18 +1115,24 @@ class Wasted(unittest.TestCase):
             with open(os.path.join(tmp, "wasted.txt")) as f:
                 self.assertEqual(f.read(), "busted")                  # as typed: the game sets it lowercase
         self.assertTrue(fs[-1].startswith("tpad=") and "crop=1280:720" in fs)
+        self.assertEqual(sum("drawtext=" in f for f in fs), 1)                  # no line under it
+        with tempfile.TemporaryDirectory() as tmp:
+            fs = wasted.filters((2.0, 0, "busted", True, "The elk heard you."), 1280, 720, tmp, 5.0)
+            with open(os.path.join(tmp, "wasted-sub.txt")) as f:
+                self.assertEqual(f.read(), "The elk heard you.")
+        self.assertEqual(sum("drawtext=" in f for f in fs), 2)
         self.assertEqual(wasted.audio_filters((2.0, 1.5, "x", True), 5.0)[0], "apad=whole_dur=6.500")
 
     def test_the_slow_part_fills_the_length_or_the_last_frame_holds(self):
         from saytheline import wasted
         # 9.4 s at 5x takes 1.88 s of the cut: the rest of the cut after it is left out
-        part, out, spec = wasted.plan((2.0, 9.4, "x", True), 1000, 9000)
-        self.assertEqual((part, out, spec), ((2000, 3880, 5, "deep"), 4880, (2.0, 0.0, "x", True)))
+        part, out, spec = wasted.plan((2.0, 9.4, "x", True, ""), 1000, 9000)
+        self.assertEqual((part, out, spec), ((2000, 3880, 5, "deep"), 4880, (2.0, 0.0, "x", True, "")))
         # the out point comes 1 s in: 5 s of slow motion, then the last frame for the other 4.4 s
-        part, out, spec = wasted.plan((7.0, 9.4, "x", True), 1000, 9000)
+        part, out, spec = wasted.plan((7.0, 9.4, "x", True, ""), 1000, 9000)
         self.assertEqual((part, out, spec[1]), ((7000, 8000, 5, "deep"), 9000, 4.4))
         # without RIFE: normal speed, so 1 s of picture and 8.4 s held
-        part, out, spec = wasted.plan((7.0, 9.4, "x", True), 1000, 9000, factor=1)
+        part, out, spec = wasted.plan((7.0, 9.4, "x", True, ""), 1000, 9000, factor=1)
         self.assertEqual((part, out, spec[1]), (None, 9000, 8.4))
 
 

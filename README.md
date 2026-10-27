@@ -60,7 +60,8 @@ It runs on the machine that has your media, next to Jellyfin, and is used from a
   (made by RIFE, so it stays at the source's frame rate) and pushes slowly in while the "fall" sound
   starts, through the game's colours: a flash, a glowing yellow-green, a muted olive, then a cool
   black and white with the middle bright and the edges burned. The word ("wasted", or your own, as
-  typed) slams in on the sound's second hit over a translucent grey band with angled edges. The ending lasts as long as the fall sound, or less (Length); it is the end of the clip, and
+  typed) slams in on the sound's second hit over a translucent grey band with angled edges, with an
+  optional line under it in small white type (Line: "The elk heard Trevor."). The ending lasts as long as the fall sound, or less (Length); it is the end of the clip, and
   when the out point comes first the last frame holds for the rest. The editor plays it slowed, grey,
   with the word and the sound. Works for clips, GIFs and stills (at normal speed without RIFE). The
   word is set in the bundled League Spartan Black; `[tools] wasted_font` points it at any font file

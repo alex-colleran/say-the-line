@@ -14,7 +14,8 @@ The timing is GTA V's own, from Rockstar's scripts: time runs at 0.2 (SET_TIME_S
 ending is 5x slow motion, made by RIFE like any slow part (slowmo.py), still at the source's frame
 rate; the word lands 1.5 s after the start ("TextHit" 1500 ms after the "ScreenFlash").
 
-A request's `wasted` is {"text": the word (default WASTED), "at_ms": when it starts (media
+A request's `wasted` is {"text": the word (default "wasted"), "sub": a line under it in the band
+(like the game's "The elk heard Trevor."; none when blank), "at_ms": when it starts (media
 timeline; default: as late as lets the slow part reach the out point), "length_ms": how long the
 ending lasts on screen (default and most: the fall sound's length), "sound": true}. The ending is
 the end of the clip: its slow part takes length / 5 of the source from the start, and what the cut
@@ -47,6 +48,9 @@ MIN_LENGTH_MS = 1000
 DEFAULT_LENGTH_MS = 9400       # without the fall sound to measure
 MIN_PART_MS = 200
 RED = "0xD8262E"
+WORD_SIZE, WORD_SIZE_SUB = 0.15, 0.13    # the word's size, as a share of the height (the band is 0.2)
+SUB_SIZE = 0.034               # the line under the word
+SUB_LIFT, SUB_DROP = 0.025, 0.058    # with a line: the word's middle above the band's, the line's below
 
 
 @functools.lru_cache(maxsize=4)
@@ -71,12 +75,13 @@ def font():
 
 
 def spec_of(req, in_ms, out_ms, factor=FACTOR):
-    """(start s from the cut's in point, length s on screen, text, sound), or None (also when
+    """(start s from the cut's in point, length s on screen, text, sound, sub), or None (also when
     `at_ms` is outside the cut)."""
     s = req.get("wasted")
     if not isinstance(s, dict) or not s.get("on", True):
         return None
     text = " ".join(str(s.get("text") or "wasted").split())[:24] or "wasted"
+    sub = " ".join(str(s.get("sub") or "").split())[:80]
     most = max_length_ms()
     length = max(MIN_LENGTH_MS, min(most, int(s.get("length_ms") or most)))
     if s.get("at_ms") is None:
@@ -85,19 +90,19 @@ def spec_of(req, in_ms, out_ms, factor=FACTOR):
         at = int(s["at_ms"])
         if not in_ms <= at <= out_ms - MIN_PART_MS:      # a preview of another part of the cut: not in it
             return None
-    return (at - in_ms) / 1000, length / 1000, text, s.get("sound", True) is not False
+    return (at - in_ms) / 1000, length / 1000, text, s.get("sound", True) is not False, sub
 
 
 def plan(spec, in_ms, out_ms, factor=FACTOR):
     """How the ending is made: (slow part (a, b, factor, "deep") in ms from the in point, or None
-    at normal speed; the cut's new out point; the render's (start s, hold s, text, sound)). The
+    at normal speed; the cut's new out point; the render's (start s, hold s, text, sound, sub)). The
     start is the same on the slowed timeline, since the slow part begins there."""
-    start, length, text, sound = spec
+    start, length, text, sound, sub = spec
     a = round(start * 1000)
     b = min(out_ms - in_ms, a + round(length * 1000 / factor))
     hold = max(0.0, length - (b - a) * factor / 1000)
     part = (a, b, factor, "deep") if factor > 1 else None
-    return part, in_ms + b, (start, round(hold, 3), text, sound)
+    return part, in_ms + b, (start, round(hold, 3), text, sound, sub)
 
 
 @functools.lru_cache(maxsize=4)
@@ -163,7 +168,7 @@ def band(w, h):
 
 def filters(spec, w, h, tmp, dur_s):
     """The picture filters, after the captions. `dur_s`: the cut's length before the hold."""
-    a, hold, text, _ = spec
+    a, hold, text, _, sub = (*spec, "")[:5]
     t0 = a + banner_at()
     on = f"gte(t\\,{a:.3f})"
     since = f"max(0\\,t-{a:.3f})"
@@ -181,7 +186,12 @@ def filters(spec, w, h, tmp, dur_s):
     tf = os.path.join(tmp, "wasted.txt")
     with open(tf, "w", encoding="utf-8") as f:
         f.write(text)
-    size = f"min(h*0.21\\,w*1.5/{max(4, len(text))})"     # long words still fit across
+    sf = os.path.join(tmp, "wasted-sub.txt")
+    if sub:
+        with open(sf, "w", encoding="utf-8") as f:
+            f.write(sub)
+    # long words still fit across; with a line under it the word is a little smaller, to leave room
+    size = f"min(h*{WORD_SIZE if not sub else WORD_SIZE_SUB}\\,w*1.5/{max(4, len(text))})"
     # the dodge/burn blends in with the drain (an overlay blend; grey's chroma stays as it is)
     ov = "if(lt(A\\,128)\\,2*A*B/255\\,255-2*(255-A)*(255-B)/255)"
     kb = f"min(1\\,max(0\\,(T-{a:.3f})/{DRAIN_S}))"
@@ -205,14 +215,20 @@ def filters(spec, w, h, tmp, dur_s):
         f"drawtext=fontfile={media._fpath(font())}:textfile={media._fpath(tf)}:fontcolor={RED}"
         f":fontsize='{size}*(1+0.33*max(0\\,1-(t-{t0:.3f})/0.16))'"
         f":alpha='min(1\\,max(0\\,(t-{t0:.3f})/0.08))':borderw={max(2, round(h * 0.006))}:bordercolor=black@0.85"
-        f":shadowx=0:shadowy={max(1, round(h * 0.006))}:shadowcolor=black@0.5:x=(w-text_w)/2:y=(h-text_h)/2",
-    ] + ([f"tpad=stop_mode=clone:stop_duration={hold:.3f}"] if hold > 0 else [])
+        f":shadowx=0:shadowy={max(1, round(h * 0.006))}:shadowcolor=black@0.5:x=(w-text_w)/2"
+        f":y={'(h-text_h)/2' if not sub else f'h*{0.5 - SUB_LIFT}-text_h/2'}",
+    ] + ([
+        # the line under it: small white type, in with the word
+        f"drawtext=fontfile={media._fpath(media.font_path('Inter'))}:textfile={media._fpath(sf)}:fontcolor=white"
+        f":fontsize=h*{SUB_SIZE}:alpha='min(1\\,max(0\\,(t-{t0 + 0.1:.3f})/0.15))'"
+        f":shadowx=0:shadowy={max(1, round(h * 0.003))}:shadowcolor=black@0.6:x=(w-text_w)/2:y=h*{0.5 + SUB_DROP}-text_h/2",
+    ] if sub else []) + ([f"tpad=stop_mode=clone:stop_duration={hold:.3f}"] if hold > 0 else [])
 
 
 def audio_filters(spec, dur_s):
     """The clip's own sound (slowed with the picture): fades out under the fall sound by just after
     the word lands, padded through the hold."""
-    a, hold, _, _ = spec
-    t0 = a + BANNER_S
+    a, hold = spec[:2]
+    t0 = a + banner_at()
     end = dur_s + hold
     return [f"apad=whole_dur={end:.3f}", f"afade=t=out:st={a:.3f}:d={max(0.3, t0 + 0.5 - a):.3f}:curve=exp"]
