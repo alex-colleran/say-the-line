@@ -57,9 +57,10 @@ It runs on the machine that has your media, next to Jellyfin, and is used from a
   zoom in); 480–1080 or source size.
 - **Wasted ending** (Cut > Ending): the game-over meme, in a look of its own, timed like GTA V's
   (whose scripts run time at 0.2 there). From the moment you set, the picture goes 5x slow motion
-  (made by RIFE, so it stays at the source's frame rate), drains to grey and pushes slowly in while
-  the "fall" sound starts; 1.5 s later a big red word (WASTED, or your own) slams in over a dark
-  band. The ending lasts as long as the fall sound, or less (Length); it is the end of the clip, and
+  (made by RIFE, so it stays at the source's frame rate) and pushes slowly in while the "fall" sound
+  starts, through the game's colours: a flash, a glowing yellow-green, a muted olive, then a cool
+  black and white with the middle bright and the edges burned. The word ("wasted", or your own, as
+  typed) slams in on the sound's second hit over a translucent grey band with angled edges. The ending lasts as long as the fall sound, or less (Length); it is the end of the clip, and
   when the out point comes first the last frame holds for the rest. The editor plays it slowed, grey,
   with the word and the sound. Works for clips, GIFs and stills (at normal speed without RIFE). The
   word is set in the bundled League Spartan Black; `[tools] wasted_font` points it at any font file

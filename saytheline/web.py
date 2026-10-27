@@ -1726,7 +1726,7 @@ class Handler(BaseHTTPRequestHandler):
             if u.path == "/api/options":
                 return self.send(200, dict(fonts=media.FONTS, sizes=list(media.SIZES), stems=bool(config.demucs()),
                                            slowmo=bool(slowmo.rife()), slow_max_ms=slowmo.MAX_PART_MS,
-                                           wasted_max_ms=wasted.max_length_ms(), wasted_factor=wasted.FACTOR if slowmo.rife() else 1, laser=laser.available(), sparkles=laser.sparkles_available(),
+                                           wasted_max_ms=wasted.max_length_ms(), wasted_banner_ms=round(wasted.banner_at() * 1000), wasted_factor=wasted.FACTOR if slowmo.rife() else 1, laser=laser.available(), sparkles=laser.sparkles_available(),
                                            slow_secs_per_mpix_frame=slowmo.SECS_PER_MPIX_FRAME, rates=dict(RATES),
                                            colours=list(media.COLOURS), aspects=["original", *media.ASPECTS]),
                                  cache="max-age=300")

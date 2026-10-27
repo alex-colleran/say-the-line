@@ -1102,7 +1102,7 @@ class Wasted(unittest.TestCase):
         with mock.patch.object(wasted, "max_length_ms", return_value=9400):
             self.assertIsNone(wasted.spec_of({}, 1000, 9000))
             # by default as long as the sound, starting where 5x slow motion reaches the out point
-            self.assertEqual(wasted.spec_of({"wasted": {}}, 1000, 9000), (6.12, 9.4, "WASTED", True))
+            self.assertEqual(wasted.spec_of({"wasted": {}}, 1000, 9000), (6.12, 9.4, "wasted", True))
             self.assertEqual(wasted.spec_of({"wasted": {}}, 1000, 9000, factor=1)[0], 0)     # no RIFE: from the start
             self.assertEqual(wasted.spec_of({"wasted": {"text": "  so   busted ", "at_ms": 3000, "length_ms": 99999, "sound": False}}, 1000, 9000),
                              (2.0, 9.4, "so busted", False))
@@ -1112,7 +1112,7 @@ class Wasted(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             fs = wasted.filters((2.0, 1.5, "busted", True), 1280, 720, tmp, 5.0)
             with open(os.path.join(tmp, "wasted.txt")) as f:
-                self.assertEqual(f.read(), "BUSTED")
+                self.assertEqual(f.read(), "busted")                  # as typed: the game sets it lowercase
         self.assertTrue(fs[-1].startswith("tpad=") and "crop=1280:720" in fs)
         self.assertEqual(wasted.audio_filters((2.0, 1.5, "x", True), 5.0)[0], "apad=whole_dur=6.500")
 

@@ -3,6 +3,13 @@ end, the picture goes into slow motion, drains to grey and darkens while the cam
 in, and the "fall" sound starts with it; then a dark band and a big red word slam in over it, and
 the sound plays out over the rest.
 
+The look follows the game's "DeathFailOut" effect, from frames of it: a flash as it hits, then a
+glowing yellow-green monochrome, easing through a muted olive into a cool, slightly teal black and
+white, with the middle dodged bright and the edges burned dark. The word lands with the sound's
+second hit (its loudest peak after the first moments; 1.5 s, the game's own, without one), on a
+translucent grey band whose top and bottom edges are slightly angled and which fades toward the
+sides. The band and the dodge/burn are drawn once per output size (data/cache/wasted).
+
 The timing is GTA V's own, from Rockstar's scripts: time runs at 0.2 (SET_TIME_SCALE(0.2f)), so the
 ending is 5x slow motion, made by RIFE like any slow part (slowmo.py), still at the source's frame
 rate; the word lands 1.5 s after the start ("TextHit" 1500 ms after the "ScreenFlash").
@@ -16,12 +23,25 @@ Without RIFE it plays at normal speed. The banner is drawn over the captions. Th
 bundled League Spartan Black, or any font file set as [tools] wasted_font."""
 import functools
 import os
+import re
+import subprocess
 
-from . import media
+from . import config, media
+
+CACHE = os.path.join(config.data_dir(), "cache", "wasted")
+VERSION = 3                    # bump when the drawing changes, so cached images are redrawn
 
 FACTOR = 5                     # GTA V: SET_TIME_SCALE(0.2f)
-DRAIN_S = 0.5                  # colour gone this long after it starts
-BANNER_S = 1.5                 # the word lands this long after it starts
+SAT_S = 0.15                   # the colour is gone this long after it starts (it hits monochrome)
+DRAIN_S = 0.3                  # the dodge/burn and the harder contrast are in by this long after
+FLASH_S = 0.1                  # the flash at the start fades with this time constant
+# the tints in turn, as gammas (r, g, b): seconds after the start each is fully in
+TINTS = ((0.0, (1.15, 1.5, 0.7)),          # glowing yellow-green
+         (0.9, (1.05, 1.18, 0.9)),         # muted olive
+         (1.6, (0.95, 1.0, 1.05)))         # cool grey
+GLOW_S = (0.5, 1.1)            # the highlights' glow: full until the first, gone by the second
+LAND_S = 0.12                  # the word's slam is this long before it lands
+BANNER_S = 1.5                 # the word lands this long after it starts, without a hit in the sound
 PUSH = 0.07                    # the push-in: 7% closer by the end
 MIN_LENGTH_MS = 1000
 DEFAULT_LENGTH_MS = 9400       # without the fall sound to measure
@@ -56,7 +76,7 @@ def spec_of(req, in_ms, out_ms, factor=FACTOR):
     s = req.get("wasted")
     if not isinstance(s, dict) or not s.get("on", True):
         return None
-    text = " ".join(str(s.get("text") or "WASTED").split())[:24] or "WASTED"
+    text = " ".join(str(s.get("text") or "wasted").split())[:24] or "wasted"
     most = max_length_ms()
     length = max(MIN_LENGTH_MS, min(most, int(s.get("length_ms") or most)))
     if s.get("at_ms") is None:
@@ -80,28 +100,107 @@ def plan(spec, in_ms, out_ms, factor=FACTOR):
     return part, in_ms + b, (start, round(hold, 3), text, sound)
 
 
+@functools.lru_cache(maxsize=4)
+def _hit_s(path, mtime):
+    """The sound's second hit: its loudest 10 ms peak from 0.6 s to 4 s in, or None."""
+    r = subprocess.run(["ffmpeg", "-v", "error", "-nostdin", "-i", path, "-t", "4", "-af",
+                        "aresample=48000,asetnsamples=n=480,astats=metadata=1:reset=1,"
+                        "ametadata=mode=print:key=lavfi.astats.Overall.Peak_level:file=-", "-f", "null", "-"],
+                       capture_output=True, text=True, timeout=60)
+    peaks = [float(x) for x in re.findall(r"Peak_level=(-?[\d.]+)", r.stdout)]
+    best = max(range(60, len(peaks)), key=lambda i: peaks[i], default=None)
+    return round(best * 0.01, 2) if best is not None else None
+
+
+def banner_at():
+    """Seconds from the start to when the word starts its slam, so it lands on the sound's hit."""
+    from . import sfx
+    try:
+        p = sfx.path("fall")
+        hit = _hit_s(p, os.path.getmtime(p)) if p else None
+    except (OSError, RuntimeError):
+        hit = None
+    return max(0.3, hit - LAND_S) if hit else BANNER_S
+
+
 def banner_s(spec):
     """When the word lands, from the cut's in point."""
-    return spec[0] + BANNER_S
+    return spec[0] + banner_at()
+
+
+def _draw(name, w, h, fmt, expr):
+    """A cached image drawn by geq (once per output size)."""
+    out = os.path.join(CACHE, f"v{VERSION}-{name}-{w}x{h}.png")
+    if os.path.isfile(out):
+        return out
+    os.makedirs(CACHE, exist_ok=True)
+    r = subprocess.run(["ffmpeg", "-v", "error", "-nostdin", "-y", "-f", "lavfi", "-i", f"color=c=black@0:s={w}x{h}:d=0.04,format={fmt}",
+                        "-vf", f"geq={expr}", "-frames:v", "1", out + ".tmp.png"], capture_output=True, timeout=120)
+    if r.returncode != 0:
+        raise RuntimeError("could not draw the Wasted ending: " + r.stderr.decode(errors="replace").strip()[-300:])
+    os.replace(out + ".tmp.png", out)
+    return out
+
+
+def dodge_burn(w, h):
+    """Grey for an overlay blend: lighter than mid-grey in the middle (dodged), dark at the edges
+    and darkest in the corners (burned)."""
+    d = "hypot((X-W/2)/(W/2)\\,(Y-H/2)/(H/2))"
+    return _draw("dodge", w, h, "gray", f"lum='205-165*pow(min(1\\,max(0\\,({d}-0.35)/0.95))\\,1.4)'")
+
+
+def band(w, h):
+    """The word's band: a dark grey, 62% in the middle fading to 35% at the sides (so it lightens
+    the dark parts of the picture and darkens the light ones, as in the game), the top edge rising
+    and the bottom edge falling a little to the right, its edges anti-aliased."""
+    cy, bh, tilt = h * 0.5, h * 0.2, h * 0.03
+    top = f"({cy - bh / 2:.2f}+{tilt:.2f}*(0.5-X/W))"
+    bot = f"({cy + bh / 2:.2f}-{tilt:.2f}*(0.5-X/W))"
+    inside = f"min(1\\,max(0\\,Y-{top}+0.5))*min(1\\,max(0\\,{bot}-Y+0.5))"
+    alpha = f"255*{inside}*(0.62-0.27*pow(2*X/W-1\\,2))"
+    return _draw("band", w, h, "rgba", f"r=58:g=58:b=58:a='{alpha}'")
 
 
 def filters(spec, w, h, tmp, dur_s):
     """The picture filters, after the captions. `dur_s`: the cut's length before the hold."""
     a, hold, text, _ = spec
-    t0 = a + BANNER_S
+    t0 = a + banner_at()
+    on = f"gte(t\\,{a:.3f})"
+    since = f"max(0\\,t-{a:.3f})"
+    k = f"min(1\\,{since}/{DRAIN_S})"                                                   # 0 -> 1
+    flash = f"{on}*exp(-{since}/{FLASH_S})"
+
+    def ramp(t, x, y):          # 0 before x, 1 after y
+        return f"min(1\\,max(0\\,({t}-{x:.3f})/{y - x:.3f}))"
+    # each tint's weight: the first until the second comes in, and so on
+    (_, g1), (s2, g2), (s3, g3) = TINTS
+    w2, w3 = ramp(since, s2 * 0.55, s2), ramp(since, s3 * 0.75, s3)
+    gam = lambda i: f"if({on}\\,{g1[i]}+({g2[i] - g1[i]:.3f})*{w2}+({g3[i] - g2[i]:.3f})*{w3}\\,1)"
+    glow = f"gte(T\\,{a:.3f})*(1-{ramp(f'(T-{a:.3f})', *GLOW_S)})"
     ease = f"(1-cos(PI*min(1,max(0,(t-{a:.3f})/{max(0.5, dur_s + hold - a):.3f}))))/2"   # 0 -> 1 to the end
     tf = os.path.join(tmp, "wasted.txt")
     with open(tf, "w", encoding="utf-8") as f:
-        f.write(text.upper())
-    band_y, band_h = round(h * 0.4), round(h * 0.2)
+        f.write(text)
     size = f"min(h*0.21\\,w*1.5/{max(4, len(text))})"     # long words still fit across
+    # the dodge/burn blends in with the drain (an overlay blend; grey's chroma stays as it is)
+    ov = "if(lt(A\\,128)\\,2*A*B/255\\,255-2*(255-A)*(255-B)/255)"
+    kb = f"min(1\\,max(0\\,(T-{a:.3f})/{DRAIN_S}))"
     return [
-        # drained of colour and a little darker; the push-in (scaled up, cropped back to size)
-        f"hue=s='min(1\\,max(0\\,1-(t-{a:.3f})/{DRAIN_S}))':b='-0.6*min(1\\,max(0\\,(t-{a:.3f})/{DRAIN_S}))'",
+        # the flash, and the colour gone at once
+        f"hue=s='min(1\\,max(0\\,1-(t-{a:.3f})/{SAT_S}))':b='3*{flash}'",
+        # the tints in turn, over a brighter, harder monochrome
+        f"eq=eval=frame:gamma_r='{gam(0)}':gamma_g='{gam(1)}':gamma_b='{gam(2)}'"
+        f":contrast='1+0.1*{k}':gamma='1+0.3*{k}'",
+        # the glow on the highlights as it hits (screened in, fading out)
+        f"format=gbrp,split[wzs][wzt];[wzt]gblur=sigma={max(2, min(w, h) / 45):.1f}[wzu];"
+        f"[wzs][wzu]blend=all_expr='A+(255-(255-A)*(255-B)/255-A)*0.6*{glow}':enable='between(t\\,{a:.3f}\\,{a + GLOW_S[1]:.3f})'",
+        # the push-in (scaled up, cropped back to size)
         f"scale=w='2*trunc(iw*(1+{PUSH}*{ease})/2)':h=-2:eval=frame", f"crop={w}:{h}",
-        # the band: two steps of black, a quick fade
-        f"drawbox=x=0:y={band_y}:w=iw:h={band_h}:color=black@0.3:t=fill:enable='gte(t\\,{t0 - 0.05:.3f})'",
-        f"drawbox=x=0:y={band_y}:w=iw:h={band_h}:color=black@0.3:t=fill:enable='gte(t\\,{t0 + 0.03:.3f})'",
+        f"format=yuv420p,null[wz0];movie={media._fpath(dodge_burn(w, h))},format=yuv420p[wzg];"
+        f"[wz0][wzg]blend=all_expr='A+({ov}-A)*{kb}':enable='gte(t\\,{a:.3f})'",
+        # the band, fading in just before the word lands
+        f"null[wz1];movie={media._fpath(band(w, h))}:loop=0,setpts=N/30/TB,format=rgba,"
+        f"fade=t=in:st={max(0, t0 - 0.06):.3f}:d=0.1:alpha=1[wzb];[wz1][wzb]overlay=0:0:format=auto:shortest=1",
         # the word slams in: from a third bigger, landing in 0.16 s
         f"drawtext=fontfile={media._fpath(font())}:textfile={media._fpath(tf)}:fontcolor={RED}"
         f":fontsize='{size}*(1+0.33*max(0\\,1-(t-{t0:.3f})/0.16))'"
