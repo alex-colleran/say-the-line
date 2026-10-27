@@ -166,13 +166,15 @@
   .wasted { position: absolute; z-index: 2; pointer-events: none; display: flex; align-items: center; justify-content: center; overflow: hidden; }
   .wasted i { position: absolute; inset: 0; mix-blend-mode: overlay;      /* = wasted.dodge_burn */
     background: radial-gradient(ellipse at center, #cdcdcd 0%, #c4c4c4 25%, #6c6c6c 70%, #282828 100%); }
-  .wasted b { position: relative; width: 100%; height: 23%; display: flex; flex-direction: column; align-items: center; justify-content: center;
-    /* = wasted.band: grey, stronger in the middle, the top edge rising and the bottom falling to the right */
+  .wasted b { position: absolute; left: 0; top: 36.35%; width: 100%; height: 24.3%; display: flex; flex-direction: column; align-items: center; justify-content: center;
+    /* = wasted.band (BAND_Y, BAND_H, BAND_TILT): grey, stronger in the middle, the top edge rising and the bottom falling to the right */
     background: linear-gradient(90deg, rgba(58,58,58,.35), rgba(58,58,58,.62) 50%, rgba(58,58,58,.35));
-    clip-path: polygon(0 13%, 100% 0, 100% 100%, 0 87%); color: #c53a3a;
+    clip-path: polygon(0 15.6%, 100% 0, 100% 100%, 0 84.4%); color: #c53a3a;
+    -webkit-mask-image: linear-gradient(90deg, transparent 4%, #000 20%, #000 83.5%, transparent 98.5%);
+            mask-image: linear-gradient(90deg, transparent 4%, #000 20%, #000 83.5%, transparent 98.5%);
     font-family: 'Wasted', 'League Spartan Black', system-ui, sans-serif; line-height: 1; }
-  .wasted b span { opacity: .85; -webkit-text-stroke: .02em #000; text-shadow: 0 .05em .05em rgba(0,0,0,.5); }   /* = wasted.RED, WORD_ALPHA */
-  .wasted b small { color: #fff; font: 700 1em 'Inter', system-ui, sans-serif; margin-top: .25em; text-shadow: 0 .06em .1em rgba(0,0,0,.6); }   /* = wasted SUB_* */
+  .wasted b span { opacity: .85; }   /* = wasted.RED, WORD_ALPHA: flat, no outline, as in the game */
+  .wasted b small { color: #fff; font: 500 1em 'Wasted Line', 'Inter', system-ui, sans-serif; text-shadow: 0 .06em .1em rgba(0,0,0,.6); }   /* = wasted SUB_* */
   .pick-layer { position: absolute; inset: 0; z-index: 4; cursor: crosshair; background: rgba(0,0,0,.25);
     display: flex; justify-content: center; align-items: flex-start; }
   .pick-layer span { margin-top: 10px; padding: 6px 10px; border-radius: 6px; background: rgba(0,0,0,.75); color: #fff; font-size: 13px; pointer-events: none; }
@@ -2108,8 +2110,11 @@ function drawWastedCap(r) {
   if (!b.firstElementChild) b.innerHTML = "<span></span><small></small>";
   const [w, l] = b.children;                                  // = wasted.WORD_SIZE(_SUB), SUB_SIZE
   w.textContent = word; l.textContent = line; l.hidden = !line;
-  w.style.fontSize = Math.min(r.H * (line ? 0.13 : 0.15), r.W * 1.5 / Math.max(4, word.length)) + "px";
-  l.style.fontSize = r.H * 0.034 + "px";
+  w.style.fontSize = Math.min(r.H * (line ? 0.083 : 0.125), r.W * 1.5 / Math.max(4, word.length)) + "px";
+  l.style.fontSize = r.H * 0.03 + "px";
+  // the word's letters at 0.476 of the height and the line at 0.545, as in the game (the band's middle is 0.485)
+  l.style.marginTop = r.H * 0.018 + "px";
+  b.style.paddingTop = line ? r.H * 0.051 + "px" : "0"; b.style.paddingBottom = line ? "0" : r.H * 0.018 + "px";
 }
 // the sound and the hold while playing: the fall starts with the ending, the clip's own sound fades
 // under it by just after the word, and the last frame holds (paused) for what's left of the length

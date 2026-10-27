@@ -30,7 +30,7 @@ import subprocess
 from . import config, media
 
 CACHE = os.path.join(config.data_dir(), "cache", "wasted")
-VERSION = 3                    # bump when the drawing changes, so cached images are redrawn
+VERSION = 5                    # bump when the drawing changes, so cached images are redrawn
 
 FACTOR = 5                     # GTA V: SET_TIME_SCALE(0.2f)
 SAT_S = 0.15                   # the colour is gone this long after it starts (it hits monochrome)
@@ -49,9 +49,18 @@ DEFAULT_LENGTH_MS = 9400       # without the fall sound to measure
 MIN_PART_MS = 200
 RED = "0xC53A3A"               # the word's red, and how see-through it is: from game frames, where it
 WORD_ALPHA = 0.85              # comes out about rgb(170, 52, 52) over the band
-WORD_SIZE, WORD_SIZE_SUB = 0.15, 0.13    # the word's size, as a share of the height (the band is 0.2)
-SUB_SIZE = 0.034               # the line under the word
-SUB_LIFT, SUB_DROP = 0.025, 0.058    # with a line: the word's middle above the band's, the line's below
+# where things sit, as shares of the height, measured off game frames: the band's middle and its
+# height there, and how far each edge slopes across the width (wider on the right); the word's size
+# (its letters come out about 0.08 tall with a line, 0.1 without) and the line's; how far above the
+# band's middle the word is set, alone and with a line, and the line below (so the letters land at
+# 0.476 and the line at 0.545, as in the game)
+BAND_Y, BAND_H, BAND_TILT = 0.485, 0.205, 0.038
+WORD_SIZE, WORD_SIZE_SUB = 0.125, 0.083
+WORD_STRETCH = 1.0             # how much taller than the font the word is set (the game sets it as is)
+SUB_SIZE = 0.03
+SUB_FONT = os.path.join(media.FONT_DIR, "Inter-Medium.otf")     # the line's lighter face (bundled, OFL)
+WORD_LIFT, SUB_LIFT, SUB_DROP = -0.002, 0.002, 0.061
+GLYPH_DROP = 0.069             # Pricedown's letters sit this much of the size below the middle of its text box
 
 
 @functools.lru_cache(maxsize=4)
@@ -68,6 +77,10 @@ def max_length_ms():
         return _sound_ms(p, os.path.getmtime(p)) if p else DEFAULT_LENGTH_MS
     except (OSError, RuntimeError):
         return DEFAULT_LENGTH_MS
+
+
+def sub_font():
+    return SUB_FONT if os.path.isfile(SUB_FONT) else media.font_path("Inter")
 
 
 def font():
@@ -156,14 +169,16 @@ def dodge_burn(w, h):
 
 
 def band(w, h):
-    """The word's band: a dark grey, 62% in the middle fading to 35% at the sides (so it lightens
-    the dark parts of the picture and darkens the light ones, as in the game), the top edge rising
-    and the bottom edge falling a little to the right, its edges anti-aliased."""
-    cy, bh, tilt = h * 0.5, h * 0.2, h * 0.03
+    """The word's band: a dark grey, 62% in the middle fading to 35% toward the sides (so it
+    lightens the dark parts of the picture and darkens the light ones, as in the game), faded out
+    toward both ends, the top edge rising and the bottom edge falling a
+    little to the right, its edges anti-aliased."""
+    cy, bh, tilt = h * BAND_Y, h * BAND_H, h * BAND_TILT
     top = f"({cy - bh / 2:.2f}+{tilt:.2f}*(0.5-X/W))"
     bot = f"({cy + bh / 2:.2f}-{tilt:.2f}*(0.5-X/W))"
     inside = f"min(1\\,max(0\\,Y-{top}+0.5))*min(1\\,max(0\\,{bot}-Y+0.5))"
-    alpha = f"255*{inside}*(0.62-0.27*pow(2*X/W-1\\,2))"
+    ends = "min(1\\,max(0\\,(X/W-0.04)/0.16))*min(1\\,max(0\\,(0.985-X/W)/0.15))"     # faded at both ends
+    alpha = f"255*{inside}*{ends}*(0.62-0.27*pow(2*X/W-1\\,2))"
     return _draw("band", w, h, "rgba", f"r=58:g=58:b=58:a='{alpha}'")
 
 
@@ -192,7 +207,17 @@ def filters(spec, w, h, tmp, dur_s):
         with open(sf, "w", encoding="utf-8") as f:
             f.write(sub)
     # long words still fit across; with a line under it the word is a little smaller, to leave room
-    size = f"min(h*{WORD_SIZE if not sub else WORD_SIZE_SUB}\\,w*1.5/{max(4, len(text))})"
+    fs = round(min(h * (WORD_SIZE if not sub else WORD_SIZE_SUB), w * 1.5 / max(4, len(text))))
+    ch = round(fs * 1.6)
+    word_png = os.path.join(tmp, "wasted-word.png")
+    r = subprocess.run(["ffmpeg", "-v", "error", "-nostdin", "-y", "-f", "lavfi", "-i", f"color=c=black@0:s={w}x{ch}:d=0.04,format=rgba",
+                        "-vf", f"drawtext=fontfile={media._fpath(font())}:textfile={media._fpath(tf)}:fontcolor={RED}:fontsize={fs}"
+                        f":x=(w-text_w)/2:y=(h-text_h)/2,scale=iw:{round(ch * WORD_STRETCH)}",
+                        "-frames:v", "1", word_png], capture_output=True, timeout=60)
+    if r.returncode != 0:
+        raise RuntimeError("could not set the Wasted word: " + r.stderr.decode(errors="replace").strip()[-300:])
+    slam = f"(1+0.33*max(0\\,1-(t-{t0:.3f})/0.16))"
+    mid = BAND_Y - (WORD_LIFT if not sub else SUB_LIFT)        # where the word's letters sit
     # the dodge/burn blends in with the drain (an overlay blend; grey's chroma stays as it is)
     ov = "if(lt(A\\,128)\\,2*A*B/255\\,255-2*(255-A)*(255-B)/255)"
     kb = f"min(1\\,max(0\\,(T-{a:.3f})/{DRAIN_S}))"
@@ -212,17 +237,16 @@ def filters(spec, w, h, tmp, dur_s):
         # the band, fading in just before the word lands
         f"null[wz1];movie={media._fpath(band(w, h))}:loop=0,setpts=N/30/TB,format=rgba,"
         f"fade=t=in:st={max(0, t0 - 0.06):.3f}:d=0.1:alpha=1[wzb];[wz1][wzb]overlay=0:0:format=auto:shortest=1",
-        # the word slams in: from a third bigger, landing in 0.16 s
-        f"drawtext=fontfile={media._fpath(font())}:textfile={media._fpath(tf)}:fontcolor={RED}"
-        f":fontsize='{size}*(1+0.33*max(0\\,1-(t-{t0:.3f})/0.16))'"
-        f":alpha='{WORD_ALPHA}*min(1\\,max(0\\,(t-{t0:.3f})/0.08))':borderw={max(2, round(h * 0.006))}:bordercolor=black@0.85"
-        f":shadowx=0:shadowy={max(1, round(h * 0.006))}:shadowcolor=black@0.5:x=(w-text_w)/2"
-        f":y={'(h-text_h)/2' if not sub else f'h*{0.5 - SUB_LIFT}-text_h/2'}",
+        # the word slams in: from a third bigger, landing in 0.16 s, flat red, a little see-through
+        f"null[wz2];movie={media._fpath(word_png)}:loop=0,setpts=N/30/TB,format=rgba,"
+        f"scale=w='iw*{slam}':h='ih*{slam}':eval=frame,fade=t=in:st={t0:.3f}:d=0.08:alpha=1,"
+        f"colorchannelmixer=aa={WORD_ALPHA}[wzw];[wz2][wzw]overlay=x=(W-w)/2"
+        f":y='H*{mid:.4f}-h*{0.5 + GLYPH_DROP * fs / ch:.4f}':eval=frame:format=auto:shortest=1",
     ] + ([
         # the line under it: small white type, in with the word
-        f"drawtext=fontfile={media._fpath(media.font_path('Inter'))}:textfile={media._fpath(sf)}:fontcolor=white"
+        f"drawtext=fontfile={media._fpath(sub_font())}:textfile={media._fpath(sf)}:fontcolor=white"
         f":fontsize=h*{SUB_SIZE}:alpha='min(1\\,max(0\\,(t-{t0 + 0.1:.3f})/0.15))'"
-        f":shadowx=0:shadowy={max(1, round(h * 0.003))}:shadowcolor=black@0.6:x=(w-text_w)/2:y=h*{0.5 + SUB_DROP}-text_h/2",
+        f":shadowx=0:shadowy={max(1, round(h * 0.003))}:shadowcolor=black@0.6:x=(w-text_w)/2:y=h*{BAND_Y + SUB_DROP:.4f}-text_h/2",
     ] if sub else []) + ([f"tpad=stop_mode=clone:stop_duration={hold:.3f}"] if hold > 0 else [])
 
 

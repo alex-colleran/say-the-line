@@ -1115,12 +1115,13 @@ class Wasted(unittest.TestCase):
             with open(os.path.join(tmp, "wasted.txt")) as f:
                 self.assertEqual(f.read(), "busted")                  # as typed: the game sets it lowercase
         self.assertTrue(fs[-1].startswith("tpad=") and "crop=1280:720" in fs)
-        self.assertEqual(sum("drawtext=" in f for f in fs), 1)                  # no line under it
+        self.assertEqual(sum("drawtext=" in f for f in fs), 0)                  # the word is its own layer; no line
+        self.assertTrue(any("wasted-word.png" in f for f in fs))
         with tempfile.TemporaryDirectory() as tmp:
             fs = wasted.filters((2.0, 0, "busted", True, "The elk heard you."), 1280, 720, tmp, 5.0)
             with open(os.path.join(tmp, "wasted-sub.txt")) as f:
                 self.assertEqual(f.read(), "The elk heard you.")
-        self.assertEqual(sum("drawtext=" in f for f in fs), 2)
+        self.assertEqual(sum("drawtext=" in f for f in fs), 1)                  # the line
         self.assertEqual(wasted.audio_filters((2.0, 1.5, "x", True), 5.0)[0], "apad=whole_dur=6.500")
 
     def test_the_slow_part_fills_the_length_or_the_last_frame_holds(self):
