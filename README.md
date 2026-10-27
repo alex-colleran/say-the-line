@@ -55,11 +55,16 @@ It runs on the machine that has your media, next to Jellyfin, and is used from a
 - **Output**: MP4, WebM, GIF or a **still** (JPEG); original / 16:9 / 4:3 / 1:1 / 9:16 with
   crop or bars (drag the crop frame on the picture to choose what stays in, a corner or pinch to
   zoom in); 480–1080 or source size.
-- **Wasted ending** (Cut > Ending): the game-over meme, in a look of its own. Near the end the
-  picture drains to grey and pushes slowly in, a big red word (WASTED, or your own) slams in over a
-  dark band, the last frame holds a beat and the sound falls away under a low "fall" hit. The editor
-  shows the grey and the word as you play. Works for clips, GIFs and stills. The word is set in the
-  bundled League Spartan Black; `[tools] wasted_font` points it at any font file you have.
+- **Wasted ending** (Cut > Ending): the game-over meme, in a look of its own, timed like GTA V's
+  (whose scripts run time at 0.2 there). From the moment you set, the picture goes 5x slow motion
+  (made by RIFE, so it stays at the source's frame rate), drains to grey and pushes slowly in while
+  the "fall" sound starts; 1.5 s later a big red word (WASTED, or your own) slams in over a dark
+  band. The ending lasts as long as the fall sound, or less (Length); it is the end of the clip, and
+  when the out point comes first the last frame holds for the rest. The editor plays it slowed, grey,
+  with the word and the sound. Works for clips, GIFs and stills (at normal speed without RIFE). The
+  word is set in the bundled League Spartan Black; `[tools] wasted_font` points it at any font file
+  you have, and the editor's preview uses it too. A sound of your own can stand in for the fall:
+  put it at `data/sfx/presets/fall.wav` (48 kHz stereo WAV).
 - **Aesthetic** (Output): a grade for the whole picture, under the captions. *Punchy* is the
   shared-clip look (richer colour and contrast, crisper detail, a touch warmer); *Grunge* is dark and
   dirty (faded blacks, drained green-teal colour, moving film grain, a heavy vignette). The editor

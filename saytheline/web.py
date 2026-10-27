@@ -372,6 +372,10 @@ def run_render(job_id, req):
         smooth = slowmo.smooth_of(req, slowmo.frame_rate(row["path"])) if req.get("smooth") and fmt != "gif" else 0
         if (slow or smooth) and not slowmo.rife():
             raise ValueError("slow motion and smooth playback need rife-ncnn-vulkan installed on the server (see README)")
+        ending = wasted.spec_of(req, in_ms, out_ms) if req.get("wasted") else None
+        if ending and slow:
+            raise ValueError("the Wasted ending is slow motion already: turn Slow motion off, or the ending")
+        slowed = bool(slow or smooth or (ending and slowmo.rife()))
         lasers = laser.part_of(req, in_ms, out_ms)
         if lasers:
             laser.need()
@@ -397,7 +401,7 @@ def run_render(job_id, req):
         def progress(done, total, stage="slowing"):     # RIFE making the slow part's frames, or the lasers
             job.update(state=stage if done < total else "rendering", done=done, total=total)
         with RENDER_SLOT:
-            job["state"] = "slowing" if slow or smooth else "lasering" if lasers or spark else "rendering"
+            job["state"] = "slowing" if slowed else "lasering" if lasers or spark else "rendering"
             t = time.time()
             info = media.render(row["path"], in_ms, out_ms, {**req, "format": fmt}, cues, out + ".tmp." + fmt,
                                 slow=slow, progress=progress, smooth=smooth)
@@ -509,6 +513,7 @@ def job_size(kind, req):
             return 1.0
     if kind == "render":
         interp = (req.get("slow") or {}).get("factor", 1) > 1 if isinstance(req.get("slow"), dict) else bool(req.get("smooth"))
+        interp = interp or (isinstance(req.get("wasted"), dict) and bool(slowmo.rife()))     # its ending is slowed
         lasers = isinstance(req.get("laser"), dict) and bool(req["laser"].get("style")) or req.get("sparkles") in ("subtle", "lots")
         key = "render" + (":interp" if interp else "") + (":laser" if lasers else "") \
             + (":stems" if req.get("audio") in ("dialogue", "nodialogue") else "") + (":preview" if req.get("preview") else "")
@@ -1720,7 +1725,8 @@ class Handler(BaseHTTPRequestHandler):
                                                 int(q.get("offset_ms") or 0)))
             if u.path == "/api/options":
                 return self.send(200, dict(fonts=media.FONTS, sizes=list(media.SIZES), stems=bool(config.demucs()),
-                                           slowmo=bool(slowmo.rife()), slow_max_ms=slowmo.MAX_PART_MS, laser=laser.available(), sparkles=laser.sparkles_available(),
+                                           slowmo=bool(slowmo.rife()), slow_max_ms=slowmo.MAX_PART_MS,
+                                           wasted_max_ms=wasted.max_length_ms(), wasted_factor=wasted.FACTOR if slowmo.rife() else 1, laser=laser.available(), sparkles=laser.sparkles_available(),
                                            slow_secs_per_mpix_frame=slowmo.SECS_PER_MPIX_FRAME, rates=dict(RATES),
                                            colours=list(media.COLOURS), aspects=["original", *media.ASPECTS]),
                                  cache="max-age=300")

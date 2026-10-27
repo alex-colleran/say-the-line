@@ -529,6 +529,17 @@ def _render(src, in_ms, out_ms, opts, cues, out, label, uniform, slow, progress,
                            "pad" if uniform and aspect == "16:9" and not moved_crop(opts.get("crop")) else opts.get("fit", "crop"),
                            int(opts.get("res") or (720 if uniform else 0)), upscale=uniform, crop=opts.get("crop"))
     fmt = "mp4" if uniform else opts.get("format", "mp4")
+    wz = None
+    if opts.get("wasted") and not uniform:
+        # the ending is the end of the clip: its slow part from the start, the cut stopping where
+        # that runs out (worked out first, so everything after sees the shorter cut)
+        from . import slowmo, wasted
+        factor = wasted.FACTOR if slowmo.rife() else 1
+        ws = wasted.spec_of(opts, in_ms, out_ms, factor)
+        if ws:
+            if slow:
+                raise ValueError("the Wasted ending is slow motion already: turn Slow motion off, or the ending")
+            slow, out_ms, wz = wasted.plan(ws, in_ms, out_ms, factor)
     las = None
     if opts.get("laser") and not uniform:
         # where the lasers go, worked out on the source: the shots the part spans (each picks its
@@ -546,10 +557,6 @@ def _render(src, in_ms, out_ms, opts, cues, out, label, uniform, slow, progress,
         fx = sfx.spec_of(opts)
         if fx:
             fx = (fx, [t - in_ms for t in sfx.times(fx, cues, in_ms, out_ms, in_ms + las[0] if las else None)])
-    wz = None
-    if opts.get("wasted") and not uniform:
-        from . import wasted
-        wz = wasted.spec_of(opts, in_ms, out_ms)
     spark = None
     if opts.get("sparkles") and not uniform:
         from . import laser
@@ -717,10 +724,15 @@ def still(src, at_ms, in_ms, out_ms, opts, cues, out):
         from . import aesthetic
         aes = aesthetic.filters(aesthetic.of(opts), w, h)
         if opts.get("wasted"):           # the ending, as it looks at this moment (no hold in one frame)
-            from . import wasted
-            wz = wasted.spec_of(opts, in_ms, out_ms)
+            from . import slowmo, wasted
+            factor = wasted.FACTOR if slowmo.rife() else 1
+            wz = wasted.spec_of(opts, in_ms, out_ms, factor)
             if wz:
-                sub = ",".join(([sub] if sub else []) + wasted.filters((*wz[:1], 0, *wz[2:]), w, h, tmp, (out_ms - in_ms) / 1000))
+                # the frame is where the render's slowed ending shows it: its filters only ever see
+                # t - start, so a start moved back by the slowing does it
+                t, a = (at_ms - in_ms) / 1000, wz[0]
+                a = t - factor * (t - a) if t > a else a
+                sub = ",".join(([sub] if sub else []) + wasted.filters((a, 0, *wz[2:]), w, h, tmp, (out_ms - in_ms) / 1000))
         if las or spark:          # the frame alone first, then its lasers and sparkles, then the caption over them
             frame = os.path.join(tmp, "frame.png")
             _frame(src, at_ms, [shift] + chain, frame)

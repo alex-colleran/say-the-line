@@ -1,23 +1,48 @@
 """The "wasted" ending: the meme's game-over screen, in a look of its own. From a moment near the
-end, the picture drains to grey and darkens while the camera pushes slowly in; then a dark band
-and a big red word slam in over it, and the last frame holds with them for a beat while the sound
-falls away under a low "fall" hit (sfx preset).
+end, the picture goes into slow motion, drains to grey and darkens while the camera pushes slowly
+in, and the "fall" sound starts with it; then a dark band and a big red word slam in over it, and
+the sound plays out over the rest.
+
+The timing is GTA V's own, from Rockstar's scripts: time runs at 0.2 (SET_TIME_SCALE(0.2f)), so the
+ending is 5x slow motion, made by RIFE like any slow part (slowmo.py), still at the source's frame
+rate; the word lands 1.5 s after the start ("TextHit" 1500 ms after the "ScreenFlash").
 
 A request's `wasted` is {"text": the word (default WASTED), "at_ms": when it starts (media
-timeline; default 1.5 s before the out point), "hold_ms": how long the last frame holds,
-"sound": true}. Plain ffmpeg filters on the picture, so it works for clips, GIFs and stills; the
-banner is drawn over the captions. The font is the bundled League Spartan Black, or any font file
-set as [tools] wasted_font (Pricedown, say, which can't be shipped here)."""
+timeline; default: as late as lets the slow part reach the out point), "length_ms": how long the
+ending lasts on screen (default and most: the fall sound's length), "sound": true}. The ending is
+the end of the clip: its slow part takes length / 5 of the source from the start, and what the cut
+has after that is left out; when the out point comes first, the last frame holds for the rest.
+Without RIFE it plays at normal speed. The banner is drawn over the captions. The font is the
+bundled League Spartan Black, or any font file set as [tools] wasted_font."""
+import functools
 import os
 
 from . import media
 
-LEAD_MS = 1500                 # by default it starts this long before the out point
-DRAIN_S = 0.8                  # colour gone this long after it starts
-BANNER_S = 0.9                 # the word lands this long after it starts
+FACTOR = 5                     # GTA V: SET_TIME_SCALE(0.2f)
+DRAIN_S = 0.5                  # colour gone this long after it starts
+BANNER_S = 1.5                 # the word lands this long after it starts
 PUSH = 0.07                    # the push-in: 7% closer by the end
-MAX_HOLD_MS = 4000
+MIN_LENGTH_MS = 1000
+DEFAULT_LENGTH_MS = 9400       # without the fall sound to measure
+MIN_PART_MS = 200
 RED = "0xD8262E"
+
+
+@functools.lru_cache(maxsize=4)
+def _sound_ms(path, mtime):
+    from . import sfx
+    return round(sfx._duration(path) * 1000) or DEFAULT_LENGTH_MS
+
+
+def max_length_ms():
+    """The ending's longest (and default) length: the fall sound's."""
+    from . import sfx
+    try:
+        p = sfx.path("fall")
+        return _sound_ms(p, os.path.getmtime(p)) if p else DEFAULT_LENGTH_MS
+    except (OSError, RuntimeError):
+        return DEFAULT_LENGTH_MS
 
 
 def font():
@@ -25,25 +50,38 @@ def font():
     return p if p and os.path.isfile(p) else media.font_path("League Spartan Black")
 
 
-def spec_of(req, in_ms, out_ms):
-    """(start s from the cut's in point, hold s, text, sound), or None (also when `at_ms` is
-    outside the cut)."""
+def spec_of(req, in_ms, out_ms, factor=FACTOR):
+    """(start s from the cut's in point, length s on screen, text, sound), or None (also when
+    `at_ms` is outside the cut)."""
     s = req.get("wasted")
     if not isinstance(s, dict) or not s.get("on", True):
         return None
     text = " ".join(str(s.get("text") or "WASTED").split())[:24] or "WASTED"
+    most = max_length_ms()
+    length = max(MIN_LENGTH_MS, min(most, int(s.get("length_ms") or most)))
     if s.get("at_ms") is None:
-        at = max(in_ms, out_ms - LEAD_MS)
+        at = max(in_ms, min(out_ms - MIN_PART_MS, out_ms - round(length / factor)))
     else:
         at = int(s["at_ms"])
-        if not in_ms <= at <= out_ms - 200:      # a preview of another part of the cut: not in it
+        if not in_ms <= at <= out_ms - MIN_PART_MS:      # a preview of another part of the cut: not in it
             return None
-    hold = max(0, min(MAX_HOLD_MS, int(s.get("hold_ms", 1500))))
-    return (at - in_ms) / 1000, hold / 1000, text, s.get("sound", True) is not False
+    return (at - in_ms) / 1000, length / 1000, text, s.get("sound", True) is not False
+
+
+def plan(spec, in_ms, out_ms, factor=FACTOR):
+    """How the ending is made: (slow part (a, b, factor, "deep") in ms from the in point, or None
+    at normal speed; the cut's new out point; the render's (start s, hold s, text, sound)). The
+    start is the same on the slowed timeline, since the slow part begins there."""
+    start, length, text, sound = spec
+    a = round(start * 1000)
+    b = min(out_ms - in_ms, a + round(length * 1000 / factor))
+    hold = max(0.0, length - (b - a) * factor / 1000)
+    part = (a, b, factor, "deep") if factor > 1 else None
+    return part, in_ms + b, (start, round(hold, 3), text, sound)
 
 
 def banner_s(spec):
-    """When the word lands, from the cut's in point (the fall hit goes here)."""
+    """When the word lands, from the cut's in point."""
     return spec[0] + BANNER_S
 
 
@@ -73,8 +111,9 @@ def filters(spec, w, h, tmp, dur_s):
 
 
 def audio_filters(spec, dur_s):
-    """The sound: falls away from the banner on, padded through the hold."""
+    """The clip's own sound (slowed with the picture): fades out under the fall sound by just after
+    the word lands, padded through the hold."""
     a, hold, _, _ = spec
     t0 = a + BANNER_S
     end = dur_s + hold
-    return [f"apad=whole_dur={end:.3f}", f"afade=t=out:st={t0:.3f}:d={max(0.3, end - t0):.3f}:curve=exp"]
+    return [f"apad=whole_dur={end:.3f}", f"afade=t=out:st={a:.3f}:d={max(0.3, t0 + 0.5 - a):.3f}:curve=exp"]

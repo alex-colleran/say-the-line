@@ -702,7 +702,7 @@
             <button class="b" data-wastednudge="-100" aria-label="The ending starts a tenth of a second earlier">−0.1</button>
             <button class="b" id="wastedSet" aria-label="The ending starts here">Set</button>
             <button class="b" data-wastednudge="100" aria-label="The ending starts a tenth of a second later">+0.1</button></div>
-          <div class="opt"><span>Hold</span><div class="chips" data-opt="wastedHold"></div></div>
+          <div class="opt"><span>Length</span><div class="chips" data-opt="wastedLen"></div></div>
           <div class="opt"><span>Sound</span><div class="chips" data-opt="wastedSound"></div></div>
           <div class="hint" id="wastedHint"></div>
         </div>
@@ -1412,7 +1412,7 @@ async function showEmpty() {
 
 /* ================= options + their rules ================= */
 const opts = { format: "mp4", aspect: "original", fit: "crop", res: 720, audio: "original",
-  slow: 1, slowSound: "deep", smooth: 0, laser: "off", sfx: "off", sfxWhen: "lines", sfxDelay: 200, sfxVol: "medium", aesthetic: "none", sparkles: "off", wasted: "off", wastedText: "WASTED", wastedHold: 1500, wastedSound: true,
+  slow: 1, slowSound: "deep", smooth: 0, laser: "off", sfx: "off", sfxWhen: "lines", sfxDelay: 200, sfxVol: "medium", aesthetic: "none", sparkles: "off", wasted: "off", wastedText: "WASTED", wastedLen: 0, wastedSound: true,
   subsOn: true, captionSrc: "subs", look: "classic", fontClassic: "Inter", fontWord: "Inter Black",
   size: "m", colour: "white", hl: "yellow", caps: false, box: false, position: "bottom", tab: "cut", loop: false };
 const CHOICES = {
@@ -1431,7 +1431,7 @@ const CHOICES = {
   aesthetic: [["none", "None"], ["punchy", "Punchy"], ["grunge", "Grunge"], ["y2k", "Y2K"]],
   sparkles: [["off", "Off"], ["subtle", "Subtle"], ["lots", "Lots"]],
   wasted: [["off", "Off"], ["on", "Wasted"]],
-  wastedHold: [[0, "None"], [1000, "1 s"], [1500, "1.5 s"], [2500, "2.5 s"]],
+  wastedLen: [[0, "Full"], [6000, "6 s"], [4000, "4 s"], [3000, "3 s"]],      // 0: the fall sound's length
   wastedSound: [[true, "Fall"], [false, "Off"]],
   subsOn: [[true, "On"], [false, "Off"]],
   captionSrc: [["subs", "Subtitles"], ["speech", "Speech"]],
@@ -1475,7 +1475,10 @@ function setOpt(key, v) {
   opts[key] = v;
   // follow-on rules
   if (key === "format" && v === "gif") opts.audio = "original";
-  if (key === "slow") { if (v === 1) applySlowRate(); else fitSlow(true); drawTimeline(); }
+  if (key === "slow" && v !== 1 && opts.wasted === "on") { opts.wasted = "off"; flash("Wasted ending off: it is slow motion already"); }
+  if (key === "wasted" && v === "on" && opts.slow !== 1) { opts.slow = 1; flash("Slow motion off: the Wasted ending slows itself"); }
+  if (key === "slow" || key === "wasted") applySlowRate();
+  if (key === "slow") { if (v !== 1) fitSlow(true); drawTimeline(); }
   if (key === "sfxWhen" && v === "mark" && ed.sfxMark === null) ed.sfxMark = Math.max(ed.inMs, Math.min(ed.outMs - 100, absNow()));
   if (key === "laser" && v === "off" && opts.sfxWhen === "laser") opts.sfxWhen = "lines";
   if (key === "laser") { if (v !== "off" && ed.laserA === null) { ed.laserWhole = true; ed.laserA = ed.inMs; ed.laserB = ed.outMs; } drawTimeline(); }
@@ -1564,7 +1567,7 @@ function resetEd(h) {
     seekOnLoad: false, session: (ed.session || 0) + 1,
     slowA: null, slowB: null,   // the slowed part (media ms) while opts.slow is 2 or 4
     laserA: null, laserB: null, laserWhole: false,   // the part with laser eyes (media ms); Whole follows the cut
-    wastedAt: null,       // where the Wasted ending starts (media ms); null = WASTED_LEAD before the out point
+    wastedAt: null,       // where the Wasted ending starts (media ms); null = as late as lets its slow part fit
     sfxMark: null,        // where the sound effect plays when it's At a mark (media ms)
     laserPick: null,      // the face tapped for them: {x, y}, fraction of the picture; null = the biggest face
     crop: null,           // the crop window placed by hand: {x, y (its centre, fraction of the picture), s (size,
@@ -1579,7 +1582,7 @@ function captionDefaults() { opts.subsOn = true; opts.captionSrc = "subs"; opts.
 
 /* drafts: every edited clip is kept (Library > Recent edits); a hearted moment keeps the same state */
 const DRAFT_OPTS = ["subsOn", "captionSrc", "look", "fontClassic", "fontWord", "size", "colour", "hl", "caps", "box", "position",
-  "format", "aspect", "fit", "res", "audio", "slow", "slowSound", "smooth", "laser", "sfx", "sfxWhen", "sfxDelay", "sfxVol", "aesthetic", "sparkles", "wasted", "wastedText", "wastedHold", "wastedSound"];
+  "format", "aspect", "fit", "res", "audio", "slow", "slowSound", "smooth", "laser", "sfx", "sfxWhen", "sfxDelay", "sfxVol", "aesthetic", "sparkles", "wasted", "wastedText", "wastedLen", "wastedSound"];
 function edState() {
   const o = {}; DRAFT_OPTS.forEach(k => o[k] = opts[k]);
   return { v: 2, in_ms: Math.round(ed.inMs), out_ms: Math.round(ed.outMs), offset_ms: ed.offset, opts: o,
@@ -1848,7 +1851,7 @@ function drawAll() { fitSlow(); fitLaser(); drawSlow(); drawSmooth(); drawLaser(
 const slowOn = () => opts.slow > 1 && ed.slowA !== null && ed.slowB !== null;
 const SLOW_MAX = () => SERVER.slow_max_ms || 5000;
 // the rendered clip's length: the slow part lasts `slow` times as long
-function outLength() { return ed.outMs - ed.inMs + (slowOn() ? (ed.slowB - ed.slowA) * (opts.slow - 1) : 0) + (wastedOn() ? opts.wastedHold : 0); }
+function outLength() { return wastedOn() ? wastedStart() - ed.inMs + wastedLen() : ed.outMs - ed.inMs + (slowOn() ? (ed.slowB - ed.slowA) * (opts.slow - 1) : 0); }
 // keep the slow part inside the cut and no longer than the server allows; fresh: start one now
 function fitSlow(fresh) {
   if (opts.slow === 1) return;
@@ -1921,13 +1924,15 @@ $("#interpPrev").onclick = async () => {
 let slowRateOn = false;
 function applySlowRate() {
   const v = $("#vid"), now = absNow();
-  const inside = slowOn() && now >= ed.slowA && now < ed.slowB && !v.paused;
-  if (inside !== slowRateOn || (inside && v.playbackRate !== 1 / opts.slow)) {
+  const ending = wastedOn() && WASTED_F() > 1 && now >= wastedStart() - 1 && !v.paused;     // pitched down, like the render
+  const inside = ending || (slowOn() && now >= ed.slowA && now < ed.slowB && !v.paused);
+  const rate = ending ? 1 / WASTED_F() : 1 / opts.slow;
+  if (inside !== slowRateOn || (inside && v.playbackRate !== rate)) {
     slowRateOn = inside;
-    v.playbackRate = inside ? 1 / opts.slow : 1;
-    v.preservesPitch = !(inside && opts.slowSound === "deep");
+    v.playbackRate = inside ? rate : 1;
+    v.preservesPitch = !(inside && (ending || opts.slowSound === "deep"));
   }
-  v.muted = !!opts.muted || (inside && opts.slowSound === "mute");
+  v.muted = !!opts.muted || (inside && !ending && opts.slowSound === "mute");
 }
 $("#slowSetA").onclick = () => { const p = frameOnScreen(); setSlow(p ? p - frameF() / 2 : absNow(), ed.slowB); };
 $("#slowSetB").onclick = () => { const p = frameOnScreen(); setSlow(ed.slowA, p ? p + frameF() / 2 : absNow()); };
@@ -2043,35 +2048,83 @@ function drawAesVig(r) {
   Object.assign(v.style, { left: r.left + "px", top: r.top + "px", width: r.W + "px", height: r.H + "px",
     background: `radial-gradient(ellipse at center, rgba(0,0,0,0) 55%, rgba(0,0,0,${a.vig}) 100%)` });
 }
-/* the Wasted ending (wasted.py): from near the end the picture drains to grey and pushes in, then the
-   word slams in over a dark band and the last frame holds. The editor shows the grey and the word. */
-const WASTED_LEAD = 1500, WASTED_BANNER = 900, WASTED_DRAIN = 800;      // = wasted.LEAD_MS, BANNER_S, DRAIN_S
+/* the Wasted ending (wasted.py): from its start the picture goes 5x slow (GTA V's own 0.2), drains to
+   grey and pushes in while the fall sound plays; the word slams in over a dark band 1.5 s later.
+   The ending is the end of the clip: its slow part takes length / 5 of the cut, and when the out
+   point comes first the last frame holds. The editor plays it slowed, grey, with the word and sound. */
+const WASTED_BANNER = 1500, WASTED_DRAIN = 500;          // = wasted.BANNER_S, DRAIN_S (on screen)
+const WASTED_F = () => SERVER.wasted_factor || 1, WASTED_MAX = () => SERVER.wasted_max_ms || 9400;
 const wastedOn = () => opts.wasted === "on" && !ed.studioClip;
+const wastedLen = () => Math.min(WASTED_MAX(), opts.wastedLen || WASTED_MAX());
 function wastedStart() {
-  const a = ed.wastedAt ?? ed.outMs - WASTED_LEAD;
+  const a = ed.wastedAt ?? ed.outMs - wastedLen() / WASTED_F();
   return Math.max(ed.inMs, Math.min(ed.outMs - 200, a));
 }
+const wastedEnd = () => Math.min(ed.outMs, wastedStart() + wastedLen() / WASTED_F());           // media ms
+const wastedHold = () => Math.max(0, wastedLen() - (wastedEnd() - wastedStart()) * WASTED_F());   // ms on screen
+const clipEnd = () => wastedOn() ? wastedEnd() : ed.outMs;
+// ms on screen since the ending started, from media time (5x slower inside it), plus any hold
+const wastedSince = now => (now - wastedStart()) * WASTED_F() + (wastedHeld ? performance.now() - wastedHeld : 0);
 function drawWasted() {
   const g = $("#wastedGrp"); if (!g) return;
   g.hidden = !!ed.studioClip;
   $("#wastedPart").hidden = !wastedOn();
   const t = $("#wastedText"); if (document.activeElement !== t) t.value = opts.wastedText || "";
+  const full = CHOICES.wastedLen.find(c => c[0] === 0); if (full) full[1] = `Full ${(WASTED_MAX() / 1000).toFixed(1)} s`;
   if (!wastedOn()) return;
-  const a = wastedStart();
-  $("#wastedHint").textContent = `Starts at ${fmtp(a)}${ed.wastedAt === null ? ` (${WASTED_LEAD / 1000} s before the end; Set moves it)` : ""}: the picture drains to grey and pushes in, `
-    + `the word lands ${WASTED_BANNER / 1000} s later${opts.wastedHold ? ` and the last frame holds ${opts.wastedHold / 1000} s` : ""}. The sound fades out under it.`;
+  const a = wastedStart(), cut = ed.outMs - wastedEnd(), hold = wastedHold();
+  $("#wastedHint").textContent = `Starts at ${fmtp(a)}${ed.wastedAt === null ? " (as late as fits; Set moves it)" : ""}: `
+    + (WASTED_F() > 1 ? `${WASTED_F()}x slow motion` : "normal speed (slow motion needs RIFE)") + ", grey and pushing in, the fall sound with it, "
+    + `the word ${WASTED_BANNER / 1000} s later; ${(wastedLen() / 1000).toFixed(1)} s in all.`
+    + (hold > 50 ? ` The out point comes first, so the last frame holds ${(hold / 1000).toFixed(1)} s.` : "")
+    + (cut > 50 ? ` The ending finishes ${(cut / 1000).toFixed(1)} s before the out point, so that part is left out.` : "");
 }
 function drawWastedCap(r) {
   const c = $("#wastedCap"), v = $("#vid"), now = absNow(), a = ed.hit && wastedOn() ? wastedStart() : null;
-  const k = a === null || now < a ? 0 : Math.min(1, (now - a) / WASTED_DRAIN);
+  const on = a !== null && now >= a - 1 && now <= wastedEnd() + 50, since = on ? wastedSince(now) : 0;
+  const k = on ? Math.min(1, since / WASTED_DRAIN) : 0;
   v.style.filter = [(AES_CSS[opts.aesthetic] || {}).filter, k ? `grayscale(${k.toFixed(2)}) brightness(${(1 - 0.12 * k).toFixed(2)})` : ""].filter(Boolean).join(" ");
-  const show = a !== null && now >= a + WASTED_BANNER && now <= ed.outMs + 50;
+  const show = on && since >= WASTED_BANNER;
   c.hidden = !show;
   if (!show) return;
   Object.assign(c.style, { left: r.left + "px", top: r.top + "px", width: r.W + "px", height: r.H + "px" });
   const b = c.firstElementChild, word = (opts.wastedText || "WASTED").toUpperCase();
   b.textContent = word;
   b.style.fontSize = Math.min(r.H * 0.21, r.W * 1.5 / Math.max(4, word.length)) + "px";
+}
+// the sound and the hold while playing: the fall starts with the ending, the clip's own sound fades
+// under it by just after the word, and the last frame holds (paused) for what's left of the length
+let wastedSnd = null, wastedHeld = 0, wastedHoldTimer = null, wastedLast = null;
+function wastedStop() {
+  if (wastedSnd) { try { wastedSnd.stop(); } catch (e) {} wastedSnd = null; }
+  clearTimeout(wastedHoldTimer); wastedHoldTimer = null; wastedHeld = 0;
+  $("#vid").volume = 1;
+}
+async function wastedSound() {
+  if (!opts.wastedSound || opts.muted) return;
+  const b = await sfxBuffer("fall"); if (!b) return;
+  if (SFX.ctx.state === "suspended") SFX.ctx.resume();
+  const src = SFX.ctx.createBufferSource(), g = SFX.ctx.createGain();
+  g.gain.value = 0.8; src.buffer = b; src.connect(g); g.connect(SFX.ctx.destination);
+  const off = Math.max(0, (absNow() - wastedStart()) * WASTED_F() / 1000);        // joined part-way: from there
+  wastedStop(); wastedSnd = src; src.start(0, off);
+}
+function wastedTick() {
+  const v = $("#vid"), now = absNow();
+  if (v.paused || !wastedOn()) { wastedLast = null; return; }
+  const a = wastedStart();
+  if (wastedLast !== null && wastedLast < a && now >= a && now - wastedLast < 500) wastedSound();
+  if (now >= a) v.volume = Math.max(0, 1 - wastedSince(now) / (WASTED_BANNER + 500));
+  wastedLast = now;
+}
+// at the ending's last frame: hold it for the rest of the length, then loop or stop as usual
+function wastedHoldThen(done) {
+  const hold = wastedHold();
+  if (hold < 50) return done();
+  $("#vid").pause(); wastedHeld = performance.now();
+  const tick = () => { if (!wastedHeld) return; drawOverlay(); requestAnimationFrame(tick); };
+  requestAnimationFrame(tick);
+  wastedHoldTimer = setTimeout(() => { wastedHeld = 0; wastedHoldTimer = null; done(); }, hold);
 }
 $("#wastedText").addEventListener("input", e => { opts.wastedText = e.target.value.slice(0, 24); saveOpts(); drawSummary(); drawOverlay(); autosave(); });
 $("#wastedSet").onclick = () => { const p = frameOnScreen(); ed.wastedAt = p || absNow(); drawAll(); };
@@ -2287,7 +2340,8 @@ function togglePlay() {
   const v = $("#vid");
   if (!v.paused) { v.pause(); return; }
   const now = absNow();
-  if (now < ed.inMs - 50 || now >= ed.outMs - 150) showIn();
+  if (wastedHeld) wastedStop();
+  if (now < ed.inMs - 50 || now >= clipEnd() - 150) showIn();
   ed.stopAt = ed.outMs; v.play().catch(() => {});
 }
 // Loop back, or stop on the clip's last frame. requestVideoFrameCallback reports each frame as it is
@@ -2295,8 +2349,11 @@ function togglePlay() {
 // (older browsers) can let a frame or two of it through.
 const RVFC = "requestVideoFrameCallback" in HTMLVideoElement.prototype;
 function endOfClip() {
-  const v = $("#vid");
-  if (opts.loop) { showIn(); ed.chunkKey = null; } else { v.pause(); ed.stopAt = null; showOut(); }
+  if (wastedHeld || wastedHoldTimer) return;
+  const v = $("#vid"), done = () => {
+    if (opts.loop) { showIn(); ed.chunkKey = null; v.play().catch(() => {}); } else { v.pause(); ed.stopAt = null; if (!wastedOn()) showOut(); }
+  };
+  if (wastedOn()) { v.pause(); wastedHoldThen(done); } else done();
 }
 let vfc = null;
 function watchFrames() {
@@ -2306,7 +2363,7 @@ function watchFrames() {
     vfc = null;
     if (v.paused || v.ended || $("#sheet").hidden) return;
     const shown = ed.winA + md.mediaTime * 1000, f = frameF() || 1000 / 24;
-    if (ed.stopAt !== null && shown + f >= ed.outMs - 0.01) endOfClip();     // the next frame is past the out point
+    if (ed.stopAt !== null && shown + f >= clipEnd() - 0.01) endOfClip();     // the next frame is past the out point
     if (!v.paused) watchFrames();
   });
 }
@@ -2329,11 +2386,13 @@ function frameLoop() {
   const ph = $("#ph"); if (ph) ph.style.left = clampPct(pct(absNow())) + "%";
   applySlowRate();
   // the clip's current out point (it may be trimmed while playing): loop back or stop there
-  if (!RVFC && ed.stopAt !== null && absNow() >= ed.outMs) endOfClip();
-  drawOverlay(); sfxTick();
+  if (!RVFC && ed.stopAt !== null && absNow() >= clipEnd()) endOfClip();
+  drawOverlay(); sfxTick(); wastedTick();
   requestAnimationFrame(frameLoop);
 }
 $("#vid").addEventListener("play", () => { requestAnimationFrame(frameLoop); if (RVFC) watchFrames(); });
+$("#vid").addEventListener("pause", () => { if (!wastedHeld) wastedStop(); });    // (the hold pauses it on purpose)
+$("#vid").addEventListener("seeking", () => { if (!wastedHeld) wastedStop(); });
 $("#vid").addEventListener("seeked", () => {
   if (seekWant !== null) { $("#vid").currentTime = seekWant; seekWant = null; }
   drawOverlay(); const ph = $("#ph"); if (ph) ph.style.left = clampPct(pct(absNow())) + "%"; });
@@ -3007,7 +3066,7 @@ function renderBody() {
     laser: laserOn() ? { style: opts.laser, a_ms: Math.round(ed.laserA), b_ms: Math.round(ed.laserB), pick: ed.laserPick || undefined } : undefined,
     aesthetic: opts.aesthetic !== "none" ? opts.aesthetic : undefined,
     sparkles: opts.sparkles !== "off" && SERVER.sparkles ? opts.sparkles : undefined,
-    wasted: wastedOn() ? { text: opts.wastedText || "WASTED", at_ms: Math.round(wastedStart()), hold_ms: opts.wastedHold, sound: opts.wastedSound } : undefined,
+    wasted: wastedOn() ? { text: opts.wastedText || "WASTED", at_ms: Math.round(wastedStart()), length_ms: wastedLen(), sound: opts.wastedSound } : undefined,
     sfx: sfxOn() ? { id: opts.sfx, when: opts.sfxWhen, delay_ms: opts.sfxDelay, volume: opts.sfxVol, times_ms: sfxTimes(),
                      mark_ms: opts.sfxWhen === "mark" ? Math.round(ed.sfxMark) : undefined } : undefined,
     caption_cues: needWords() && sttCovers() ? ed.stt.cues.map(c => ({ start_ms: c.start_ms, end_ms: c.end_ms, text: c.text, words: c.words || [] })) : undefined,
@@ -4769,7 +4828,8 @@ const SERVER = { stems: true, slowmo: false, laser: false };          // what th
   run();
   if (p.get("edit")) openClipLink(p.get("edit"));
   try { const o = await (await fetch("/api/options")).json(); FONT_LIST = o.fonts; SERVER.stems = !!o.stems;
-    Object.assign(SERVER, { slowmo: !!o.slowmo, laser: !!o.laser, sparkles: !!o.sparkles, slow_max_ms: o.slow_max_ms, slow_secs_per_mpix_frame: o.slow_secs_per_mpix_frame }); } catch (e) {}
+    Object.assign(SERVER, { slowmo: !!o.slowmo, laser: !!o.laser, sparkles: !!o.sparkles, slow_max_ms: o.slow_max_ms, slow_secs_per_mpix_frame: o.slow_secs_per_mpix_frame,
+      wasted_max_ms: o.wasted_max_ms, wasted_factor: o.wasted_factor }); } catch (e) {}
   loadSfx();
   buildOptions(); applyRules();
 })();
